@@ -242,7 +242,9 @@ MediaDevicesManager.prototype = {
 				this.attributes.audioInputId = getFirstAvailableMediaDevice(devices, this._preferenceAudioInputList) || devices.find((device) => device.kind === 'audioinput')?.deviceId
 				deviceIdChanged = true
 			}
-			if (this.attributes.audioOutputId === undefined || this.attributes.audioOutputId === previousFirstAvailableAudioOutputId) {
+			// ket4tec: output follows preferences only when the selected device is gone,
+			// otherwise a newly connected device (BT, display) steals the sound mid-call
+			if (this.attributes.audioOutputId === undefined || !devices.some((device) => device.kind === 'audiooutput' && device.deviceId === this.attributes.audioOutputId)) {
 				this.attributes.audioOutputId = getFirstAvailableMediaDevice(devices, this._preferenceAudioOutputList) || devices.find((device) => device.kind === 'audiooutput')?.deviceId
 				deviceIdChanged = true
 			}

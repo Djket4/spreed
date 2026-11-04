@@ -266,8 +266,9 @@ async function signalingJoinCall(token, flags, silent, recordingConsent, silentF
 			// The previous state might be wiped after the media is started, so
 			// it should be saved now.
 			const noiseSuppressionWithModel = !!BrowserStorage.getItem('noiseSuppressionWithModel')
-			const enableAudio = options?.audioOn ?? !BrowserStorage.getItem('audioDisabled_' + token)
-			const enableVideo = options?.videoOn ?? !BrowserStorage.getItem('videoDisabled_' + token)
+			// ket4tec: everyone joins muted with video off; the pre-join check only previews devices
+			const enableAudio = false
+			const enableVideo = false
 			const enableVirtualBackground = !!BrowserStorage.getItem('virtualBackgroundEnabled')
 			const virtualBackgroundType = BrowserStorage.getItem('virtualBackgroundType')
 			const virtualBackgroundBlurStrength = BrowserStorage.getItem('virtualBackgroundBlurStrength')
