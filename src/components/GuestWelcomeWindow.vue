@@ -30,6 +30,16 @@
 				@keydown.enter="handleChooseUserName" />
 
 			<NcButton
+				class="funny-name-button"
+				variant="tertiary"
+				@click="guestUserName = funnyName()">
+				{{ t('spreed', 'Придумать имя') }}
+				<template #icon>
+					<IconDice :size="20" />
+				</template>
+			</NcButton>
+
+			<NcButton
 				class="submit-button"
 				variant="primary"
 				:disabled="invalidGuestUsername"
@@ -60,8 +70,10 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcModal from '@nextcloud/vue/components/NcModal'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import Check from 'vue-material-design-icons/CheckBold.vue'
+import IconDice from 'vue-material-design-icons/DiceMultipleOutline.vue'
 import ConversationIcon from './ConversationIcon.vue'
 import { useGuestNameStore } from '../stores/guestName.ts'
+import { funnyName } from '../utils/funnyName.js'
 
 export default {
 	name: 'GuestWelcomeWindow',
@@ -72,6 +84,7 @@ export default {
 		ConversationIcon,
 		NcButton,
 		Check,
+		IconDice,
 	},
 
 	props: {
@@ -113,6 +126,7 @@ export default {
 
 	methods: {
 		t,
+		funnyName,
 		handleChooseUserName() {
 			this.guestNameStore.submitGuestUsername(this.token, this.guestUserName)
 		},

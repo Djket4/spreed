@@ -114,6 +114,7 @@ function updateDeviceId(deviceId: NcSelectOption['id']) {
 			label="label"
 			:aria-label-combobox="t('spreed', 'Select a device')"
 			:clearable="false"
+			:searchable="false"
 			:placeholder="deviceSelectorPlaceholder"
 			:disabled="!enabled || !deviceOptionsAvailable"
 			@open="$emit('refresh')" />

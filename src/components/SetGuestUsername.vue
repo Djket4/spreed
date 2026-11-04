@@ -15,11 +15,13 @@ import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import IconAccountOutline from 'vue-material-design-icons/AccountOutline.vue'
+import IconDice from 'vue-material-design-icons/DiceMultipleOutline.vue'
 import IconPencilOutline from 'vue-material-design-icons/PencilOutline.vue'
 import { useGetToken } from '../composables/useGetToken.ts'
 import { EventBus } from '../services/EventBus.ts'
 import { useActorStore } from '../stores/actor.ts'
 import { useGuestNameStore } from '../stores/guestName.ts'
+import { funnyName } from '../utils/funnyName.js'
 
 const { compact = false } = defineProps<{
 	compact?: boolean
@@ -137,6 +139,16 @@ function toggleEdit() {
 				@trailingButtonClick="!compact ? updateDisplayName() : null"
 				@keydown.enter="!compact ? updateDisplayName() : null"
 				@keydown.esc="toggleEdit" />
+			<NcButton
+				v-if="isEditingUsername || compact"
+				variant="tertiary"
+				:aria-label="t('spreed', 'Придумать имя')"
+				:title="t('spreed', 'Придумать имя')"
+				@click="guestUserName = funnyName()">
+				<template #icon>
+					<IconDice :size="20" />
+				</template>
+			</NcButton>
 		</div>
 
 		<p class="login-info">
