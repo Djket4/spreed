@@ -22,6 +22,7 @@
 					width="17"
 					height="12"
 					rx="3.5" /></symbol>
+				<symbol id="k4i-text" viewBox="0 0 24 24"><path d="M2.8 18.5L7.4 6l4.6 12.5M4.5 14.5h5.8M14.3 18.5l3.1-8 3.1 8M15.6 15.8h3.6" /></symbol>
 				<symbol id="k4i-eraser" viewBox="0 0 24 24"><path d="M9 20h11" /><path d="M4.6 15.4l9.3-9.3a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10.6 19.4H8.6z" /><path d="M9 11l5 5" /></symbol>
 				<symbol id="k4i-undo" viewBox="0 0 24 24"><path d="M9 13.5L4.5 9 9 4.5" /><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-3" /></symbol>
 				<symbol id="k4i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" /></symbol>
@@ -65,6 +66,34 @@
 				</div>
 			</div>
 
+			<div
+				class="k4-fsel k4-tsel"
+				:class="{ on: state.tool === 'text' }"
+				@mousedown.prevent>
+				<div class="k4-seg" :style="{ '--k': 3, '--i': TSIZE.indexOf(state.tsz), width: '112px' }">
+					<i />
+					<button
+						v-for="z in TSIZE"
+						:key="z"
+						type="button"
+						:aria-pressed="state.tsz === z"
+						@click="state.tsz = z">
+						{{ z.toUpperCase() }}
+					</button>
+				</div>
+				<div class="k4-seg" :style="{ '--k': 3, '--i': TL.indexOf(state.tl), width: '210px' }">
+					<i />
+					<button
+						v-for="t in TL"
+						:key="t"
+						type="button"
+						:aria-pressed="state.tl === t"
+						@click="state.tl = t">
+						{{ t ? t + ' с' : 'Остаётся' }}
+					</button>
+				</div>
+			</div>
+
 			<nav ref="dock" class="k4-dock">
 				<div class="k4-tools">
 					<i class="k4-sp" :style="{ '--px': px + 'px' }" />
@@ -97,7 +126,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { clearAll, clearMine, isPresenter, reducedMotion, SP, state, undo } from './useDrawing.js'
+import { clearAll, clearMine, isPresenter, reducedMotion, SP, state, TSIZE, undo } from './useDrawing.js'
 
 const TOOLS = [
 	{ id: 'laser', label: 'Лазерная указка', sub: 'лазер · след гаснет сам' },
@@ -105,16 +134,18 @@ const TOOLS = [
 	{ id: 'marker', label: 'Маркер, остаётся', sub: 'маркер · остаётся' },
 	{ id: 'arrow', label: 'Стрелка', sub: 'стрелка · остаётся' },
 	{ id: 'frame', label: 'Рамка', sub: 'рамка · остаётся' },
+	{ id: 'text', label: 'Текст', sub: 'текст · тап по кадру' },
 	{ id: 'eraser', label: 'Ластик', sub: 'ластик · только свои' },
 ]
 
+const TL = [0, 3, 10]
 const dock = ref(null)
 const btns = reactive({})
 const px = ref(0)
 const presenter = computed(() => isPresenter())
 const sub = computed(() => {
 	const t = TOOLS.find((x) => x.id === state.tool)
-	return t.sub + (state.tool === 'fade' ? state.ft + ' с' : '')
+	return t.sub + (state.tool === 'fade' ? state.ft + ' с' : '') + (state.tool === 'text' ? ' · ' + state.tsz.toUpperCase() + ' · ' + (state.tl ? 'гаснет ' + state.tl + ' с' : 'остаётся') : '')
 })
 const vars = { '--sp-in': SP.in, '--sp-menu': SP.menu }
 
@@ -203,7 +234,8 @@ onMounted(() => {
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
 	animation: k4-up .42s var(--sp-in) both;
 }
-@media (max-width: 401px) { .k4-dock { left: 12px; margin-left: 0; } }
+@media (max-width: 401px) { .k4-dock { left: 12px; margin-left: 0; } .k4-tb, .k4-sp { width: 40px; height: 40px; } .k4-sp { top: 16px; } }
+.k4-fsel.k4-tsel { padding: 0 4px; }
 .k4-tools {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
 	hr { width: 1px; height: 28px; margin: 0; border: 0; background: var(--k4-hair); }

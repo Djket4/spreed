@@ -9,6 +9,8 @@ import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrt
 export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff']
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
 const PERM = ['marker', 'arrow', 'frame']
+const MAX_TEXT = 200
+export const TSIZE = ['s', 'm', 'l']
 const MAX_MSG = 32768
 const MAX_PTS_MSG = 64
 const MAX_PTS_STROKE = 2000
@@ -18,7 +20,9 @@ const LASER_LIFE = 650
 /** Реактивное состояние для UI (кнопка, док). Данные пометок реактивными не делаем: рендерит слой руками. */
 export const state = reactive({
 	mode: false, // режим рисования включён
-	tool: 'laser', // laser | fade | marker | arrow | frame | eraser
+	tool: 'laser', // laser | fade | marker | arrow | frame | text | eraser
+	tsz: 'm', // размер текста s | m | l
+	tl: 0, // сколько секунд живёт текст (0 = остаётся)
 	ft: 3, // сколько секунд живёт «гаснущий» маркер
 	big: null, // sessionId показывающего, чей показ сейчас крупно
 	keys: {}, // sessionId показывающего -> ключ показа (известен, когда пришёл `h`)
@@ -263,7 +267,7 @@ function endMark(show, m) {
 	m.done = true
 	if (m.tool === 'laser') {
 		m.timer = setTimeout(() => drop(show, m), LASER_LIFE + 100)
-	} else if (m.tool === 'fade') {
+	} else if (m.tool === 'fade' || (m.tool === 'text' && m.ttl)) {
 		m.timer = setTimeout(() => {
 			m.fading = true
 			emit({ t: 'fade', show, mark: m })
@@ -362,6 +366,35 @@ function apply(d, from) {
 			m && !m.done && endMark(show, m)
 			break
 		}
+		case 't': {
+			// текст: повторный `t` с тем же id = правка; длиннее 200 символов отбрасываем
+			const x = num(d.x)
+			const y = num(d.y)
+			const text = typeof d.text === 'string' ? d.text.trim() : ''
+			if (!idOk(d.id) || x === null || y === null || !text || d.text.length > MAX_TEXT || !TSIZE.includes(d.size)) {
+				return
+			}
+			const ttl = Math.min(30, Math.max(0, Number(d.ttl) || 0))
+			let m = show.marks.get(from + '/' + d.id)
+			if (m && m.tool !== 'text') {
+				return
+			}
+			if (m) {
+				clearTimeout(m.timer)
+				m.fading = false
+				Object.assign(m, { ttl, x, y, size: d.size, text, pts: [[x, y]] })
+				emit({ t: 'upd', show, mark: m })
+			} else {
+				m = addMark(show, from, d.id, 'text', ttl)
+				if (!m) {
+					return
+				}
+				Object.assign(m, { x, y, size: d.size, text, pts: [[x, y]] })
+				emit({ t: 'add', show, mark: m })
+			}
+			endMark(show, m)
+			break
+		}
 		case 'm': {
 			const x = num(d.x)
 			const y = num(d.y)
@@ -393,14 +426,23 @@ function apply(d, from) {
 		case 'r':
 			if (from === show.presenter && Array.isArray(d.marks)) {
 				d.marks.slice(0, 500).forEach((r) => {
-					if (!r || !idOk(r.id) || typeof r.author !== 'string' || r.author.length > 300 || !PERM.includes(r.tool) || !okPts(r.pts, MAX_PTS_STROKE)) {
+					if (!r || !idOk(r.id) || typeof r.author !== 'string' || r.author.length > 300 || (r.tool !== 'text' && !PERM.includes(r.tool))) {
+						return
+					}
+					const txt = r.tool === 'text'
+					if (txt ? (num(r.x) === null || num(r.y) === null || typeof r.text !== 'string' || !r.text.trim() || r.text.length > MAX_TEXT || !TSIZE.includes(r.size)) : !okPts(r.pts, MAX_PTS_STROKE)) {
 						return
 					}
 					const m = addMark(show, r.author, r.id, r.tool, 0)
 					if (!m) {
 						return
 					}
-					m.pts = pairs(r.pts)
+					if (txt) {
+						Object.assign(m, { x: num(r.x), y: num(r.y), size: r.size, text: r.text.trim() })
+						m.pts = [[m.x, m.y]]
+					} else {
+						m.pts = pairs(r.pts)
+					}
 					if (typeof r.name === 'string' && !show.authors[r.author]) {
 						show.authors[r.author] = { name: r.name.slice(0, 60), key: String(r.uid || r.name).slice(0, 60) }
 					}
@@ -427,14 +469,19 @@ function sendState(show) {
 		n = 0
 	}
 	show.marks.forEach((m) => {
-		if (!PERM.includes(m.tool) || !m.done || !m.pts.length) {
+		if (!(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || !m.done || !m.pts.length) {
 			return
 		}
 		const a = show.authors[m.by] || {}
-		if (n + m.pts.length * 2 > 2500) {
+		const w = m.tool === 'text' ? 120 : m.pts.length * 2
+		if (n + w > 2500) {
 			out()
 		}
-		n += m.pts.length * 2
+		n += w
+		if (m.tool === 'text') {
+			batch.push({ id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key })
+			return
+		}
 		batch.push({ id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key })
 	})
 	out()
@@ -569,6 +616,28 @@ export function strokeEnd(show, m) {
  */
 export function strokeCancel(show, m) {
 	m && local(show, { op: 'x', ids: [m.id] })
+}
+
+/**
+ * Зафиксировать текст (новый или правку с тем же id). Пустой текст у правки стирает пометку.
+ *
+ * @param show
+ * @param {object} t {id?, x, y, size, text}
+ */
+export function textPut(show, t) {
+	const text = t.text.trim().slice(0, MAX_TEXT)
+	const old = t.id && show.marks.get(me() + '/' + t.id)
+	if (!text) {
+		old && eraseMarks(show, [old])
+		return
+	}
+	const id = t.id || rid()
+	local(show, { op: 't', id, x: r4(t.x), y: r4(t.y), size: t.size, text, ttl: old ? old.ttl : state.tl })
+	const m = show.marks.get(me() + '/' + id)
+	if (m && !old) {
+		show.hist.push(m.key)
+		refreshUndo(show)
+	}
 }
 
 /**
