@@ -6,6 +6,7 @@ import axios from '@nextcloud/axios'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { generateOcsUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
+import { useActorStore } from '../../../stores/actor.ts'
 import { myId, onDraw, sendSnap, SP, state } from './useDrawing.js'
 
 export const snap = reactive({ n: 0, k: '', busy: false })
@@ -106,7 +107,7 @@ async function render() {
 		ctx.fill()
 		ctx.fillStyle = '#1d1819'
 		ctx.font = `700 ${12.5 * k}px sans-serif`
-		ctx.fillText(el.textContent, x + 11 * k, y + h / 2 + k)
+		ctx.fillText(el.textContent === 'Вы' ? useActorStore().displayName || 'Вы' : el.textContent, x + 11 * k, y + h / 2 + k)
 	})
 	return new Promise((resolve, reject) => cv.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png'))
 }
