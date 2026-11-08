@@ -220,7 +220,13 @@ function enqueue(data) {
 		if (i >= 0) {
 			if (data.op === 'p') {
 				const room = MAX_PTS_STROKE * 2 - queue[i].pts.length
-				room > 0 && (queue[i] = { ...queue[i], pts: queue[i].pts.concat(data.pts.slice(0, room)) })
+				let pts = room > 0 ? queue[i].pts.concat(data.pts.slice(0, room)) : queue[i].pts
+				// при переполнении у arrow/frame важен конец: последняя пара заменяется актуальной (marker: хвост отбрасывается)
+				const tool = shows.get(data.k)?.marks.get(me() + '/' + data.id)?.tool
+				if ((tool === 'arrow' || tool === 'frame') && data.pts.length > Math.max(room, 0) && data.pts.length >= 2) {
+					pts = pts.slice(0, -2).concat(data.pts.slice(-2))
+				}
+				queue[i] = { ...queue[i], pts }
 			} else {
 				queue[i] = data
 			}
@@ -254,9 +260,16 @@ function flush() {
 		snap = null
 	}
 	if (snap && !queue.length && laneTok >= 1 && tokens >= 1) {
-		const last = snap.i === snap.parts.length - 1
 		const show = shows.get(snap.k)
-		const marks = snap.parts[snap.i++].map((key) => show && ser(show, show.marks.get(key))).filter(Boolean)
+		const keys = snap.parts[snap.i++]
+		const items = keys.map((key) => [key, show && ser(show, show.marks.get(key))]).filter((e) => e[1])
+		// после правок текстов часть могла вырасти: берём порцию <= R_LIMIT, остаток — следующей частью
+		let len = 100
+		let cut = items.findIndex((e) => (len += JSON.stringify(e[1]).length + 1) > R_LIMIT)
+		cut = cut < 1 ? (cut === 0 ? 1 : items.length) : cut
+		const marks = items.slice(0, cut).map((e) => e[1])
+		cut < items.length && snap.parts.splice(snap.i, 0, items.slice(cut).map((e) => e[0]))
+		const last = snap.i === snap.parts.length
 		wire({ op: 'r', k: snap.k, marks, last: last ? 1 : 0 })
 		tokens--
 		laneTok--
@@ -775,7 +788,7 @@ export function join(presenter) {
 			// `h` есть; ждём `last`. Старый отправитель (r без last): 3 с тишины = готово
 			const sy = syncs[presenter]
 			const now = performance.now()
-			if (!sy || sy.done) {
+			if (!sy || sy.done || (!sy.old && sy.n >= 6)) {
 				return
 			}
 			if (sy.old && now - sy.t >= OLD_QUIET) {
