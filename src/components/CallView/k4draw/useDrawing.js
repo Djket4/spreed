@@ -6,7 +6,7 @@ import { reactive } from 'vue'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 
-export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff']
+export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff', '#a6e36b', '#ff6b6b']
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
 const PERM = ['marker', 'arrow', 'frame']
 const MAX_TEXT = 200
@@ -158,7 +158,41 @@ export function identity(sid) {
 	const c = show?.authors[sid]
 	return c ? { name: c.name, color: colorOf(c.key) } : { name: 'Гость', color: colorOf('Гость') }
 }
-const colorOf = (key) => PALETTE[hash(String(key || 'Гость')) % PALETTE.length]
+/**
+ *
+ */
+function myKey() {
+	const a = useActorStore()
+	return String((a.actorType === 'users' ? a.actorId : a.displayName) || 'Гость')
+}
+/**
+ * Цвет по ключу автора: линейное пробирование от FNV-хэша по палитре среди отсортированных ключей
+ * участников звонка, меня и авторов уже виденных показов. Одинаков у клиентов с одинаковым составом.
+ * ponytail: состав виден по-разному (вошёл/вышел, не дошёл `r`) -> редкое расхождение; авторов больше палитры -> совпадения неизбежны.
+ *
+ * @param key
+ */
+function colorOf(key) {
+	key = String(key || 'Гость')
+	const keys = new Set([key, myKey()])
+	const ps = callParticipantCollection.callParticipantModels || []
+	ps.forEach((p) => {
+		const a = p.attributes
+		a && (a.userId || a.name) && keys.add(String(a.userId || a.name))
+	})
+	shows.forEach((s) => Object.values(s.authors).forEach((a) => a?.key && keys.add(String(a.key))))
+	const taken = new Set()
+	let res = PALETTE[0]
+	;[...keys].sort().forEach((k) => {
+		let i = hash(k) % PALETTE.length
+		for (let n = 0; n < PALETTE.length && taken.has(i); n++) {
+			i = (i + 1) % PALETTE.length
+		}
+		taken.add(i)
+		k === key && (res = PALETTE[i])
+	})
+	return res
+}
 
 // ── отправка: одна очередь, 40 сообщений/с, пачки точек склеиваются ──
 /**

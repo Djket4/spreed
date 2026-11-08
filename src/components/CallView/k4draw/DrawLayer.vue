@@ -301,8 +301,8 @@ function drawText(v) {
 		tw = v.tx.getComputedTextLength()
 	} catch (_) { /* не критично */ }
 	const w = Math.round(tw + 24)
-	const x = Math.max(0, Math.min(W - w, m.x * W))
-	const y = Math.max(0, Math.min(H - h, m.y * H))
+	const x = m.x * W // ровно по присланному: подгонка внутрь кадра только у автора до отправки (finishEdit)
+	const y = m.y * H
 	v.tx.setAttribute('x', f1(x + 12))
 	v.tx.setAttribute('y', f1(y + h / 2))
 	for (const [k, a] of Object.entries({ x: f1(x), y: f1(y), width: w, height: h, rx: h / 2 })) {
@@ -441,6 +441,7 @@ function addChip(v, animate = true) {
 	c.className = 'k4-chip' + (ring ? ' tm' : '')
 	c.style.setProperty('--c', v.c)
 	c.dataset.tool = m.tool // для снимка (snapshot.js)
+	c.dataset.by = m.by
 	c.dataset.ttl = m.ttl || 0
 	c.style.setProperty('--ttl', (ring ? m.ttl * 1000 : 0) + 'ms')
 	if (ring) {
@@ -933,8 +934,10 @@ function finishEdit(cancel = false) {
 		return
 	}
 	edit = null
-	const x = E.x / W
-	const y = E.y / H
+	const bw = E.box.offsetWidth
+	const bh = E.box.offsetHeight
+	const x = Math.max(0, Math.min(W - bw, E.x)) / W // подгонка внутрь кадра по рамке автора, в нормированных координатах
+	const y = Math.max(0, Math.min(H - bh, E.y)) / H
 	const text = E.inp.value
 	E.box.remove()
 	kbReset()
