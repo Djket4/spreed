@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { computeTarget, stepWindow } from './FaceFrame.js'
+import { computeTarget, stepWindow, TILES, tileToFrame } from './FaceFrame.js'
 
 describe('FaceFrame logic', () => {
 	test('нет лиц — нет цели', () => {
@@ -36,5 +36,13 @@ describe('FaceFrame logic', () => {
 			s = stepWindow(s, { cx: 0.5, cy: 0.5, zoom: 1 }, 33)
 		}
 		expect(s.zoom).toBeCloseTo(1, 1)
+	})
+	test('перевод координат плитки в кадр', () => {
+		const f = tileToFrame({ x: 0.5, y: 0.5, w: 0.1, h: 0.2 }, { x: 0.4, y: 0, w: 0.6, h: 0.6 })
+		expect(f.x).toBeCloseTo(0.7)
+		expect(f.y).toBeCloseTo(0.3)
+		expect(f.w).toBeCloseTo(0.06)
+		expect(f.h).toBeCloseTo(0.12)
+		TILES.forEach((t) => expect(t.x + t.w).toBeLessThanOrEqual(1.0001))
 	})
 })

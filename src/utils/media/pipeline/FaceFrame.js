@@ -108,6 +108,33 @@ export function stepWindow(state, target, dtMs) {
 	return next
 }
 
+// Резервный проход для далёких лиц: если в полном кадре лиц нет, по очереди
+// (одна плитка за детекцию) прогоняется центр, 4 угловых плитки 60% и сетка 3×3 по 40% с перекрытием.
+export const TILES = [
+	{ x: 0.25, y: 0.25, w: 0.5, h: 0.5 },
+	{ x: 0, y: 0, w: 0.6, h: 0.6 },
+	{ x: 0.4, y: 0, w: 0.6, h: 0.6 },
+	{ x: 0, y: 0.4, w: 0.6, h: 0.6 },
+	{ x: 0.4, y: 0.4, w: 0.6, h: 0.6 },
+	// мелкие плитки 3×3 (40%, шаг 30%) для совсем далёких лиц (~4% ширины)
+	...[0.3, 0, 0.6].flatMap((y) => [0.3, 0, 0.6].map((x) => ({ x, y, w: 0.4, h: 0.4 }))),
+]
+
+/**
+ * Перевод рамки из долей плитки в доли целого кадра.
+ *
+ * @param {{x: number, y: number, w: number, h: number}} box рамка в долях плитки
+ * @param {{x: number, y: number, w: number, h: number}} tile плитка в долях кадра
+ */
+export function tileToFrame(box, tile) {
+	return {
+		x: tile.x + box.x * tile.w,
+		y: tile.y + box.y * tile.h,
+		w: box.w * tile.w,
+		h: box.h * tile.h,
+	}
+}
+
 let detectorPromise = null
 /** @return {Promise<FaceDetector>} общий детектор */
 function getDetector() {
@@ -248,6 +275,7 @@ export default class FaceFrame extends TrackSinkSource {
 			win: { cx: 0.5, cy: 0.5, zoom: 1 },
 			target: { cx: 0.5, cy: 0.5, zoom: 1 },
 			lastFace: 0,
+			tileIdx: 0,
 			lastDetect: 0,
 			lastTick: 0,
 			stopped: false,
@@ -303,15 +331,24 @@ export default class FaceFrame extends TrackSinkSource {
 		if (d.detector && now - d.lastDetect >= DETECT_INTERVAL_MS) {
 			d.lastDetect = now
 			try {
-				const res = d.detector.detectForVideo(video, now)
-				const faces = res.detections
+				const toBoxes = (res, W, H) => res.detections
 					.filter((x) => x.boundingBox)
 					.map((x) => ({
-						x: x.boundingBox.originX / canvas.width,
-						y: x.boundingBox.originY / canvas.height,
-						w: x.boundingBox.width / canvas.width,
-						h: x.boundingBox.height / canvas.height,
+						x: x.boundingBox.originX / W,
+						y: x.boundingBox.originY / H,
+						w: x.boundingBox.width / W,
+						h: x.boundingBox.height / H,
 					}))
+				let faces = toBoxes(d.detector.detectForVideo(video, now), canvas.width, canvas.height)
+				if (!faces.length) {
+					// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
+					const tile = TILES[d.tileIdx++ % TILES.length]
+					const tc = d.tileCanvas ||= document.createElement('canvas')
+					tc.width = canvas.width
+					tc.height = canvas.height
+					tc.getContext('2d').drawImage(video, tile.x * canvas.width, tile.y * canvas.height, tile.w * canvas.width, tile.h * canvas.height, 0, 0, tc.width, tc.height)
+					faces = toBoxes(d.detector.detectForVideo(tc, now + 1), tc.width, tc.height).map((b) => tileToFrame(b, tile))
+				}
 				const target = computeTarget(faces, lvl)
 				if (target) {
 					d.target = target
