@@ -7,6 +7,7 @@ import mockconsole from 'mockconsole'
 import util from 'util'
 import WildEmitter from 'wildemitter'
 import BlackVideoEnforcer from '../../media/pipeline/BlackVideoEnforcer.js'
+import FaceFrame from '../../media/pipeline/FaceFrame.js'
 import MediaDevicesSource from '../../media/pipeline/MediaDevicesSource.js'
 import NoiseSuppressor from '../../media/pipeline/NoiseSuppressor.js'
 import SpeakingMonitor from '../../media/pipeline/SpeakingMonitor.js'
@@ -60,6 +61,8 @@ export default function LocalMedia(opts) {
 
 	this._videoTrackConstrainer = new TrackConstrainer()
 
+	this._faceFrame = new FaceFrame()
+
 	this._virtualBackground = new VirtualBackground()
 	this._virtualBackground.on('loadFailed', () => {
 		this.emit('virtualBackgroundLoadFailed')
@@ -110,7 +113,9 @@ export default function LocalMedia(opts) {
 
 	this._videoTrackEnabler.connectTrackSink('default', this._videoTrackConstrainer)
 
-	this._videoTrackConstrainer.connectTrackSink('default', this._virtualBackground)
+	this._videoTrackConstrainer.connectTrackSink('default', this._faceFrame)
+
+	this._faceFrame.connectTrackSink('default', this._virtualBackground)
 
 	this._virtualBackground.connectTrackSink('default', this._trackToStream, 'video')
 	this._virtualBackground.connectTrackSink('default', this._blackVideoEnforcer, 'default')

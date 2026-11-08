@@ -9,6 +9,7 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 import { PARTICIPANT } from '../constants.ts'
 import { useSoundsStore } from '../stores/sounds.js'
 import attachMediaStream from '../utils/attachmediastream.js'
+import FaceFrame from '../utils/media/pipeline/FaceFrame.js'
 import TrackToStream from '../utils/media/pipeline/TrackToStream.js'
 import VirtualBackground from '../utils/media/pipeline/VirtualBackground.js'
 import { callParticipantsAudioPlayer, mediaDevicesManager } from '../utils/webrtc/index.js'
@@ -44,6 +45,7 @@ export const useDevices = createSharedComposable(function() {
 	const currentVolume = ref(-100)
 	const currentThreshold = ref(-100)
 	const virtualBackground = ref(null)
+	const faceFrame = ref(null)
 	const audioStream = ref(null)
 	const audioStreamError = ref(null)
 	const videoStream = ref(null)
@@ -277,7 +279,9 @@ export const useDevices = createSharedComposable(function() {
 			}
 		}
 
+		faceFrame.value = new FaceFrame()
 		virtualBackground.value = new VirtualBackground()
+		faceFrame.value.connectTrackSink('default', virtualBackground.value)
 		// The virtual background should be enabled and disabled as needed by components
 		virtualBackground.value.setEnabled(false)
 
@@ -333,6 +337,10 @@ export const useDevices = createSharedComposable(function() {
 
 		videoTrackToStream.value = null
 
+		if (faceFrame.value) {
+			faceFrame.value.destroy()
+			faceFrame.value = null
+		}
 		if (virtualBackground.value) {
 			virtualBackground.value.destroy()
 			virtualBackground.value = null
@@ -468,11 +476,11 @@ export const useDevices = createSharedComposable(function() {
 			return
 		}
 		if (!stream) {
-			virtualBackground.value._setInputTrack('default', null)
+			faceFrame.value._setInputTrack('default', null)
 			return
 		}
 
-		virtualBackground.value._setInputTrack('default', videoStream.value.getVideoTracks()[0])
+		faceFrame.value._setInputTrack('default', videoStream.value.getVideoTracks()[0])
 
 		const options = { autoplay: true, mirror: true, muted: true }
 		attachMediaStream(videoTrackToStream.value.getStream(), videoElement.value, options)
@@ -482,7 +490,7 @@ export const useDevices = createSharedComposable(function() {
 	 * Stop and remove video stream
 	 */
 	function stopVideoStream() {
-		virtualBackground.value._setInputTrack('default', null)
+		faceFrame.value._setInputTrack('default', null)
 		if (!videoStream.value) {
 			return
 		}
