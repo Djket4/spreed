@@ -100,14 +100,15 @@ async function render() {
 			return
 		}
 		const [x, y, h] = [m[1] * k, m[2] * k, 26 * k]
-		const w = el.offsetWidth * k
+		const name = el.textContent === 'Вы' ? useActorStore().displayName || 'Вы' : el.textContent
+		ctx.font = `700 ${12.5 * k}px sans-serif`
+		const w = ctx.measureText(name).width + 22 * k // ширина по тексту на канве: «Вы» в слое заменено полным именем
 		ctx.fillStyle = el.style.getPropertyValue('--c') || '#b98bff'
 		ctx.beginPath()
 		ctx.roundRect(x, y, w, h, h / 2)
 		ctx.fill()
 		ctx.fillStyle = '#1d1819'
-		ctx.font = `700 ${12.5 * k}px sans-serif`
-		ctx.fillText(el.textContent === 'Вы' ? useActorStore().displayName || 'Вы' : el.textContent, x + 11 * k, y + h / 2 + k)
+		ctx.fillText(name, x + 11 * k, y + h / 2 + k)
 	})
 	return new Promise((resolve, reject) => cv.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png'))
 }
