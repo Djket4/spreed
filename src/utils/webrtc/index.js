@@ -549,10 +549,21 @@ function signalingSetTyping(typing) {
 	signalingTypingHandler?.setTyping(typing)
 }
 
+// ket4tec: k4draw
+/**
+ * Текущий объект сигналинга (или null) — транспорт рисования поверх показа.
+ *
+ * @return {object|null}
+ */
+function k4drawSignaling() {
+	return signaling
+}
+
 export {
 	callAnalyzer,
 	callParticipantCollection,
 	callParticipantsAudioPlayer,
+	k4drawSignaling,
 	localCallParticipantModel,
 	localMediaModel,
 	mediaDevicesManager,

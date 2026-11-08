@@ -20,6 +20,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconChevronUp from 'vue-material-design-icons/ChevronUp.vue'
 import IconFullscreen from 'vue-material-design-icons/Fullscreen.vue'
 import IconFullscreenExit from 'vue-material-design-icons/FullscreenExit.vue'
+import IconPencil from 'vue-material-design-icons/Pencil.vue' // ket4tec: k4draw
 import IconSubtitles from 'vue-material-design-icons/Subtitles.vue'
 import IconSubtitlesOutline from 'vue-material-design-icons/SubtitlesOutline.vue'
 import IconViewDashboardOutline from 'vue-material-design-icons/ViewDashboardOutline.vue'
@@ -28,6 +29,7 @@ import IconViewGridOutline from 'vue-material-design-icons/ViewGridOutline.vue'
 import ReactionMenu from '../TopBar/ReactionMenu.vue'
 import TopBarMediaControls from '../TopBar/TopBarMediaControls.vue'
 import CallEndLeaveButton from './CallEndLeaveButton.vue'
+import DrawDock from './k4draw/DrawDock.vue' // ket4tec: k4draw
 import {
 	toggleFullscreen,
 	useDocumentFullscreen,
@@ -44,6 +46,7 @@ import { useLiveTranscriptionStore } from '../../stores/liveTranscription.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
+import { state as k4draw } from './k4draw/useDrawing.js' // ket4tec: k4draw
 
 const { isSidebar = false } = defineProps<{
 	isSidebar: boolean
@@ -64,6 +67,8 @@ const callButtonWithActions = useTemplateRef('callButtonWithActions')
 const conversation = computed(() => {
 	return store.getters.conversation(token.value) || store.getters.dummyConversation
 })
+// ket4tec: k4draw. Карандаш виден, пока крупно идёт показ с известным ключом (HPB и форк у показывающего)
+const k4Pencil = computed(() => !isSidebar && !!k4draw.big && !!k4draw.keys[k4draw.big])
 const isGuestActor = computed(() => actorStore.actorType === ATTENDEE.ACTOR_TYPE.GUESTS)
 const isVoiceRoom = computed(() => Boolean(conversation.value.attributes & CONVERSATION.ATTRIBUTE.VOICE_ROOM))
 
@@ -462,7 +467,13 @@ function setCallLayout(layout: CallLayout) {
 </script>
 
 <template>
-	<div ref="bottomBar" class="bottom-bar" data-theme-dark>
+	<div
+		ref="bottomBar"
+		class="bottom-bar"
+		:class="{ 'k4-hidden': k4draw.mode }"
+		data-theme-dark>
+		<!-- ket4tec: k4draw -->
+		<DrawDock v-if="!isSidebar && k4draw.mode" />
 		<div v-if="!isSidebar" class="bottom-bar-call-controls">
 			<!-- Fullscreen -->
 			<NcButton
@@ -509,6 +520,18 @@ function setCallLayout(layout: CallLayout) {
 				:isSidebar="isSidebar"
 				:hideVirtualBackgroundShortcut="hidingList.virtualBackground"
 				:localCallParticipantModel="localCallParticipantModel" />
+
+			<!-- ket4tec: k4draw -->
+			<NcButton
+				v-if="k4Pencil"
+				title="Рисовать на показе"
+				aria-label="Рисовать на показе"
+				variant="tertiary"
+				@click="k4draw.mode = true">
+				<template #icon>
+					<IconPencil :size="20" />
+				</template>
+			</NcButton>
 
 			<!-- Reactions menu -->
 			<ReactionMenu
@@ -699,6 +722,10 @@ function setCallLayout(layout: CallLayout) {
 </template>
 
 <style lang="scss" scoped>
+.k4-hidden {
+	visibility: hidden;
+}
+
 .bottom-bar {
 	position: absolute;
 	bottom: 0;

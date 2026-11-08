@@ -34,6 +34,12 @@
 				</div>
 			</template>
 		</NcEmptyContent>
+		<!-- ket4tec: k4draw -->
+		<DrawLayer
+			v-if="isBig && k4Presenter && (isLocalScreen || isRemoteScreen)"
+			:presenter="k4Presenter"
+			:video="screen"
+			:transform="instanceTransform" />
 		<VideoBottomBar
 			v-if="isBig"
 			:token="token"
@@ -51,13 +57,15 @@ import { t } from '@nextcloud/l10n'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
 import panzoom from 'panzoom'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import IconMonitorScreenshot from 'vue-material-design-icons/MonitorScreenshot.vue'
+import DrawLayer from '../k4draw/DrawLayer.vue' // ket4tec: k4draw
 import VideoBottomBar from './VideoBottomBar.vue'
 import { useGuestNameStore } from '../../../stores/guestName.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
+import { endShow, hasHpb, state as k4state, myId, startShow } from '../k4draw/useDrawing.js' // ket4tec: k4draw
 
 const ZOOM_MIN = 1
 const ZOOM_FACTOR = 4
@@ -72,6 +80,7 @@ export default {
 		NcButton,
 		NcEmptyContent,
 		VideoBottomBar,
+		DrawLayer, // ket4tec: k4draw
 	},
 
 	props: {
@@ -132,6 +141,28 @@ export default {
 			}
 		})
 
+		// ket4tec: k4draw. Показывающий объявляет ключ показа; слой рисует по sessionId показывающего.
+		const k4Presenter = computed(() => {
+			if (!hasHpb()) {
+				return null
+			}
+			return isLocalScreen.value ? myId() : props.callParticipantModel?.attributes.peerId || null
+		})
+		watch(isLocalScreen, (local) => (local ? startShow() : endShow()), { immediate: true })
+		// ket4tec: k4draw. В режиме рисования масштаб сброшен в 1, panzoom на паузе.
+		watch(() => k4state.mode, (on) => {
+			if (!instance.value) {
+				return
+			}
+			if (on) {
+				instance.value.zoomAbs(0, 0, 1)
+				instance.value.moveTo(0, 0)
+				instance.value.pause()
+			} else {
+				instance.value.resume()
+			}
+		})
+
 		onMounted(() => {
 			if (props.isBig) {
 				instance.value = panzoom(screen.value, {
@@ -161,7 +192,7 @@ export default {
 		 * @param event Double click event
 		 */
 		function onDoubleClick(event) {
-			if (!instance.value) {
+			if (!instance.value || k4state.mode) { // ket4tec: k4draw
 				return
 			}
 
@@ -186,6 +217,8 @@ export default {
 		return {
 			guestNameStore,
 			screen,
+			k4Presenter,
+			instanceTransform,
 			screenClass,
 			onDoubleClick,
 			// Mirror fix
