@@ -24,7 +24,8 @@ const STROKE_IDLE = 5000 // штрих без новых точек и без `e
 const MAX_PERM = 500 // постоянных пометок на автора
 const MAX_TEMP = 200 // laser/fade на автора
 const MAX_PERM_SHOW = 3000 // постоянных пометок на весь показ (авторы `r` выдуманные, лимит на автора обходится)
-const MAX_QUEUE = 200 // длина очереди отправки
+const RE_Q = 10000 // нет `last` за 10 с после `h` -> повторный `q`, не чаще
+const OLD_QUIET = 3000 // отправитель без `last` (старый): 3 с тишины = синхронизирован
 const IDLE_GC = 60000 // записи buckets/pings молчащих авторов чистим через 60 с
 const R_LIMIT = 30000 // длина JSON одного `r`
 
@@ -68,7 +69,11 @@ export function onDraw(fn) {
 let sig = null
 let refs = 0
 let myK = null
-let queue = []
+let queue = [] // только живые сообщения; по одному на id (p склеены, t/c — последняя версия)
+let snap = null // полоса досинхронизации: { k, parts, i, again }
+let laneTok = 0
+let laneAt = 0
+const syncs = {} // показывающий -> { t, done, old, n } состояние досинхронизации у получателя
 let tokens = RATE
 let lastRefill = 0
 let pump = 0
@@ -115,6 +120,7 @@ function release() {
 	sig = null
 	clearInterval(pump)
 	queue = []
+	snap = null
 	buckets.clear()
 	pings.clear()
 	// приём остановлен: всё чужое состояние устарело, новый слой обязан спросить `q`
@@ -171,27 +177,22 @@ function enqueue(data) {
 	if (!hpb()) {
 		return
 	}
-	const tail = queue[queue.length - 1]
-	if (data.op === 'p' && tail && tail.op === 'p' && tail.id === data.id && tail.k === data.k && tail.pts.length + data.pts.length <= MAX_PTS_MSG * 2) {
-		tail.pts = tail.pts.concat(data.pts)
-		return
-	}
-	if (data.op === 'c') {
-		const i = queue.findIndex((q) => q.op === 'c')
+	// живое не выкидываем: одно сообщение на id, очередь ограничена числом id
+	// p склеиваем без лимита: flush сам режет по MAX_PTS_MSG
+	const same = (q) => q.op === data.op && q.k === data.k && (data.op === 'c' || q.id === data.id)
+	if (data.op === 'p' || data.op === 't' || data.op === 'c') {
+		let i = -1
+		queue.forEach((q, j) => same(q) && (i = j))
 		if (i >= 0) {
-			queue[i] = data
+			if (data.op === 'p') {
+				queue[i] = { ...queue[i], pts: queue[i].pts.concat(data.pts) }
+			} else {
+				queue[i] = data
+			}
 			return
 		}
 	}
 	queue.push(data)
-	while (queue.length > MAX_QUEUE) {
-		// режем самое старое необязательное; e/x/X/Z не трогаем
-		const i = ['c', 'p', 'r'].map((o) => queue.findIndex((q) => q.op === o)).find((j) => j >= 0)
-		if (i === undefined) {
-			break
-		}
-		queue.splice(i, 1)
-	}
 }
 
 /**
@@ -210,6 +211,23 @@ function flush() {
 		}
 		wire(queue.shift())
 		tokens--
+	}
+	// полоса снимка: только когда живых нет, и не больше половины бюджета
+	laneTok = Math.min(2, laneTok + (now - laneAt) * RATE / 2000)
+	laneAt = now
+	if (snap && snap.k !== myK) {
+		snap = null
+	}
+	if (snap && !queue.length && laneTok >= 1 && tokens >= 1) {
+		const last = snap.i === snap.parts.length - 1
+		wire({ op: 'r', k: snap.k, marks: snap.parts[snap.i++], last: last ? 1 : 0 })
+		tokens--
+		laneTok--
+		if (last) {
+			const again = snap.again
+			snap = null
+			again && startSnap() // `q` пришёл во время прохода: ещё один (целиком)
+		}
 	}
 }
 
@@ -276,6 +294,7 @@ function dropShow(presenter) {
 	old?.marks.forEach(stop)
 	old && shows.delete(old.k)
 	delete state.keys[presenter]
+	delete syncs[presenter]
 }
 
 /**
@@ -288,6 +307,7 @@ function setShow(presenter, k) {
 	const show = { k, presenter, marks: new Map(), hist: [], authors: {}, cnt: {}, perm: 0 }
 	shows.set(k, show)
 	state.keys[presenter] = k
+	syncs[presenter] = { t: performance.now(), done: false, old: false, n: 0 }
 	emit({ t: 'show', show })
 }
 
@@ -395,11 +415,10 @@ function apply(d, from) {
 			qTimer = setTimeout(() => {
 				qTimer = 0
 				lastQ = performance.now()
-				if (myK) {
-					// ещё не ушедший старый ответ-снимок заменяем новым
-					queue = queue.filter((q) => !((q.op === 'h' || q.op === 'r') && q.k === myK))
-					enqueue({ op: 'h', k: myK })
-					sendState(shows.get(myK))
+				if (myK && snap) {
+					snap.again = true // проход идёт: не перезапускаем, пройдём ещё раз после последней части
+				} else if (myK) {
+					startSnap()
 				}
 			}, Math.max(0, lastQ + Q_GAP - performance.now()))
 		}
@@ -533,6 +552,12 @@ function apply(d, from) {
 			break
 		case 'r':
 			if (from === show.presenter && Array.isArray(d.marks)) {
+				const sy = syncs[from]
+				if (sy) {
+					sy.t = performance.now()
+					sy.old = !('last' in d)
+					d.last === 1 && (sy.done = true)
+				}
 				d.marks.slice(0, 500).forEach((r) => {
 					if (!r || !idOk(r.id) || typeof r.author !== 'string' || r.author.length > 300 || (r.tool !== 'text' && !PERM.includes(r.tool))) {
 						return
@@ -566,14 +591,26 @@ function apply(d, from) {
 // Ответ на `q`: все постоянные пометки показа, включая авторов, которые ушли. Порциями < 32 KiB.
 /**
  *
+ */
+function startSnap() {
+	if (!myK) {
+		return
+	}
+	enqueue({ op: 'h', k: myK })
+	snap = { k: myK, parts: buildState(shows.get(myK)), i: 0, again: false }
+}
+
+/**
+ *
  * @param show
  */
-function sendState(show) {
+function buildState(show) {
+	const parts = []
 	let batch = []
 	let n = 0
 	const base = JSON.stringify({ type: 'k4draw', v: 1, op: 'r', k: show.k, marks: [], from: 'x'.repeat(60) }).length
 	const out = () => {
-		batch.length && enqueue({ op: 'r', k: show.k, marks: batch })
+		batch.length && parts.push(batch)
 		batch = []
 		n = base
 	}
@@ -597,6 +634,8 @@ function sendState(show) {
 		batch.push(e)
 	})
 	out()
+	parts.length || parts.push([]) // пустой показ: всё равно нужна часть с last
+	return parts
 }
 
 // ── программный интерфейс для слоя и дока ──
@@ -624,6 +663,7 @@ export function endShow() {
 	}
 	dropShow(me())
 	queue = queue.filter((q) => q.k !== myK)
+	snap = null
 	clearTimeout(qTimer)
 	qTimer = 0
 	emit({ t: 'show', show: { presenter: me(), marks: new Map() } })
@@ -676,7 +716,28 @@ export function join(presenter) {
 	state.big = presenter
 	let tries = 0
 	const ask = () => {
-		if (state.keys[presenter] || presenter === me() || ++tries > 20) {
+		if (presenter === me()) {
+			return
+		}
+		if (state.keys[presenter]) {
+			// `h` есть; ждём `last`. Старый отправитель (r без last): 3 с тишины = готово
+			const sy = syncs[presenter]
+			const now = performance.now()
+			if (!sy || sy.done) {
+				return
+			}
+			if (sy.old && now - sy.t >= OLD_QUIET) {
+				sy.done = true
+				return
+			}
+			if (!sy.old && now - sy.t >= RE_Q && sy.n++ < 6) {
+				sy.t = now
+				wire({ op: 'q' })
+			}
+			timer = setTimeout(ask, 1000)
+			return
+		}
+		if (++tries > 20) {
 			return
 		}
 		wire({ op: 'q' })
