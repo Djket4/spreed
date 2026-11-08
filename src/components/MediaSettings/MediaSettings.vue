@@ -170,6 +170,7 @@
 								:deviceId="videoInputId"
 								@refresh="updateDevices"
 								@update:deviceId="handleVideoInputIdChange" />
+							<FaceFrameSelector />
 							<MediaDevicesSelector
 								v-if="audioOutputSupported"
 								kind="audiooutput"
@@ -274,6 +275,7 @@ import SetGuestUsername from '../SetGuestUsername.vue'
 import CallButton from '../TopBar/CallButton.vue'
 import VolumeIndicator from '../UIShared/VolumeIndicator.vue'
 import AdvancedAudioDialog from './AdvancedAudioDialog.vue'
+import FaceFrameSelector from './FaceFrameSelector.vue'
 import MediaDevicesSelector from './MediaDevicesSelector.vue'
 import MediaDevicesSpeakerTest from './MediaDevicesSpeakerTest.vue'
 import MediaSettingsTabs from './MediaSettingsTabs.vue'
@@ -318,6 +320,7 @@ export default {
 		NcPopover,
 		NcNoteCard,
 		VideoBackground,
+		FaceFrameSelector,
 		VideoBackgroundEditor,
 		VolumeIndicator,
 		SetGuestUsername,
