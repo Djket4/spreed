@@ -25,7 +25,10 @@ calls=$(n "docker exec $DB sh -c 'psql -U \$POSTGRES_USER -d \$POSTGRES_DB -At -
 [ "${NOBUILD:-}" = 1 ] || npm run build
 d=$(date +%F-%H%M)
 n "sudo -n cp -a $R/js $BASE/spreed-js.bak-$d && sudo -n cp -a $R/css $BASE/spreed-css.bak-$d"
-rsync -rtz --chmod=F644 --chown=33:33 --rsync-path="sudo -n rsync" js css "$H:$R/"   # ponytail: только фронт; PHP форка (снимок, блок 4) — добавить lib/ тогда
+rsync -rtz --chmod=F644 --chown=33:33 --rsync-path="sudo -n rsync" js css "$H:$R/"
+# PHP форка (k4draw, снимок): lib/ и appinfo/; атрибутные маршруты кэшируются — сбросить кэш opcache graceful-ом apache
+rsync -rtz --chmod=F644,D755 --chown=33:33 --rsync-path="sudo -n rsync" lib appinfo "$H:$R/"
+n "docker exec $APP sh -c 'kill -USR1 1'"
 sum=$(shasum -a 256 js/talk-main.js | cut -d' ' -f1)
 n "printf '%s %s %s\n' '$sum' '$(git rev-parse --short HEAD)' '$d' | sudo -n tee $R/.ket4tec-build >/dev/null"
 n "O='docker exec -u 33 $APP php occ'; CB=\$(\$O config:app:get theming cachebuster || echo 0); \$O config:app:set theming cachebuster --value=\$((CB+1)) >/dev/null"

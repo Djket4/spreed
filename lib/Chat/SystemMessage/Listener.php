@@ -127,7 +127,8 @@ class Listener implements IEventListener {
 			$route = strtolower($this->request->getParam('_route') ?? '');
 
 			// Recording endpoint posts its own system message; skip the generic one.
-			if ($route === 'ocs.spreed.recording.sharetochat') {
+			// ket4tec: k4draw — снимок тоже шлёт своё сообщение (с подписью), см. K4DrawController
+			if ($route === 'ocs.spreed.recording.sharetochat' || str_starts_with($route, 'ocs.spreed.k4')) {
 				return;
 			}
 

@@ -224,7 +224,7 @@ function view(m) {
 	let v = views.get(m.key)
 	if (!v) {
 		v = { m, c: identity(m.by).color }
-		const g = v.g = mk('g', { class: m.tool, 'data-id': m.id, 'data-by': m.by })
+		const g = v.g = mk('g', { class: m.tool, 'data-id': m.id, 'data-by': m.by, 'data-ttl': m.ttl || 0 })
 		if (m.tool === 'text') {
 			g.append(v.bg = mk('rect', { fill: '#141112', 'fill-opacity': 0.66 }), v.tx = mk('text', { fill: v.c, 'dominant-baseline': 'central', 'font-weight': 700 }))
 		} else if (m.tool === 'ping') {
@@ -294,6 +294,7 @@ function drawText(v) {
 	const [fs, py] = SZ[m.size]
 	const h = Math.round(fs * 1.25 + py * 2)
 	v.tx.textContent = m.text
+	v.g.dataset.ttl = m.ttl || 0 // правка может сменить «остаётся/гаснет»
 	v.tx.setAttribute('font-size', fs)
 	let tw = 0
 	try {
@@ -439,6 +440,8 @@ function addChip(v, animate = true) {
 	const c = v.chip = document.createElement('div')
 	c.className = 'k4-chip' + (ring ? ' tm' : '')
 	c.style.setProperty('--c', v.c)
+	c.dataset.tool = m.tool // для снимка (snapshot.js)
+	c.dataset.ttl = m.ttl || 0
 	c.style.setProperty('--ttl', (ring ? m.ttl * 1000 : 0) + 'ms')
 	if (ring) {
 		const s = mk('svg', { class: 'ring', viewBox: '0 0 16 16' })

@@ -423,6 +423,9 @@ function apply(d, from) {
 				show.marks.forEach((m) => drop(show, m, true))
 			}
 			break
+		case 'S': // снимок сохранён: только для счётчика и тоста
+			emit({ t: 'snap', show, by: from, n: Math.min(999, Math.max(1, Number(d.n) || 1)), name: identity(from).name })
+			break
 		case 'r':
 			if (from === show.presenter && Array.isArray(d.marks)) {
 				d.marks.slice(0, 500).forEach((r) => {
@@ -695,6 +698,16 @@ export function clearMine() {
 export function clearAll() {
 	const show = showOf(state.big)
 	show && show.presenter === me() && local(show, { op: 'Z' })
+}
+
+/**
+ * Сообщить остальным (и себе), что снимок сохранён.
+ *
+ * @param n сколько снимков в этом показе
+ */
+export function sendSnap(n) {
+	const show = showOf(state.big)
+	show && local(show, { op: 'S', n })
 }
 
 export const isPresenter = () => !!state.big && state.big === me()
