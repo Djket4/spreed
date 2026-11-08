@@ -185,7 +185,8 @@ function enqueue(data) {
 		queue.forEach((q, j) => same(q) && (i = j))
 		if (i >= 0) {
 			if (data.op === 'p') {
-				queue[i] = { ...queue[i], pts: queue[i].pts.concat(data.pts) }
+				const room = MAX_PTS_STROKE * 2 - queue[i].pts.length
+				room > 0 && (queue[i] = { ...queue[i], pts: queue[i].pts.concat(data.pts.slice(0, room)) })
 			} else {
 				queue[i] = data
 			}
@@ -220,7 +221,9 @@ function flush() {
 	}
 	if (snap && !queue.length && laneTok >= 1 && tokens >= 1) {
 		const last = snap.i === snap.parts.length - 1
-		wire({ op: 'r', k: snap.k, marks: snap.parts[snap.i++], last: last ? 1 : 0 })
+		const show = shows.get(snap.k)
+		const marks = snap.parts[snap.i++].map((key) => show && ser(show, show.marks.get(key))).filter(Boolean)
+		wire({ op: 'r', k: snap.k, marks, last: last ? 1 : 0 })
 		tokens--
 		laneTok--
 		if (last) {
@@ -601,6 +604,24 @@ function startSnap() {
 }
 
 /**
+ * Пометка для `r` или null, если в снимок не идёт.
+ *
+ * @param show
+ * @param m
+ */
+function ser(show, m) {
+	if (!m || !(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || !m.done || !m.pts.length) {
+		return null
+	}
+	const a = show.authors[m.by] || {}
+	return m.tool === 'text'
+		? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key }
+		: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key }
+}
+
+/**
+ * Части снимка — ключи пометок; содержимое берётся в момент отправки части (flush), поэтому
+ * стёртое после начала снимка не воскресает, а правка текста не откатывается старой версией.
  *
  * @param show
  */
@@ -616,13 +637,10 @@ function buildState(show) {
 	}
 	n = base
 	show.marks.forEach((m) => {
-		if (!(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || !m.done || !m.pts.length) {
+		const e = ser(show, m)
+		if (!e) {
 			return
 		}
-		const a = show.authors[m.by] || {}
-		const e = m.tool === 'text'
-			? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key }
-			: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key }
 		const w = JSON.stringify(e).length + 1
 		if (base + w > R_LIMIT) {
 			return // одна пометка не влезает в сообщение
@@ -631,7 +649,7 @@ function buildState(show) {
 			out()
 		}
 		n += w
-		batch.push(e)
+		batch.push(m.key)
 	})
 	out()
 	parts.length || parts.push([]) // пустой показ: всё равно нужна часть с last
