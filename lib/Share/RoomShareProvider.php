@@ -1175,7 +1175,9 @@ class RoomShareProvider implements IShareProvider, IPartialShareProvider, IShare
 	 * password form does it.
 	 */
 	private function markAuthenticatedForParticipant(IShare $share, Room $room): void {
-		if ($this->getCurrentParticipant($room) === null) {
+		$participant = $this->getCurrentParticipant($room);
+		if ($participant === null || $participant->cannotSeeChat()) {
+			// ket4tec #55: guests without chat do not get participant authentication for files
 			return;
 		}
 

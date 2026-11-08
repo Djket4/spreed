@@ -41,7 +41,6 @@ use OCA\Talk\Events\SystemMessageSentEvent;
 use OCA\Talk\Events\SystemMessagesMultipleSentEvent;
 use OCA\Talk\Events\UserJoinedRoomEvent;
 use OCA\Talk\Manager;
-use OCA\Talk\Model\Attendee;
 use OCA\Talk\Model\BreakoutRoom;
 use OCA\Talk\Model\Message;
 use OCA\Talk\Model\Poll;
@@ -502,16 +501,11 @@ class Listener implements IEventListener {
 
 	/**
 	 * ket4tec #55: the HPB room message goes to every session, guests included,
-	 * so when the room's effective default permissions lack chat only the
-	 * "refresh" signal is sent (clients fetch via API, which hides it from guests).
-	 * ponytail: per-attendee permission overrides on guests are not considered.
+	 * so when any guest of the room lacks the chat permission (default or individual)
+	 * only the "refresh" signal is sent (clients fetch via API, which hides it from guests).
 	 */
 	protected function hidesChatFromGuests(Room $room): bool {
-		$permissions = $room->getDefaultPermissions();
-		if ($permissions === Attendee::PERMISSIONS_DEFAULT) {
-			$permissions = $this->talkConfig->getDefaultPermissions();
-		}
-		return !($permissions & Attendee::PERMISSIONS_CHAT);
+		return $this->participantService->hasGuestWithoutChat($room);
 	}
 
 	protected function notifyMessageSent(AMessageSentEvent $event): void {

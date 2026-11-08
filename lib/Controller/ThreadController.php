@@ -212,6 +212,10 @@ class ThreadController extends AEnvironmentAwareOCSController {
 		'threadId' => '[0-9]+',
 	])]
 	public function renameThread(int $threadId, string $threadTitle): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(['error' => 'thread'], Http::STATUS_NOT_FOUND);
+		}
+
 		$threadTitle = trim($threadTitle);
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\ThreadController $proxy */
@@ -366,6 +370,10 @@ class ThreadController extends AEnvironmentAwareOCSController {
 		'messageId' => '[0-9]+',
 	])]
 	public function setNotificationLevel(int $messageId, int $level): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(['error' => 'thread'], Http::STATUS_NOT_FOUND);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\ThreadController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\ThreadController::class);

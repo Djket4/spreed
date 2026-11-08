@@ -386,7 +386,7 @@ export default {
 		},
 
 		showSharedItemsTab() {
-			return !this.conversation.remoteServer || hasTalkFeature(this.token, 'federated-shared-items')
+			return !this.isChatHidden && (!this.conversation.remoteServer || hasTalkFeature(this.token, 'federated-shared-items'))
 		},
 
 		showDetailsTab() {

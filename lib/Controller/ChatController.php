@@ -1964,7 +1964,7 @@ class ChatController extends AEnvironmentAwareOCSController {
 		$attendee = $this->participant->getAttendee();
 
 		$headers = $lastCommonRead = [];
-		if ($attendee->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
+		if ($attendee->getReadPrivacy() === Participant::PRIVACY_PUBLIC && !$this->participant->cannotSeeChat()) {
 			$lastCommonRead[$this->room->getId()] = $this->chatManager->getLastCommonReadMessage($this->room);
 			$headers = ['X-Chat-Last-Common-Read' => (string)$lastCommonRead[$this->room->getId()]];
 		}
