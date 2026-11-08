@@ -170,6 +170,10 @@ class ReactionController extends AEnvironmentAwareOCSController {
 		'messageId' => '[0-9]+',
 	])]
 	public function getReactions(int $messageId, ?string $reaction): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(new \stdClass(), Http::STATUS_OK);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\ReactionController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\ReactionController::class);

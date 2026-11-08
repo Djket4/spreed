@@ -55,7 +55,7 @@
 		</NcAppSidebarTab>
 		<template v-else>
 			<NcAppSidebarTab
-				v-if="isInCall"
+				v-if="isInCall && !isChatHidden"
 				id="chat"
 				key="chat"
 				:order="1"
@@ -168,6 +168,7 @@ import { ATTENDEE, CONVERSATION, PARTICIPANT, WEBINAR } from '../../constants.ts
 import { getTalkConfig, hasTalkFeature } from '../../services/CapabilitiesManager.ts'
 import { useActorStore } from '../../stores/actor.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts'
+import { isChatHiddenForActor } from '../../utils/chatHidden.ts'
 import { isChannelConversation } from '../../utils/conversation.ts'
 
 const canStartConversations = getTalkConfig('local', 'conversations', 'can-create')
@@ -378,6 +379,10 @@ export default {
 				&& !this.isNoteToSelf
 				&& !this.isChangelog
 				&& (!isChannelConversation(this.conversation) || this.$store.getters.isModerator)
+		},
+
+		isChatHidden() {
+			return isChatHiddenForActor(this.actorStore.actorType, this.conversation?.permissions)
 		},
 
 		showSharedItemsTab() {

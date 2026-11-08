@@ -41,6 +41,7 @@ use OCA\Talk\Events\SystemMessageSentEvent;
 use OCA\Talk\Events\SystemMessagesMultipleSentEvent;
 use OCA\Talk\Events\UserJoinedRoomEvent;
 use OCA\Talk\Manager;
+use OCA\Talk\Model\Attendee;
 use OCA\Talk\Model\BreakoutRoom;
 use OCA\Talk\Model\Message;
 use OCA\Talk\Model\Poll;
@@ -499,6 +500,20 @@ class Listener implements IEventListener {
 		}
 	}
 
+	/**
+	 * ket4tec #55: the HPB room message goes to every session, guests included,
+	 * so when the room's effective default permissions lack chat only the
+	 * "refresh" signal is sent (clients fetch via API, which hides it from guests).
+	 * ponytail: per-attendee permission overrides on guests are not considered.
+	 */
+	protected function hidesChatFromGuests(Room $room): bool {
+		$permissions = $room->getDefaultPermissions();
+		if ($permissions === Attendee::PERMISSIONS_DEFAULT) {
+			$permissions = $this->talkConfig->getDefaultPermissions();
+		}
+		return !($permissions & Attendee::PERMISSIONS_CHAT);
+	}
+
 	protected function notifyMessageSent(AMessageSentEvent $event): void {
 		if ($event instanceof ASystemMessageSentEvent) {
 			$this->notifySystemMessageSent($event);
@@ -514,7 +529,7 @@ class Listener implements IEventListener {
 			],
 		];
 
-		if ($room->getLobbyState() !== Webinary::LOBBY_NONE) {
+		if ($room->getLobbyState() !== Webinary::LOBBY_NONE || $this->hidesChatFromGuests($room)) {
 			$this->externalSignaling->sendRoomMessage($room, $data);
 			return;
 		}
@@ -577,7 +592,8 @@ class Listener implements IEventListener {
 		];
 
 		if (!in_array($messageType, self::SYSTEM_MESSAGE_TYPE_RELAY, true)
-			|| $room->getLobbyState() !== Webinary::LOBBY_NONE) {
+			|| $room->getLobbyState() !== Webinary::LOBBY_NONE
+			|| $this->hidesChatFromGuests($room)) {
 			$this->externalSignaling->sendRoomMessage($room, $data);
 			return;
 		}
@@ -662,7 +678,7 @@ class Listener implements IEventListener {
 			],
 		];
 
-		if ($room->getLobbyState() !== Webinary::LOBBY_NONE) {
+		if ($room->getLobbyState() !== Webinary::LOBBY_NONE || $this->hidesChatFromGuests($room)) {
 			$this->externalSignaling->sendRoomMessage($room, $data);
 			return;
 		}

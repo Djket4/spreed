@@ -74,6 +74,15 @@ class Participant {
 		return \in_array($participantType, [self::GUEST, self::GUEST_MODERATOR], true);
 	}
 
+	/**
+	 * Guests (incl. email guests) without the chat permission must not see
+	 * any chat content (ket4tec #55). Users keep the upstream behaviour.
+	 */
+	public function cannotSeeChat(): bool {
+		return \in_array($this->attendee->getActorType(), [Attendee::ACTOR_GUESTS, Attendee::ACTOR_EMAILS], true)
+			&& !($this->getPermissions() & Attendee::PERMISSIONS_CHAT);
+	}
+
 	public function isSelfJoinedOrGuest(): bool {
 		$participantType = $this->attendee->getParticipantType();
 		return \in_array($participantType, [self::GUEST, self::GUEST_MODERATOR, self::USER_SELF_JOINED], true);

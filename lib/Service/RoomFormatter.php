@@ -420,7 +420,17 @@ class RoomFormatter {
 			}
 		}
 
-		$skipLastMessage = $skipLastMessage || $attendee->isSensitive();
+		$noChat = $currentParticipant->cannotSeeChat();
+		if ($noChat) {
+			// ket4tec #55: guest without chat permission sees no chat data at all
+			$roomData['lastReadMessage'] = 0;
+			$roomData['unreadMessages'] = 0;
+			$roomData['unreadMention'] = false;
+			$roomData['unreadMentionDirect'] = false;
+			$roomData['lastCommonReadMessage'] = 0;
+			$roomData['lastPinnedId'] = 0;
+		}
+		$skipLastMessage = $skipLastMessage || $noChat || $attendee->isSensitive();
 		$lastMessage = $skipLastMessage ? null : $room->getLastMessage();
 		if ($lastMessage instanceof IComment && !$room->isFederatedConversation()) {
 			$lastMessageData = $this->formatLastMessage(
