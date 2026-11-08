@@ -179,7 +179,7 @@ onMounted(() => {
 .k4-dh {
 	position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; pointer-events: auto;
 	padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
-	background: linear-gradient(#141112d9, #141112a0); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+	background: #141112f5; backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
 	animation: k4-in .3s ease-out;
 }
 .k4-ttl {
