@@ -137,18 +137,14 @@ export function showOf(presenter) {
 
 // ── идентичность автора: имя и цвет ──
 /**
- * Цвет автора: из карты показывающего (show.cols), пока её нет — хэш ключа.
+ * Цвет автора: из карты показа на экране (showOf(state.big).cols), пока её нет — хэш ключа.
  *
  * @param sid
  * @param key
  */
 function colorFor(sid, key) {
-	for (const s of shows.values()) {
-		if (s.cols[sid] !== undefined) {
-			return PALETTE[s.cols[sid]]
-		}
-	}
-	return PALETTE[hash(String(key || 'Гость')) % PALETTE.length]
+	const i = showOf(state.big)?.cols[sid] // только карта показа, который на экране: чужой `h` её не подменит
+	return PALETTE[i ?? hash(String(key || 'Гость')) % PALETTE.length]
 }
 
 /**
