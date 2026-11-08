@@ -6,7 +6,7 @@ import { reactive } from 'vue'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 
-export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff']
+export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff', '#a6e36b', '#ff6b6b']
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
 const PERM = ['marker', 'arrow', 'frame']
 const MAX_TEXT = 200
@@ -24,7 +24,8 @@ const STROKE_IDLE = 5000 // штрих без новых точек и без `e
 const MAX_PERM = 500 // постоянных пометок на автора
 const MAX_TEMP = 200 // laser/fade на автора
 const MAX_PERM_SHOW = 3000 // постоянных пометок на весь показ (авторы `r` выдуманные, лимит на автора обходится)
-const MAX_QUEUE = 200 // длина очереди отправки
+const RE_Q = 10000 // нет `last` за 10 с после `h` -> повторный `q`, не чаще
+const OLD_QUIET = 3000 // отправитель без `last` (старый): 3 с тишины = синхронизирован
 const IDLE_GC = 60000 // записи buckets/pings молчащих авторов чистим через 60 с
 const R_LIMIT = 30000 // длина JSON одного `r`
 
@@ -68,7 +69,11 @@ export function onDraw(fn) {
 let sig = null
 let refs = 0
 let myK = null
-let queue = []
+let queue = [] // только живые сообщения; по одному на id (p склеены, t/c — последняя версия)
+let snap = null // полоса досинхронизации: { k, parts, i, again }
+let laneTok = 0
+let laneAt = 0
+const syncs = {} // показывающий -> { t, done, old, n } состояние досинхронизации у получателя
 let tokens = RATE
 let lastRefill = 0
 let pump = 0
@@ -115,6 +120,7 @@ function release() {
 	sig = null
 	clearInterval(pump)
 	queue = []
+	snap = null
 	buckets.clear()
 	pings.clear()
 	// приём остановлен: всё чужое состояние устарело, новый слой обязан спросить `q`
@@ -152,7 +158,41 @@ export function identity(sid) {
 	const c = show?.authors[sid]
 	return c ? { name: c.name, color: colorOf(c.key) } : { name: 'Гость', color: colorOf('Гость') }
 }
-const colorOf = (key) => PALETTE[hash(String(key || 'Гость')) % PALETTE.length]
+/**
+ *
+ */
+function myKey() {
+	const a = useActorStore()
+	return String((a.actorType === 'users' ? a.actorId : a.displayName) || 'Гость')
+}
+/**
+ * Цвет по ключу автора: линейное пробирование от FNV-хэша по палитре среди отсортированных ключей
+ * участников звонка, меня и авторов уже виденных показов. Одинаков у клиентов с одинаковым составом.
+ * ponytail: состав виден по-разному (вошёл/вышел, не дошёл `r`) -> редкое расхождение; авторов больше палитры -> совпадения неизбежны.
+ *
+ * @param key
+ */
+function colorOf(key) {
+	key = String(key || 'Гость')
+	const keys = new Set([key, myKey()])
+	const ps = callParticipantCollection.callParticipantModels || []
+	ps.forEach((p) => {
+		const a = p.attributes
+		a && (a.userId || a.name) && keys.add(String(a.userId || a.name))
+	})
+	shows.forEach((s) => Object.values(s.authors).forEach((a) => a?.key && keys.add(String(a.key))))
+	const taken = new Set()
+	let res = PALETTE[0]
+	;[...keys].sort().forEach((k) => {
+		let i = hash(k) % PALETTE.length
+		for (let n = 0; n < PALETTE.length && taken.has(i); n++) {
+			i = (i + 1) % PALETTE.length
+		}
+		taken.add(i)
+		k === key && (res = PALETTE[i])
+	})
+	return res
+}
 
 // ── отправка: одна очередь, 40 сообщений/с, пачки точек склеиваются ──
 /**
@@ -171,27 +211,29 @@ function enqueue(data) {
 	if (!hpb()) {
 		return
 	}
-	const tail = queue[queue.length - 1]
-	if (data.op === 'p' && tail && tail.op === 'p' && tail.id === data.id && tail.k === data.k && tail.pts.length + data.pts.length <= MAX_PTS_MSG * 2) {
-		tail.pts = tail.pts.concat(data.pts)
-		return
-	}
-	if (data.op === 'c') {
-		const i = queue.findIndex((q) => q.op === 'c')
+	// живое не выкидываем: одно сообщение на id, очередь ограничена числом id
+	// p склеиваем без лимита: flush сам режет по MAX_PTS_MSG
+	const same = (q) => q.op === data.op && q.k === data.k && (data.op === 'c' || q.id === data.id)
+	if (data.op === 'p' || data.op === 't' || data.op === 'c') {
+		let i = -1
+		queue.forEach((q, j) => same(q) && (i = j))
 		if (i >= 0) {
-			queue[i] = data
+			if (data.op === 'p') {
+				const room = MAX_PTS_STROKE * 2 - queue[i].pts.length
+				let pts = room > 0 ? queue[i].pts.concat(data.pts.slice(0, room)) : queue[i].pts
+				// при переполнении у arrow/frame важен конец: последняя пара заменяется актуальной (marker: хвост отбрасывается)
+				const tool = shows.get(data.k)?.marks.get(me() + '/' + data.id)?.tool
+				if ((tool === 'arrow' || tool === 'frame') && data.pts.length > Math.max(room, 0) && data.pts.length >= 2) {
+					pts = pts.slice(0, -2).concat(data.pts.slice(-2))
+				}
+				queue[i] = { ...queue[i], pts }
+			} else {
+				queue[i] = data
+			}
 			return
 		}
 	}
 	queue.push(data)
-	while (queue.length > MAX_QUEUE) {
-		// режем самое старое необязательное; e/x/X/Z не трогаем
-		const i = ['c', 'p', 'r'].map((o) => queue.findIndex((q) => q.op === o)).find((j) => j >= 0)
-		if (i === undefined) {
-			break
-		}
-		queue.splice(i, 1)
-	}
 }
 
 /**
@@ -210,6 +252,32 @@ function flush() {
 		}
 		wire(queue.shift())
 		tokens--
+	}
+	// полоса снимка: только когда живых нет, и не больше половины бюджета
+	laneTok = Math.min(2, laneTok + (now - laneAt) * RATE / 2000)
+	laneAt = now
+	if (snap && snap.k !== myK) {
+		snap = null
+	}
+	if (snap && !queue.length && laneTok >= 1 && tokens >= 1) {
+		const show = shows.get(snap.k)
+		const keys = snap.parts[snap.i++]
+		const items = keys.map((key) => [key, show && ser(show, show.marks.get(key))]).filter((e) => e[1])
+		// после правок текстов часть могла вырасти: берём порцию <= R_LIMIT, остаток — следующей частью
+		let len = 100
+		let cut = items.findIndex((e) => (len += JSON.stringify(e[1]).length + 1) > R_LIMIT)
+		cut = cut < 1 ? (cut === 0 ? 1 : items.length) : cut
+		const marks = items.slice(0, cut).map((e) => e[1])
+		cut < items.length && snap.parts.splice(snap.i, 0, items.slice(cut).map((e) => e[0]))
+		const last = snap.i === snap.parts.length
+		wire({ op: 'r', k: snap.k, marks, last: last ? 1 : 0 })
+		tokens--
+		laneTok--
+		if (last) {
+			const again = snap.again
+			snap = null
+			again && startSnap() // `q` пришёл во время прохода: ещё один (целиком)
+		}
 	}
 }
 
@@ -276,6 +344,7 @@ function dropShow(presenter) {
 	old?.marks.forEach(stop)
 	old && shows.delete(old.k)
 	delete state.keys[presenter]
+	delete syncs[presenter]
 }
 
 /**
@@ -288,6 +357,7 @@ function setShow(presenter, k) {
 	const show = { k, presenter, marks: new Map(), hist: [], authors: {}, cnt: {}, perm: 0 }
 	shows.set(k, show)
 	state.keys[presenter] = k
+	syncs[presenter] = { t: performance.now(), done: false, old: false, n: 0 }
 	emit({ t: 'show', show })
 }
 
@@ -395,11 +465,10 @@ function apply(d, from) {
 			qTimer = setTimeout(() => {
 				qTimer = 0
 				lastQ = performance.now()
-				if (myK) {
-					// ещё не ушедший старый ответ-снимок заменяем новым
-					queue = queue.filter((q) => !((q.op === 'h' || q.op === 'r') && q.k === myK))
-					enqueue({ op: 'h', k: myK })
-					sendState(shows.get(myK))
+				if (myK && snap) {
+					snap.again = true // проход идёт: не перезапускаем, пройдём ещё раз после последней части
+				} else if (myK) {
+					startSnap()
 				}
 			}, Math.max(0, lastQ + Q_GAP - performance.now()))
 		}
@@ -533,6 +602,12 @@ function apply(d, from) {
 			break
 		case 'r':
 			if (from === show.presenter && Array.isArray(d.marks)) {
+				const sy = syncs[from]
+				if (sy) {
+					sy.t = performance.now()
+					sy.old = !('last' in d)
+					d.last === 1 && (sy.done = true)
+				}
 				d.marks.slice(0, 500).forEach((r) => {
 					if (!r || !idOk(r.id) || typeof r.author !== 'string' || r.author.length > 300 || (r.tool !== 'text' && !PERM.includes(r.tool))) {
 						return
@@ -566,26 +641,53 @@ function apply(d, from) {
 // Ответ на `q`: все постоянные пометки показа, включая авторов, которые ушли. Порциями < 32 KiB.
 /**
  *
+ */
+function startSnap() {
+	if (!myK) {
+		return
+	}
+	enqueue({ op: 'h', k: myK })
+	snap = { k: myK, parts: buildState(shows.get(myK)), i: 0, again: false }
+}
+
+/**
+ * Пометка для `r` или null, если в снимок не идёт.
+ *
+ * @param show
+ * @param m
+ */
+function ser(show, m) {
+	if (!m || !(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || !m.done || !m.pts.length) {
+		return null
+	}
+	const a = show.authors[m.by] || {}
+	return m.tool === 'text'
+		? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key }
+		: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key }
+}
+
+/**
+ * Части снимка — ключи пометок; содержимое берётся в момент отправки части (flush), поэтому
+ * стёртое после начала снимка не воскресает, а правка текста не откатывается старой версией.
+ *
  * @param show
  */
-function sendState(show) {
+function buildState(show) {
+	const parts = []
 	let batch = []
 	let n = 0
 	const base = JSON.stringify({ type: 'k4draw', v: 1, op: 'r', k: show.k, marks: [], from: 'x'.repeat(60) }).length
 	const out = () => {
-		batch.length && enqueue({ op: 'r', k: show.k, marks: batch })
+		batch.length && parts.push(batch)
 		batch = []
 		n = base
 	}
 	n = base
 	show.marks.forEach((m) => {
-		if (!(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || !m.done || !m.pts.length) {
+		const e = ser(show, m)
+		if (!e) {
 			return
 		}
-		const a = show.authors[m.by] || {}
-		const e = m.tool === 'text'
-			? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key }
-			: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key }
 		const w = JSON.stringify(e).length + 1
 		if (base + w > R_LIMIT) {
 			return // одна пометка не влезает в сообщение
@@ -594,9 +696,11 @@ function sendState(show) {
 			out()
 		}
 		n += w
-		batch.push(e)
+		batch.push(m.key)
 	})
 	out()
+	parts.length || parts.push([]) // пустой показ: всё равно нужна часть с last
+	return parts
 }
 
 // ── программный интерфейс для слоя и дока ──
@@ -624,6 +728,7 @@ export function endShow() {
 	}
 	dropShow(me())
 	queue = queue.filter((q) => q.k !== myK)
+	snap = null
 	clearTimeout(qTimer)
 	qTimer = 0
 	emit({ t: 'show', show: { presenter: me(), marks: new Map() } })
@@ -676,7 +781,28 @@ export function join(presenter) {
 	state.big = presenter
 	let tries = 0
 	const ask = () => {
-		if (state.keys[presenter] || presenter === me() || ++tries > 20) {
+		if (presenter === me()) {
+			return
+		}
+		if (state.keys[presenter]) {
+			// `h` есть; ждём `last`. Старый отправитель (r без last): 3 с тишины = готово
+			const sy = syncs[presenter]
+			const now = performance.now()
+			if (!sy || sy.done || (!sy.old && sy.n >= 6)) {
+				return
+			}
+			if (sy.old && now - sy.t >= OLD_QUIET) {
+				sy.done = true
+				return
+			}
+			if (!sy.old && now - sy.t >= RE_Q && sy.n++ < 6) {
+				sy.t = now
+				wire({ op: 'q' })
+			}
+			timer = setTimeout(ask, 1000)
+			return
+		}
+		if (++tries > 20) {
 			return
 		}
 		wire({ op: 'q' })

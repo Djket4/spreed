@@ -93,26 +93,45 @@ async function render() {
 	const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg))
 	ctx.drawImage(await loadImg(url), 0, 0, vw, vh)
 
-	// подписи с именами (постоянные, без «гаснущих»)
+	// Подписи: одна на автора (у его первой постоянной пометки, не у текста — текст и так его цветом),
+	// размер 1,6% высоты кадра, целиком в кадре, не поверх текстов.
+	// Разрешение PNG = разрешение принятого видео: у гостя при показе 4K приходит 1920x1080/2560x1440, у показывающего полное.
+	const fh = vh * 0.016 * 1.6 // высота капсулы; кегль 1,6% высоты кадра
+	const texts = [...ink.querySelectorAll(':scope > g.text')].filter((g) => keep('text', g.dataset.ttl, g)).map((g) => {
+		const r = g.querySelector('rect')
+		return r && [+r.getAttribute('x') * k, +r.getAttribute('y') * k, +r.getAttribute('width') * k, +r.getAttribute('height') * k]
+	}).filter(Boolean)
+	const done = new Set()
+	const placed = []
+	const hit = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
 	ctx.textBaseline = 'middle'
+	ctx.font = `700 ${vh * 0.016}px sans-serif`
 	ink.parentElement.querySelectorAll('.k4-chip').forEach((el) => {
-		if (!keep(el.dataset.tool, el.dataset.ttl, el)) {
+		const by = el.dataset.by
+		if (el.dataset.tool === 'text' || done.has(by) || !keep(el.dataset.tool, el.dataset.ttl, el)) {
 			return
 		}
 		const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(el.style.transform)
 		if (!m) {
 			return
 		}
-		const [x, y, h] = [m[1] * k, m[2] * k, 26 * k]
+		done.add(by)
 		const name = el.textContent === 'Вы' ? useActorStore().displayName || 'Вы' : el.textContent
-		ctx.font = `700 ${12.5 * k}px sans-serif`
-		const w = ctx.measureText(name).width + 22 * k // ширина по тексту на канве: «Вы» в слое заменено полным именем
+		const pad = fh * 0.45
+		const w = ctx.measureText(name).width + pad * 2
+		const box = [Math.max(0, Math.min(vw - w, m[1] * k)), Math.max(0, Math.min(vh - fh, m[2] * k)), w, fh]
+		for (const o of [...texts, ...placed]) {
+			if (hit(box, o)) {
+				box[1] = o[1] - fh - 2 >= 0 ? o[1] - fh - 2 : Math.min(vh - fh, o[1] + o[3] + 2)
+			}
+		}
+		placed.push(box)
 		ctx.fillStyle = el.style.getPropertyValue('--c') || '#b98bff'
 		ctx.beginPath()
-		ctx.roundRect(x, y, w, h, h / 2)
+		ctx.roundRect(box[0], box[1], w, fh, fh / 2)
 		ctx.fill()
 		ctx.fillStyle = '#1d1819'
-		ctx.fillText(name, x + 11 * k, y + h / 2 + k)
+		ctx.fillText(name, box[0] + pad, box[1] + fh / 2)
 	})
 	return new Promise((resolve, reject) => cv.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png'))
 }
