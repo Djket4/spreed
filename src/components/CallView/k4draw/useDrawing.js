@@ -16,6 +16,14 @@ const MAX_PTS_MSG = 64
 const MAX_PTS_STROKE = 2000
 const RATE = 40
 const LASER_LIFE = 650
+const IN_RATE = 60 // входящих сообщений в секунду от одного автора
+const Q_GAP = 2000 // показывающий отвечает на `q` не чаще раза в 2 с
+const MAX_PINGS = 5 // активных отметок `m` на автора
+const PING_LIFE = 2400
+const STROKE_IDLE = 5000 // штрих без новых точек и без `e` закрываем
+const MAX_PERM = 500 // постоянных пометок на автора
+const MAX_TEMP = 200 // laser/fade на автора
+const R_LIMIT = 30000 // длина JSON одного `r`
 
 /** Реактивное состояние для UI (кнопка, док). Данные пометок реактивными не делаем: рендерит слой руками. */
 export const state = reactive({
@@ -62,6 +70,11 @@ let tokens = RATE
 let lastRefill = 0
 let pump = 0
 let leaveTimer = 0
+let leaving = null
+let qTimer = 0
+let lastQ = 0
+const buckets = new Map() // автор -> { t, n } token bucket приёма
+const pings = new Map() // автор -> время активных отметок
 
 const hpb = () => !!sig && typeof sig.doSend === 'function'
 const me = () => (sig || k4drawSignaling())?.getSessionId() || ''
@@ -98,6 +111,8 @@ function release() {
 	sig = null
 	clearInterval(pump)
 	queue = []
+	buckets.clear()
+	pings.clear()
 }
 
 /**
@@ -197,6 +212,15 @@ function onMsg(d) {
 	if (!from || from === me() || JSON.stringify(d).length > MAX_MSG) {
 		return
 	}
+	const now = performance.now()
+	const b = buckets.get(from) || { t: now, n: IN_RATE }
+	b.n = Math.min(IN_RATE, b.n + (now - b.t) * IN_RATE / 1000)
+	b.t = now
+	buckets.set(from, b)
+	if (b.n < 1) {
+		return
+	}
+	b.n--
 	apply(d, from)
 }
 
@@ -216,16 +240,32 @@ function pairs(a) {
 const idOk = (id) => typeof id === 'string' && id.length > 0 && id.length <= 40
 
 /**
+ * @param m
+ */
+function stop(m) {
+	clearTimeout(m.timer)
+	clearTimeout(m.idle)
+}
+
+/**
+ * Забыть показ и его ключ: новый слой снова спросит `q`.
+ *
+ * @param presenter
+ */
+function dropShow(presenter) {
+	const old = shows.get(state.keys[presenter])
+	old?.marks.forEach(stop)
+	old && shows.delete(old.k)
+	delete state.keys[presenter]
+}
+
+/**
  *
  * @param presenter
  * @param k
  */
 function setShow(presenter, k) {
-	const old = shows.get(state.keys[presenter])
-	if (old) {
-		old.marks.forEach((m) => clearTimeout(m.timer))
-		shows.delete(old.k)
-	}
+	dropShow(presenter)
 	const show = { k, presenter, marks: new Map(), hist: [], authors: {} }
 	shows.set(k, show)
 	state.keys[presenter] = k
@@ -239,7 +279,7 @@ function setShow(presenter, k) {
  * @param out
  */
 function drop(show, mark, out) {
-	clearTimeout(mark.timer)
+	stop(mark)
 	if (show.marks.get(mark.key) === mark) {
 		show.marks.delete(mark.key)
 		emit({ t: 'del', show, mark, out })
@@ -264,6 +304,7 @@ function refreshUndo(show) {
  * @param m
  */
 function endMark(show, m) {
+	stop(m)
 	m.done = true
 	if (m.tool === 'laser') {
 		m.timer = setTimeout(() => drop(show, m), LASER_LIFE + 100)
@@ -288,12 +329,36 @@ function endMark(show, m) {
  */
 function addMark(show, by, id, tool, ttl) {
 	const key = by + '/' + id
-	if (show.marks.has(key) || show.marks.size > 3000) {
+	if (show.marks.has(key)) {
+		return null
+	}
+	const temp = tool === 'laser' || tool === 'fade'
+	let n = 0
+	show.marks.forEach((m) => {
+		if (m.by === by && (m.tool === 'laser' || m.tool === 'fade') === temp) {
+			n++
+		}
+	})
+	if (n >= (temp ? MAX_TEMP : MAX_PERM)) {
 		return null
 	}
 	const m = { key, id, by, tool, ttl, pts: [], ts: [], done: false }
 	show.marks.set(key, m)
 	return m
+}
+
+/**
+ * Чужой штрих без новых точек дольше STROKE_IDLE закрываем: иначе он висит вечно.
+ *
+ * @param show
+ * @param m
+ * @param from
+ */
+function idle(show, m, from) {
+	if (from !== me()) {
+		clearTimeout(m.idle)
+		m.idle = setTimeout(() => !m.done && endMark(show, m), STROKE_IDLE)
+	}
 }
 
 /**
@@ -304,9 +369,16 @@ function addMark(show, by, id, tool, ttl) {
 function apply(d, from) {
 	const op = d.op
 	if (op === 'q') {
-		if (myK) {
-			wire({ op: 'h', k: myK })
-			sendState(shows.get(myK))
+		if (myK && !qTimer) {
+			// несколько `q` в окне — один ответ, не чаще раза в Q_GAP
+			qTimer = setTimeout(() => {
+				qTimer = 0
+				lastQ = performance.now()
+				if (myK) {
+					enqueue({ op: 'h', k: myK })
+					sendState(shows.get(myK))
+				}
+			}, Math.max(0, lastQ + Q_GAP - performance.now()))
 		}
 		return
 	}
@@ -331,7 +403,10 @@ function apply(d, from) {
 			}
 			const ttl = d.tool === 'fade' ? Math.min(30, Math.max(1, Number(d.ttl) || 3)) : 0
 			const m = addMark(show, from, d.id, d.tool, ttl)
-			m && emit({ t: 'add', show, mark: m })
+			if (m) {
+				idle(show, m, from)
+				emit({ t: 'add', show, mark: m })
+			}
 			break
 		}
 		case 'p': {
@@ -358,6 +433,7 @@ function apply(d, from) {
 			} else {
 				return
 			}
+			idle(show, m, from)
 			emit({ t: 'pts', show, mark: m })
 			break
 		}
@@ -398,7 +474,13 @@ function apply(d, from) {
 		case 'm': {
 			const x = num(d.x)
 			const y = num(d.y)
-			x !== null && y !== null && emit({ t: 'ping', show, by: from, x, y })
+			const now = performance.now()
+			const act = (pings.get(from) || []).filter((t) => now - t < PING_LIFE)
+			pings.set(from, act)
+			if (act.length >= MAX_PINGS) {
+				return
+			}
+			x !== null && y !== null && act.push(now) && emit({ t: 'ping', show, by: from, x, y })
 			break
 		}
 		case 'c': {
@@ -466,26 +548,30 @@ function apply(d, from) {
 function sendState(show) {
 	let batch = []
 	let n = 0
+	const base = JSON.stringify({ type: 'k4draw', v: 1, op: 'r', k: show.k, marks: [], from: 'x'.repeat(60) }).length
 	const out = () => {
-		batch.length && wire({ op: 'r', k: show.k, marks: batch })
+		batch.length && enqueue({ op: 'r', k: show.k, marks: batch })
 		batch = []
-		n = 0
+		n = base
 	}
+	n = base
 	show.marks.forEach((m) => {
 		if (!(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || !m.done || !m.pts.length) {
 			return
 		}
 		const a = show.authors[m.by] || {}
-		const w = m.tool === 'text' ? 120 : m.pts.length * 2
-		if (n + w > 2500) {
+		const e = m.tool === 'text'
+			? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key }
+			: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key }
+		const w = JSON.stringify(e).length + 1
+		if (base + w > R_LIMIT) {
+			return // одна пометка не влезает в сообщение
+		}
+		if (n + w > R_LIMIT) {
 			out()
 		}
 		n += w
-		if (m.tool === 'text') {
-			batch.push({ id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key })
-			return
-		}
-		batch.push({ id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key })
+		batch.push(e)
 	})
 	out()
 }
@@ -513,13 +599,39 @@ export function endShow() {
 	if (!myK) {
 		return
 	}
-	const show = shows.get(myK)
-	show?.marks.forEach((m) => clearTimeout(m.timer))
-	shows.delete(myK)
-	delete state.keys[me()]
+	dropShow(me())
+	clearTimeout(qTimer)
+	qTimer = 0
 	emit({ t: 'show', show: { presenter: me(), marks: new Map() } })
 	myK = null
 	release()
+}
+
+/**
+ * Слой чужого показа ушёл насовсем: приём остановлен, состояние устарело.
+ *
+ * @param presenter
+ */
+function forget(presenter) {
+	presenter !== me() && dropShow(presenter)
+}
+
+let bound = null
+const sync = () => (bound?.attributes.localScreen ? startShow() : endShow())
+
+/**
+ * Привязать показ к самому локальному экранному потоку, а не к экземпляру ScreenShare:
+ * закрепление камеры размонтирует компонент, но остановка показа всё равно должна закрыть `k`.
+ *
+ * @param {object} model LocalMediaModel
+ */
+export function bindLocalScreen(model) {
+	if (bound !== model) {
+		bound?.off('change:localScreen', sync)
+		bound = model
+		model.on('change:localScreen', sync)
+	}
+	sync()
 }
 
 /**
@@ -534,6 +646,9 @@ export function join(presenter) {
 		return () => {}
 	}
 	clearTimeout(leaveTimer)
+	// прошлый чужой показ, который не успели закрыть: забыть, иначе известный ключ запретит `q`
+	leaving && leaving !== presenter && forget(leaving)
+	leaving = null
 	state.big = presenter
 	let tries = 0
 	const ask = () => {
@@ -548,7 +663,10 @@ export function join(presenter) {
 		clearTimeout(timer)
 		release()
 		// слой может тут же пересоздаться (перерисовка звонка): режим рисования не сбрасываем сразу
+		leaving = presenter
 		leaveTimer = setTimeout(() => {
+			leaving = null
+			forget(presenter)
 			if (state.big === presenter) {
 				state.big = null
 				state.mode = false

@@ -65,7 +65,7 @@ import DrawLayer from '../k4draw/DrawLayer.vue' // ket4tec: k4draw
 import VideoBottomBar from './VideoBottomBar.vue'
 import { useGuestNameStore } from '../../../stores/guestName.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
-import { endShow, hasHpb, state as k4state, myId, startShow } from '../k4draw/useDrawing.js' // ket4tec: k4draw
+import { bindLocalScreen, hasHpb, state as k4state, myId } from '../k4draw/useDrawing.js' // ket4tec: k4draw
 
 const ZOOM_MIN = 1
 const ZOOM_FACTOR = 4
@@ -148,8 +148,8 @@ export default {
 			}
 			return isLocalScreen.value ? myId() : props.callParticipantModel?.attributes.peerId || null
 		})
-		// только экземпляры локального показа: у чужих isLocalScreen всегда false и не должен гасить наш показ
-		watch(isLocalScreen, (local) => (local ? startShow() : props.localMediaModel && endShow()), { immediate: true })
+		// жизнь показа привязана к модели локального экрана, не к экземпляру: закрепление камеры размонтирует компонент
+		props.localMediaModel && bindLocalScreen(props.localMediaModel)
 		// ket4tec: k4draw. В режиме рисования масштаб сброшен в 1, panzoom на паузе.
 		watch(() => k4state.mode, (on) => {
 			if (!instance.value) {
@@ -172,8 +172,8 @@ export default {
 					bounds: true,
 					boundsPadding: 1,
 				})
-				instance.value.on('zoom', (instance) => {
-					instanceTransform.value = instance.getTransform()
+				instance.value.on('transform', (instance) => {
+					instanceTransform.value = { ...instance.getTransform() }
 				})
 				instance.value.on('panstart', () => {
 					instanceGrabbing.value = true
