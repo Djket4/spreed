@@ -220,7 +220,7 @@ function view(m) {
 	let v = views.get(m.key)
 	if (!v) {
 		v = { m, c: identity(m.by).color }
-		const g = v.g = mk('g', { class: m.tool })
+		const g = v.g = mk('g', { class: m.tool, 'data-id': m.id, 'data-by': m.by })
 		if (m.tool === 'ping') {
 			g.append(v.r = mk('circle', { class: 'r', r: 9, fill: 'none', stroke: v.c, 'stroke-width': 3 }), v.p = mk('circle', { r: 8, fill: v.c, stroke: '#0005', 'stroke-width': 1.5 }))
 		} else if (m.tool === 'laser') {

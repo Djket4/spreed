@@ -4,92 +4,95 @@
 -->
 
 <template>
-	<div class="k4-dockwrap" :style="vars">
-		<svg
-			width="0"
-			height="0"
-			style="position:absolute"
-			aria-hidden="true">
-			<symbol id="k4i-laser" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" /></symbol>
-			<symbol id="k4i-fade" viewBox="0 0 24 24"><path d="M14 3.5l5.5 5.5-8 8H6V11.5z" /><path d="M3 21h2.5M9 21h2.5M15 21h2.5" /></symbol>
-			<symbol id="k4i-marker" viewBox="0 0 24 24"><path d="M15 3.5l5.5 5.5-8.5 8.5H6.5V12z" /><path d="M6.5 17.5L4 20M12 21h8" /></symbol>
-			<symbol id="k4i-arrow" viewBox="0 0 24 24"><path d="M4.5 19.5C8 13 12 8.5 19 5" /><path d="M13 4.2L19 5l-1.6 5.8" /></symbol>
-			<symbol id="k4i-frame" viewBox="0 0 24 24"><rect
-				x="3.5"
-				y="6"
-				width="17"
-				height="12"
-				rx="3.5" /></symbol>
-			<symbol id="k4i-eraser" viewBox="0 0 24 24"><path d="M9 20h11" /><path d="M4.6 15.4l9.3-9.3a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10.6 19.4H8.6z" /><path d="M9 11l5 5" /></symbol>
-			<symbol id="k4i-undo" viewBox="0 0 24 24"><path d="M9 13.5L4.5 9 9 4.5" /><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-3" /></symbol>
-			<symbol id="k4i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" /></symbol>
-		</svg>
+	<!-- в body: над верхней панелью звонка, вне её контекста наложения -->
+	<Teleport to="body">
+		<div class="k4-dockwrap" :style="vars">
+			<svg
+				width="0"
+				height="0"
+				style="position:absolute"
+				aria-hidden="true">
+				<symbol id="k4i-laser" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" /></symbol>
+				<symbol id="k4i-fade" viewBox="0 0 24 24"><path d="M14 3.5l5.5 5.5-8 8H6V11.5z" /><path d="M3 21h2.5M9 21h2.5M15 21h2.5" /></symbol>
+				<symbol id="k4i-marker" viewBox="0 0 24 24"><path d="M15 3.5l5.5 5.5-8.5 8.5H6.5V12z" /><path d="M6.5 17.5L4 20M12 21h8" /></symbol>
+				<symbol id="k4i-arrow" viewBox="0 0 24 24"><path d="M4.5 19.5C8 13 12 8.5 19 5" /><path d="M13 4.2L19 5l-1.6 5.8" /></symbol>
+				<symbol id="k4i-frame" viewBox="0 0 24 24"><rect
+					x="3.5"
+					y="6"
+					width="17"
+					height="12"
+					rx="3.5" /></symbol>
+				<symbol id="k4i-eraser" viewBox="0 0 24 24"><path d="M9 20h11" /><path d="M4.6 15.4l9.3-9.3a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10.6 19.4H8.6z" /><path d="M9 11l5 5" /></symbol>
+				<symbol id="k4i-undo" viewBox="0 0 24 24"><path d="M9 13.5L4.5 9 9 4.5" /><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-3" /></symbol>
+				<symbol id="k4i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" /></symbol>
+			</svg>
 
-		<header class="k4-dh">
-			<div class="k4-ttl">
-				<b><i />Пометки видят все</b>
-				<span>{{ sub }}</span>
-			</div>
-			<button
-				v-if="presenter"
-				class="k4-pill k4-pill--ghost"
-				type="button"
-				aria-label="Очистить всё"
-				@click="clearAll">
-				Очистить всё
-			</button>
-			<button
-				class="k4-cb"
-				type="button"
-				aria-label="Очистить своё"
-				@click="clearMine">
-				<svg class="k4-ico"><use href="#k4i-trash" /></svg>
-			</button>
-			<button class="k4-pill" type="button" @click="state.mode = false">
-				Готово
-			</button>
-		</header>
+			<header class="k4-dh">
+				<div class="k4-ttl">
+					<b><i />Пометки видят все</b>
+					<span>{{ sub }}</span>
+				</div>
+				<button
+					v-if="presenter"
+					class="k4-pill k4-pill--ghost"
+					type="button"
+					aria-label="Очистить всё"
+					@click="clearAll">
+					Очистить всё
+				</button>
+				<button
+					class="k4-cb"
+					type="button"
+					aria-label="Очистить своё"
+					@click="clearMine">
+					<svg class="k4-ico"><use href="#k4i-trash" /></svg>
+				</button>
+				<button class="k4-pill" type="button" @click="state.mode = false">
+					Готово
+				</button>
+			</header>
 
-		<div class="k4-fsel" :class="{ on: state.tool === 'fade' }">
-			<span>Гаснет через</span>
-			<div class="k4-seg" :style="{ '--k': 2, '--i': state.ft === 10 ? 1 : 0 }">
-				<i />
-				<button type="button" :aria-pressed="state.ft === 3" @click="state.ft = 3">
-					3 с
-				</button>
-				<button type="button" :aria-pressed="state.ft === 10" @click="state.ft = 10">
-					10 с
-				</button>
+			<div class="k4-fsel" :class="{ on: state.tool === 'fade' }">
+				<span>Гаснет через</span>
+				<div class="k4-seg" :style="{ '--k': 2, '--i': state.ft === 10 ? 1 : 0 }">
+					<i />
+					<button type="button" :aria-pressed="state.ft === 3" @click="state.ft = 3">
+						3 с
+					</button>
+					<button type="button" :aria-pressed="state.ft === 10" @click="state.ft = 10">
+						10 с
+					</button>
+				</div>
 			</div>
+
+			<nav ref="dock" class="k4-dock">
+				<div class="k4-tools">
+					<i class="k4-sp" :style="{ '--px': px + 'px' }" />
+					<button
+						v-for="b in TOOLS"
+						:key="b.id"
+						:ref="(el) => (btns[b.id] = el)"
+						class="k4-tb"
+						:class="{ sel: state.tool === b.id }"
+						type="button"
+						:aria-label="b.label"
+						@click="pick(b.id)">
+						<svg class="k4-ico"><use :href="'#k4i-' + b.id" /></svg>
+						<sup v-if="b.id === 'fade'">{{ state.ft }}</sup>
+					</button>
+					<hr>
+					<button
+						class="k4-tb"
+						type="button"
+						aria-label="Отменить"
+						:disabled="!state.undo"
+						@click="undo">
+						<svg class="k4-ico"><use href="#k4i-undo" /></svg>
+					</button>
+				</div>
+			</nav>
 		</div>
-
-		<nav ref="dock" class="k4-dock">
-			<div class="k4-tools">
-				<i class="k4-sp" :style="{ '--px': px + 'px' }" />
-				<button
-					v-for="b in TOOLS"
-					:key="b.id"
-					:ref="(el) => (btns[b.id] = el)"
-					class="k4-tb"
-					:class="{ sel: state.tool === b.id }"
-					type="button"
-					:aria-label="b.label"
-					@click="pick(b.id)">
-					<svg class="k4-ico"><use :href="'#k4i-' + b.id" /></svg>
-					<sup v-if="b.id === 'fade'">{{ state.ft }}</sup>
-				</button>
-				<hr>
-				<button
-					class="k4-tb"
-					type="button"
-					aria-label="Отменить"
-					:disabled="!state.undo"
-					@click="undo">
-					<svg class="k4-ico"><use href="#k4i-undo" /></svg>
-				</button>
-			</div>
-		</nav>
-	</div>
+	</Teleport>
 </template>
 
 <script setup>
@@ -163,6 +166,7 @@ onMounted(() => {
 	position: fixed;
 	inset: 0;
 	z-index: 3000;
+	visibility: visible; // родитель (панель звонка) скрыт visibility:hidden
 	pointer-events: none;
 	color: var(--k4-fg);
 	font-family: var(--font-face, inherit);

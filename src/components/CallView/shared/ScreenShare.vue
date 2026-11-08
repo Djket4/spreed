@@ -148,7 +148,8 @@ export default {
 			}
 			return isLocalScreen.value ? myId() : props.callParticipantModel?.attributes.peerId || null
 		})
-		watch(isLocalScreen, (local) => (local ? startShow() : endShow()), { immediate: true })
+		// только экземпляры локального показа: у чужих isLocalScreen всегда false и не должен гасить наш показ
+		watch(isLocalScreen, (local) => (local ? startShow() : props.localMediaModel && endShow()), { immediate: true })
 		// ket4tec: k4draw. В режиме рисования масштаб сброшен в 1, panzoom на паузе.
 		watch(() => k4state.mode, (on) => {
 			if (!instance.value) {

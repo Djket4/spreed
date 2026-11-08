@@ -57,6 +57,7 @@ let queue = []
 let tokens = RATE
 let lastRefill = 0
 let pump = 0
+let leaveTimer = 0
 
 const hpb = () => !!sig && typeof sig.doSend === 'function'
 const me = () => (sig || k4drawSignaling())?.getSessionId() || ''
@@ -116,7 +117,8 @@ export function identity(sid) {
 	}
 	const a = callParticipantCollection.get(sid)?.attributes
 	if (a && (a.userId || a.name)) {
-		const id = { name: a.name || a.userId, key: a.userId || a.name }
+		const prev = show?.authors[sid]
+		const id = { name: a.name || (prev && prev.name !== prev.key ? prev.name : a.userId), key: a.userId || a.name }
 		shows.forEach((s) => {
 			s.authors[sid] = id
 		})
@@ -391,7 +393,7 @@ function apply(d, from) {
 		case 'r':
 			if (from === show.presenter && Array.isArray(d.marks)) {
 				d.marks.slice(0, 500).forEach((r) => {
-					if (!r || !idOk(r.id) || !idOk(r.author) || !PERM.includes(r.tool) || !okPts(r.pts, MAX_PTS_STROKE)) {
+					if (!r || !idOk(r.id) || typeof r.author !== 'string' || r.author.length > 300 || !PERM.includes(r.tool) || !okPts(r.pts, MAX_PTS_STROKE)) {
 						return
 					}
 					const m = addMark(show, r.author, r.id, r.tool, 0)
@@ -481,24 +483,28 @@ export function join(presenter) {
 		release()
 		return () => {}
 	}
+	clearTimeout(leaveTimer)
 	state.big = presenter
 	let tries = 0
 	const ask = () => {
-		if (state.keys[presenter] || presenter === me() || ++tries > 4) {
+		if (state.keys[presenter] || presenter === me() || ++tries > 20) {
 			return
 		}
 		wire({ op: 'q' })
-		timer = setTimeout(ask, 1500)
+		timer = setTimeout(ask, tries < 6 ? 1500 : 5000)
 	}
 	let timer = setTimeout(ask, 0)
 	return () => {
 		clearTimeout(timer)
-		if (state.big === presenter) {
-			state.big = null
-			state.mode = false
-			state.undo = 0
-		}
 		release()
+		// слой может тут же пересоздаться (перерисовка звонка): режим рисования не сбрасываем сразу
+		leaveTimer = setTimeout(() => {
+			if (state.big === presenter) {
+				state.big = null
+				state.mode = false
+				state.undo = 0
+			}
+		}, 600)
 	}
 }
 
