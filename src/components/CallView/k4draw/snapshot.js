@@ -28,7 +28,7 @@ export function watchSnaps() {
 		}
 		snap.n = Math.max(snap.n, ev.n)
 		if (ev.by !== myId()) {
-			showSuccess(`${ev.name} сохранил(а) снимок`)
+			showSuccess(`Снимок в выжимке — ${ev.name}`)
 		}
 	})
 }
