@@ -3,7 +3,7 @@
 #   TARGET=test ./ket4tec-deploy.sh   — тестовое облако test2.ket4tec.online (~/talkdraw-test)
 #   TARGET=prod ./ket4tec-deploy.sh   — боевое cloud.ket4tec.online, только по слову владельца
 # Версия форка должна совпадать с установленной (appinfo/info.xml), иначе сначала перенести ветку на новый тег.
-# Перед выкладкой: нет активных звонков, копия js/css рядом. Откат — вернуть копию и поднять cachebuster.
+# Перед выкладкой: нет активных звонков, копия js/css/lib/appinfo рядом. Откат — вернуть копию и поднять cachebuster.
 # После выкладки пишет custom_apps/spreed/.ket4tec-build (sha256 talk-main.js) — по нему talk-guard (NAS_CLOUD s18/talk-guard)
 # узнаёт, что магазин приложений затёр сборку.
 set -euo pipefail
@@ -24,7 +24,7 @@ calls=$(n "docker exec $DB sh -c 'psql -U \$POSTGRES_USER -d \$POSTGRES_DB -At -
 
 [ "${NOBUILD:-}" = 1 ] || npm run build
 d=$(date +%F-%H%M)
-n "sudo -n cp -a $R/js $BASE/spreed-js.bak-$d && sudo -n cp -a $R/css $BASE/spreed-css.bak-$d"
+n "sudo -n cp -a $R/js $BASE/spreed-js.bak-$d && sudo -n cp -a $R/css $BASE/spreed-css.bak-$d && sudo -n cp -a $R/lib $BASE/spreed-lib.bak-$d && sudo -n cp -a $R/appinfo $BASE/spreed-appinfo.bak-$d"
 rsync -rtz --chmod=F644 --chown=33:33 --rsync-path="sudo -n rsync" js css "$H:$R/"
 # PHP форка (k4draw, снимок): lib/ и appinfo/; атрибутные маршруты кэшируются — сбросить кэш opcache graceful-ом apache
 rsync -rtz --chmod=F644,D755 --chown=33:33 --rsync-path="sudo -n rsync" lib appinfo "$H:$R/"
@@ -32,4 +32,4 @@ n "docker exec $APP sh -c 'kill -USR1 1'"
 sum=$(shasum -a 256 js/talk-main.js | cut -d' ' -f1)
 n "printf '%s %s %s\n' '$sum' '$(git rev-parse --short HEAD)' '$d' | sudo -n tee $R/.ket4tec-build >/dev/null"
 n "O='docker exec -u 33 $APP php occ'; CB=\$(\$O config:app:get theming cachebuster || echo 0); \$O config:app:set theming cachebuster --value=\$((CB+1)) >/dev/null"
-echo "выложено на $TARGET ($(git rev-parse --short HEAD)), копия: $BASE/spreed-{js,css}.bak-$d"
+echo "выложено на $TARGET ($(git rev-parse --short HEAD)), копия: $BASE/spreed-{js,css,lib,appinfo}.bak-$d"

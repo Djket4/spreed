@@ -12,6 +12,8 @@ use OCA\Talk\Chat\ChatManager;
 use OCA\Talk\Exceptions\ParticipantNotFoundException;
 use OCA\Talk\Middleware\Attribute\RequireModeratorOrNoLobby;
 use OCA\Talk\Middleware\Attribute\RequireParticipant;
+use OCA\Talk\Middleware\Attribute\RequirePermission;
+use OCA\Talk\Middleware\Attribute\RequireReadWriteConversation;
 use OCA\Talk\Service\ParticipantService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
@@ -56,6 +58,8 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
 	#[RequireParticipant]
+	#[RequirePermission(permission: RequirePermission::CHAT)]
+	#[RequireReadWriteConversation]
 	#[UserRateLimit(limit: 20, period: 600)]
 	#[AnonRateLimit(limit: 20, period: 600)]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/k4draw/{token}/snapshot', requirements: [
