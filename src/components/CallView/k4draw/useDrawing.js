@@ -23,6 +23,9 @@ const PING_LIFE = 2400
 const STROKE_IDLE = 5000 // штрих без новых точек и без `e` закрываем
 const MAX_PERM = 500 // постоянных пометок на автора
 const MAX_TEMP = 200 // laser/fade на автора
+const MAX_PERM_SHOW = 3000 // постоянных пометок на весь показ (авторы `r` выдуманные, лимит на автора обходится)
+const MAX_QUEUE = 200 // длина очереди отправки
+const IDLE_GC = 60000 // записи buckets/pings молчащих авторов чистим через 60 с
 const R_LIMIT = 30000 // длина JSON одного `r`
 
 /** Реактивное состояние для UI (кнопка, док). Данные пометок реактивными не делаем: рендерит слой руками. */
@@ -73,6 +76,7 @@ let leaveTimer = 0
 let leaving = null
 let qTimer = 0
 let lastQ = 0
+let lastGc = 0
 const buckets = new Map() // автор -> { t, n } token bucket приёма
 const pings = new Map() // автор -> время активных отметок
 
@@ -113,6 +117,8 @@ function release() {
 	queue = []
 	buckets.clear()
 	pings.clear()
+	// приём остановлен: всё чужое состояние устарело, новый слой обязан спросить `q`
+	Object.keys(state.keys).forEach((p) => p !== me() && dropShow(p))
 }
 
 /**
@@ -178,6 +184,14 @@ function enqueue(data) {
 		}
 	}
 	queue.push(data)
+	while (queue.length > MAX_QUEUE) {
+		// режем самое старое необязательное; e/x/X/Z не трогаем
+		const i = ['c', 'p', 'r'].map((o) => queue.findIndex((q) => q.op === o)).find((j) => j >= 0)
+		if (i === undefined) {
+			break
+		}
+		queue.splice(i, 1)
+	}
 }
 
 /**
@@ -213,6 +227,11 @@ function onMsg(d) {
 		return
 	}
 	const now = performance.now()
+	if (now - lastGc > 10000) {
+		lastGc = now
+		buckets.forEach((v, a) => now - v.t > IDLE_GC && buckets.delete(a))
+		pings.forEach((v, a) => (!v.length || now - v[v.length - 1] > IDLE_GC) && pings.delete(a))
+	}
 	const b = buckets.get(from) || { t: now, n: IN_RATE }
 	b.n = Math.min(IN_RATE, b.n + (now - b.t) * IN_RATE / 1000)
 	b.t = now
@@ -266,11 +285,14 @@ function dropShow(presenter) {
  */
 function setShow(presenter, k) {
 	dropShow(presenter)
-	const show = { k, presenter, marks: new Map(), hist: [], authors: {} }
+	const show = { k, presenter, marks: new Map(), hist: [], authors: {}, cnt: {}, perm: 0 }
 	shows.set(k, show)
 	state.keys[presenter] = k
 	emit({ t: 'show', show })
 }
+
+const isTemp = (tool) => tool === 'laser' || tool === 'fade'
+const cntKey = (by, tool) => by + '|' + isTemp(tool)
 
 /**
  *
@@ -282,6 +304,8 @@ function drop(show, mark, out) {
 	stop(mark)
 	if (show.marks.get(mark.key) === mark) {
 		show.marks.delete(mark.key)
+		show.cnt[cntKey(mark.by, mark.tool)]--
+		isTemp(mark.tool) || show.perm--
 		emit({ t: 'del', show, mark, out })
 		refreshUndo(show)
 	}
@@ -332,16 +356,13 @@ function addMark(show, by, id, tool, ttl) {
 	if (show.marks.has(key)) {
 		return null
 	}
-	const temp = tool === 'laser' || tool === 'fade'
-	let n = 0
-	show.marks.forEach((m) => {
-		if (m.by === by && (m.tool === 'laser' || m.tool === 'fade') === temp) {
-			n++
-		}
-	})
-	if (n >= (temp ? MAX_TEMP : MAX_PERM)) {
+	const temp = isTemp(tool)
+	const ck = cntKey(by, tool)
+	if ((show.cnt[ck] || 0) >= (temp ? MAX_TEMP : MAX_PERM) || (!temp && show.perm >= MAX_PERM_SHOW)) {
 		return null
 	}
+	show.cnt[ck] = (show.cnt[ck] || 0) + 1
+	temp || show.perm++
 	const m = { key, id, by, tool, ttl, pts: [], ts: [], done: false }
 	show.marks.set(key, m)
 	return m
@@ -375,6 +396,8 @@ function apply(d, from) {
 				qTimer = 0
 				lastQ = performance.now()
 				if (myK) {
+					// ещё не ушедший старый ответ-снимок заменяем новым
+					queue = queue.filter((q) => !((q.op === 'h' || q.op === 'r') && q.k === myK))
 					enqueue({ op: 'h', k: myK })
 					sendState(shows.get(myK))
 				}
@@ -600,6 +623,7 @@ export function endShow() {
 		return
 	}
 	dropShow(me())
+	queue = queue.filter((q) => q.k !== myK)
 	clearTimeout(qTimer)
 	qTimer = 0
 	emit({ t: 'show', show: { presenter: me(), marks: new Map() } })
