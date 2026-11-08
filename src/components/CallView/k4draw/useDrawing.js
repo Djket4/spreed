@@ -55,7 +55,7 @@ export function hash(s) {
 	return h >>> 0
 }
 
-const shows = new Map() // k -> { k, presenter, marks: Map(key -> mark), hist: [], authors: {} }
+const shows = new Map() // k -> { k, presenter, marks: Map(key -> mark), hist: [], authors: {}, cols: {} }
 const listeners = new Set()
 const emit = (ev) => listeners.forEach((f) => f(ev))
 /**
@@ -137,6 +137,21 @@ export function showOf(presenter) {
 
 // ── идентичность автора: имя и цвет ──
 /**
+ * Цвет автора: из карты показывающего (show.cols), пока её нет — хэш ключа.
+ *
+ * @param sid
+ * @param key
+ */
+function colorFor(sid, key) {
+	for (const s of shows.values()) {
+		if (s.cols[sid] !== undefined) {
+			return PALETTE[s.cols[sid]]
+		}
+	}
+	return PALETTE[hash(String(key || 'Гость')) % PALETTE.length]
+}
+
+/**
  *
  * @param sid
  */
@@ -144,7 +159,8 @@ export function identity(sid) {
 	const show = [...shows.values()].find((s) => s.authors[sid])
 	if (sid && sid === me()) {
 		const a = useActorStore()
-		return { name: 'Вы', color: colorOf(a.actorType === 'users' ? a.actorId : a.displayName) }
+		const key = a.actorType === 'users' ? a.actorId : a.displayName
+		return { name: 'Вы', key, color: colorFor(sid, key) }
 	}
 	const a = callParticipantCollection.get(sid)?.attributes
 	if (a && (a.userId || a.name)) {
@@ -153,45 +169,79 @@ export function identity(sid) {
 		shows.forEach((s) => {
 			s.authors[sid] = id
 		})
-		return { name: id.name, color: colorOf(id.key) }
+		return { name: id.name, key: id.key, color: colorFor(sid, id.key) }
 	}
 	const c = show?.authors[sid]
-	return c ? { name: c.name, color: colorOf(c.key) } : { name: 'Гость', color: colorOf('Гость') }
+	return c ? { name: c.name, key: c.key, color: colorFor(sid, c.key) } : { name: 'Гость', key: 'Гость', color: colorFor(sid, 'Гость') }
 }
+
+// Цвета назначает показывающий при первой пометке автора и не меняет до конца показа; карта уходит в `h`.
+const COLS_MAX = 500
+let colsTimer = 0
+
 /**
+ * Первый свободный индекс палитры от хэша ключа автора.
  *
+ * @param show
+ * @param sid
  */
-function myKey() {
-	const a = useActorStore()
-	return String((a.actorType === 'users' ? a.actorId : a.displayName) || 'Гость')
+function assignCol(show, sid) {
+	if (show.cols[sid] !== undefined || Object.keys(show.cols).length >= COLS_MAX) {
+		return
+	}
+	const used = new Set(Object.values(show.cols))
+	let i = hash(String(identity(sid).key || 'Гость')) % PALETTE.length
+	for (let n = 0; n < PALETTE.length && used.has(i); n++) {
+		i = (i + 1) % PALETTE.length
+	}
+	show.cols[sid] = i
+	clearTimeout(colsTimer)
+	colsTimer = setTimeout(() => {
+		colsTimer = 0
+		myK && show.k === myK && enqueue({ op: 'h', k: myK, cols: colsOut(show) })
+	}, 300)
 }
+
 /**
- * Цвет по ключу автора: линейное пробирование от FNV-хэша по палитре среди отсортированных ключей
- * участников звонка, меня и авторов уже виденных показов. Одинаков у клиентов с одинаковым составом.
- * ponytail: состав виден по-разному (вошёл/вышел, не дошёл `r`) -> редкое расхождение; авторов больше палитры -> совпадения неизбежны.
+ * Карта цветов, влезающая в сообщение.
  *
- * @param key
+ * @param show
  */
-function colorOf(key) {
-	key = String(key || 'Гость')
-	const keys = new Set([key, myKey()])
-	const ps = callParticipantCollection.callParticipantModels || []
-	ps.forEach((p) => {
-		const a = p.attributes
-		a && (a.userId || a.name) && keys.add(String(a.userId || a.name))
-	})
-	shows.forEach((s) => Object.values(s.authors).forEach((a) => a?.key && keys.add(String(a.key))))
-	const taken = new Set()
-	let res = PALETTE[0]
-	;[...keys].sort().forEach((k) => {
-		let i = hash(k) % PALETTE.length
-		for (let n = 0; n < PALETTE.length && taken.has(i); n++) {
-			i = (i + 1) % PALETTE.length
+function colsOut(show) {
+	const out = {}
+	let len = 0
+	for (const [sid, i] of Object.entries(show.cols)) {
+		len += sid.length + 6
+		if (len > R_LIMIT) {
+			break
 		}
-		taken.add(i)
-		k === key && (res = PALETTE[i])
+		out[sid] = i
+	}
+	return out
+}
+
+/**
+ * Принять карту от показывающего (с валидацией). Возвращает true, если цвета изменились.
+ *
+ * @param show
+ * @param cols
+ */
+function applyCols(show, cols) {
+	if (!cols || typeof cols !== 'object' || Array.isArray(cols)) {
+		return
+	}
+	const e = Object.entries(cols)
+	if (e.length > COLS_MAX || e.some(([sid, i]) => sid.length > 300 || !Number.isInteger(i) || i < 0 || i >= PALETTE.length)) {
+		return
+	}
+	let ch = false
+	e.forEach(([sid, i]) => {
+		if (show.cols[sid] !== i) {
+			show.cols[sid] = i
+			ch = true
+		}
 	})
-	return res
+	ch && emit({ t: 'show', show }) // перекрасить пометки и подписи
 }
 
 // ── отправка: одна очередь, 40 сообщений/с, пачки точек склеиваются ──
@@ -264,7 +314,7 @@ function flush() {
 		const keys = snap.parts[snap.i++]
 		const items = keys.map((key) => [key, show && ser(show, show.marks.get(key))]).filter((e) => e[1])
 		// после правок текстов часть могла вырасти: берём порцию <= R_LIMIT, остаток — следующей частью
-		let len = 100
+		let len = rEnv(snap.k)
 		let cut = items.findIndex((e) => (len += JSON.stringify(e[1]).length + 1) > R_LIMIT)
 		cut = cut < 1 ? (cut === 0 ? 1 : items.length) : cut
 		const marks = items.slice(0, cut).map((e) => e[1])
@@ -354,7 +404,7 @@ function dropShow(presenter) {
  */
 function setShow(presenter, k) {
 	dropShow(presenter)
-	const show = { k, presenter, marks: new Map(), hist: [], authors: {}, cnt: {}, perm: 0 }
+	const show = { k, presenter, marks: new Map(), hist: [], authors: {}, cols: {}, cnt: {}, perm: 0 }
 	shows.set(k, show)
 	state.keys[presenter] = k
 	syncs[presenter] = { t: performance.now(), done: false, old: false, n: 0 }
@@ -435,6 +485,7 @@ function addMark(show, by, id, tool, ttl) {
 	temp || show.perm++
 	const m = { key, id, by, tool, ttl, pts: [], ts: [], done: false }
 	show.marks.set(key, m)
+	show.k === myK && assignCol(show, by)
 	return m
 }
 
@@ -478,8 +529,9 @@ function apply(d, from) {
 		return
 	}
 	if (op === 'h') {
-		if (d.k.startsWith(from + ':') && state.keys[from] !== d.k) {
-			setShow(from, d.k)
+		if (d.k.startsWith(from + ':')) {
+			state.keys[from] !== d.k && setShow(from, d.k)
+			applyCols(shows.get(d.k), d.cols) // повторный `h` того же ключа состояние не сбрасывает
 		}
 		return
 	}
@@ -646,7 +698,7 @@ function startSnap() {
 	if (!myK) {
 		return
 	}
-	enqueue({ op: 'h', k: myK })
+	enqueue({ op: 'h', k: myK, cols: colsOut(shows.get(myK)) })
 	snap = { k: myK, parts: buildState(shows.get(myK)), i: 0, again: false }
 }
 
@@ -667,6 +719,15 @@ function ser(show, m) {
 }
 
 /**
+ * Длина оболочки `r` без пометок (с from до 60 символов и last).
+ *
+ * @param k
+ */
+function rEnv(k) {
+	return JSON.stringify({ type: 'k4draw', v: 1, op: 'r', k, marks: [], last: 1, from: 'x'.repeat(60) }).length
+}
+
+/**
  * Части снимка — ключи пометок; содержимое берётся в момент отправки части (flush), поэтому
  * стёртое после начала снимка не воскресает, а правка текста не откатывается старой версией.
  *
@@ -676,7 +737,7 @@ function buildState(show) {
 	const parts = []
 	let batch = []
 	let n = 0
-	const base = JSON.stringify({ type: 'k4draw', v: 1, op: 'r', k: show.k, marks: [], from: 'x'.repeat(60) }).length
+	const base = rEnv(show.k)
 	const out = () => {
 		batch.length && parts.push(batch)
 		batch = []
@@ -731,6 +792,8 @@ export function endShow() {
 	snap = null
 	clearTimeout(qTimer)
 	qTimer = 0
+	clearTimeout(colsTimer)
+	colsTimer = 0
 	emit({ t: 'show', show: { presenter: me(), marks: new Map() } })
 	myK = null
 	release()
