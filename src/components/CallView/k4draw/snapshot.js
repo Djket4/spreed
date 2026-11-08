@@ -28,10 +28,13 @@ export function watchSnaps() {
 		}
 		snap.n = Math.max(snap.n, ev.n)
 		if (ev.by !== myId()) {
-			showSuccess(`Снимок в выжимке — ${ev.name}`)
+			showSuccess(`Снимок в выжимке — ${esc(ev.name)}`)
 		}
 	})
 }
+
+// тосты @nextcloud/dialogs разбирают строку как HTML: имя автора экранируем
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => '&#' + c.charCodeAt(0) + ';')
 
 /**
  *
@@ -155,9 +158,13 @@ export async function takeSnapshot(token, btn) {
 		const fd = new FormData()
 		fd.append('image', blob, 'snapshot.png')
 		fly(blob, btn)
-		await axios.post(generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/snapshot', { token }), fd)
-		sendSnap(snap.n + 1)
-		showSuccess('Снимок в выжимке')
+		const res = await axios.post(generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/snapshot', { token }), fd)
+		if (res.data?.ocs?.data?.chat === false) {
+			showSuccess('Снимок сохранён в записи, в чат не отправлен')
+		} else {
+			sendSnap(snap.n + 1)
+			showSuccess('Снимок в выжимке')
+		}
 	} catch (e) {
 		console.error('k4draw snapshot', e)
 		showError('Снимок не сохранился')
