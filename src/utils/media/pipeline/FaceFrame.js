@@ -135,6 +135,11 @@ export function tileToFrame(box, tile) {
 	}
 }
 
+// детектор общий для всех узлов (звонок и превью), а метки времени VIDEO-режима
+// обязаны строго расти — иначе detectForVideo бросает исключение
+let lastTs = 0
+const nextTs = (now) => (lastTs = Math.max(lastTs + 1, Math.round(now)))
+
 let detectorPromise = null
 /** @return {Promise<FaceDetector>} общий детектор */
 function getDetector() {
@@ -174,6 +179,8 @@ export default class FaceFrame extends TrackSinkSource {
 		this._addInputTrackSlot()
 		this._addOutputTrackSlot()
 
+		// для проверки в живом звонке: window.__k4ff[i].path / .window
+		;(window.__k4ff ||= []).push(this)
 		this.path = 'off'
 		this._hwZoomed = false
 		this._applyToken = 0
@@ -188,11 +195,19 @@ export default class FaceFrame extends TrackSinkSource {
 	_handleInputTrackEnabled(trackId, enabled) {
 		if (!enabled) {
 			this._stopDigital()
-			this._setOutputTrack('default', this.getInputTrack())
+			this._setOutput(this.getInputTrack())
 			this.path = 'off'
 			return
 		}
 		this._apply()
+	}
+
+	// Повторная установка того же трека заставляет VirtualBackground перезапустить
+	// эффект (как при смене constraints) и ломает видео, поэтому дубли пропускаем.
+	_setOutput(track) {
+		if (this.getOutputTrack() !== track) {
+			this._setOutputTrack('default', track)
+		}
 	}
 
 	async _apply() {
@@ -208,7 +223,7 @@ export default class FaceFrame extends TrackSinkSource {
 				await this._setHardwareZoom(input, 1)
 			}
 			if (token === this._applyToken) {
-				this._setOutputTrack('default', input)
+				this._setOutput(input)
 			}
 			return
 		}
@@ -219,7 +234,7 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			this._stopDigital()
 			this.path = 'hardware'
-			this._setOutputTrack('default', input)
+			this._setOutput(input)
 			return
 		}
 		if (token !== this._applyToken) {
@@ -312,7 +327,7 @@ export default class FaceFrame extends TrackSinkSource {
 			canvas.height = video.videoHeight
 			d.stream = canvas.captureStream()
 			d.output = d.stream.getVideoTracks()[0]
-			this._setOutputTrack('default', d.output)
+			this._setOutput(d.output)
 			schedule()
 		}, { once: true })
 	}
@@ -339,7 +354,7 @@ export default class FaceFrame extends TrackSinkSource {
 						w: x.boundingBox.width / W,
 						h: x.boundingBox.height / H,
 					}))
-				let faces = toBoxes(d.detector.detectForVideo(video, now), canvas.width, canvas.height)
+				let faces = toBoxes(d.detector.detectForVideo(video, nextTs(now)), canvas.width, canvas.height)
 				if (!faces.length) {
 					// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
 					const tile = TILES[d.tileIdx++ % TILES.length]
@@ -347,7 +362,7 @@ export default class FaceFrame extends TrackSinkSource {
 					tc.width = canvas.width
 					tc.height = canvas.height
 					tc.getContext('2d').drawImage(video, tile.x * canvas.width, tile.y * canvas.height, tile.w * canvas.width, tile.h * canvas.height, 0, 0, tc.width, tc.height)
-					faces = toBoxes(d.detector.detectForVideo(tc, now + 1), tc.width, tc.height).map((b) => tileToFrame(b, tile))
+					faces = toBoxes(d.detector.detectForVideo(tc, nextTs(now)), tc.width, tc.height).map((b) => tileToFrame(b, tile))
 				}
 				const target = computeTarget(faces, lvl)
 				if (target) {
@@ -382,7 +397,10 @@ export default class FaceFrame extends TrackSinkSource {
 		d.video.srcObject = null
 		if (d.output) {
 			this._disableRemoveTrackWhenEnded(d.output)
-			d.output.stop()
+			// останавливаем уже после того, как получатели переключились на новый
+			// трек: иначе VirtualBackground, получив вместо остановленного трека
+			// исходный, теряет видео
+			setTimeout(() => d.output.stop(), 500)
 		}
 		this._digital = null
 	}
