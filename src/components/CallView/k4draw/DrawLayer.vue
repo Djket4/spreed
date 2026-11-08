@@ -399,6 +399,7 @@ function addChip(v, animate = true) {
 	const c = v.chip = document.createElement('div')
 	c.className = 'k4-chip' + (ring ? ' tm' : '')
 	c.style.setProperty('--c', v.c)
+	c.dataset.tool = m.tool // для снимка (snapshot.js)
 	c.style.setProperty('--ttl', (ring ? m.ttl * 1000 : 0) + 'ms')
 	if (ring) {
 		const s = mk('svg', { class: 'ring', viewBox: '0 0 16 16' })

@@ -41,6 +41,14 @@
 					Очистить всё
 				</button>
 				<button
+					ref="snapBtn"
+					class="k4-pill k4-pill--ghost"
+					type="button"
+					:disabled="snap.busy"
+					@click="takeSnapshot(token, snapBtn)">
+					В выжимку<sup v-if="snap.n"> {{ snap.n }}</sup>
+				</button>
+				<button
 					class="k4-cb"
 					type="button"
 					aria-label="Очистить своё"
@@ -96,7 +104,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useGetToken } from '../../../composables/useGetToken.ts'
+import { snap, takeSnapshot, watchSnaps } from './snapshot.js'
 import { clearAll, clearMine, isPresenter, reducedMotion, SP, state, undo } from './useDrawing.js'
 
 const TOOLS = [
@@ -108,6 +118,10 @@ const TOOLS = [
 	{ id: 'eraser', label: 'Ластик', sub: 'ластик · только свои' },
 ]
 
+const token = useGetToken()
+const snapBtn = ref(null)
+const unwatch = watchSnaps()
+onBeforeUnmount(unwatch)
 const dock = ref(null)
 const btns = reactive({})
 const px = ref(0)
