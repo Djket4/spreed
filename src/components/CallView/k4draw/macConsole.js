@@ -11,6 +11,12 @@ const vids = new Map() // id плитки -> <video> со своим поток�
 // Talk не принимает камеру участника, чья плитка не видна (при показе экрана полоса скрыта) — пока пульт
 // подключён, его плитки считаются видимыми: id -> RemoteVideoBlocker, которому добавлен счётчик
 const held = new Map()
+// для проверки в живом звонке: window.__k4mc()
+window.__k4mc = () => callParticipantCollection.callParticipantModels.map((m) => {
+	const a = m.attributes
+	const b = m.k4VideoBlocker
+	return { peer: String(a.peerId).slice(0, 6), video: a.videoAvailable, tracks: a.stream?.getVideoTracks().length ?? null, blocked: b?._blocked, counter: b?._visibleCounter, held: held.has(String(a.peerId)), vw: vids.get(String(a.peerId))?.videoWidth ?? null }
+})
 const cv = document.createElement('canvas')
 cv.width = 160
 cv.height = 90
