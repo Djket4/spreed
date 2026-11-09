@@ -6,7 +6,6 @@
 import type { Conversation } from '../types/index.ts'
 
 import { defineStore } from 'pinia'
-import { CONVERSATION } from '../constants.ts'
 import BrowserStorage from '../services/BrowserStorage.js'
 import {
 	disableLiveTranscription,
@@ -92,11 +91,9 @@ export const useCallViewStore = defineStore('callView', {
 			// Start every call with a clean selection, so a stale peer id
 			// from a previous call is not carried over
 			this.setSelectedVideoPeerId(null)
-			const gridPreference = BrowserStorage.getItem(`callprefs-${conversation.token}-isgrid`)
-			const isGrid = gridPreference === null
-				// not defined yet, default to grid view for group/public calls, otherwise speaker view
-				? [CONVERSATION.TYPE.GROUP, CONVERSATION.TYPE.PUBLIC].includes(conversation.type)
-				: gridPreference === 'true'
+			// ket4tec: каждый звонок начинается с сетки (все крупными плитками, своя тоже), и вдвоём тоже.
+			// Сохранённое «докладчик» не берём: его пишет и автоматика показа экрана. Переключатель вида остаётся.
+			const isGrid = true
 			// Speaker view shows a single speaker unless multi-speaker was picked before
 			const isMultiSpeaker = BrowserStorage.getItem(`callprefs-${conversation.token}-multispeaker`) === 'true'
 			this.setCallViewMode({ token: conversation.token, isGrid, isMultiSpeaker, isStripeOpen: true })
