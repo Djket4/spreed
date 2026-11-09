@@ -1083,6 +1083,13 @@ export default {
 		}
 	}
 
+	// ket4tec: окно «Проверить устройства» сразу в финальном размере — без этого оно растёт,
+	// когда браузер выдал доступ к камере и подписи устройств удлинились
+	.modal-container &__content:not(&__content--mobile) {
+		grid-template-columns: minmax(0, 4fr) minmax(0, 3fr);
+		width: min(818px, calc(100vw - 120px));
+	}
+
 	&__settings {
 		max-width: 450px; // 1/2 large modal width
 		display: flex;
