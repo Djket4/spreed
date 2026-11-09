@@ -394,6 +394,7 @@ function onMsg(d) {
 	apply(d, from)
 }
 
+const pendG = new Map() // перенос рамки, пришедший раньше её снимка: ключ пометки → две точки
 const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : null)
 const okPts = (a, max) => Array.isArray(a) && a.length > 0 && a.length % 2 === 0 && a.length <= max * 2 && a.every((v) => typeof v === 'number' && isFinite(v))
 /**
@@ -650,8 +651,16 @@ function apply(d, from) {
 		}
 		case 'g': {
 			// перенос или новый размер готовой рамки/стрелки автора: две точки целиком
-			const m = idOk(d.id) && show.marks.get(from + '/' + d.id)
-			if (!m || !m.done || (m.tool !== 'frame' && m.tool !== 'arrow') || !okPts(d.pts, 2) || d.pts.length !== 4) {
+			if (!idOk(d.id) || !okPts(d.pts, 2) || d.pts.length !== 4) {
+				return
+			}
+			const m = show.marks.get(from + '/' + d.id)
+			if (!m) {
+				// пометка ещё не пришла снимком `r` (вошли посреди показа): применим, когда придёт
+				pendG.size < 200 && pendG.set(from + '/' + d.id, pairs(d.pts))
+				return
+			}
+			if (!m.done || (m.tool !== 'frame' && m.tool !== 'arrow')) {
 				return
 			}
 			m.pts = pairs(d.pts)
@@ -719,7 +728,9 @@ function apply(d, from) {
 						Object.assign(m, { x: num(r.x), y: num(r.y), size: r.size, text: r.text.trim() })
 						m.pts = [[m.x, m.y]]
 					} else {
-						m.pts = pairs(r.pts)
+						const g = (r.tool === 'frame' || r.tool === 'arrow') && pendG.get(m.key)
+						m.pts = g || pairs(r.pts)
+						pendG.delete(m.key)
 					}
 					if (typeof r.name === 'string' && !show.authors[r.author]) {
 						show.authors[r.author] = { name: r.name.slice(0, 60), key: String(r.uid || r.name).slice(0, 60) }
