@@ -121,6 +121,30 @@
 				<IconMonitorShare :size="20" />
 			</template>
 		</NcButton>
+		<!-- ket4tec: на Маке до системного выбора экрана — крупная кнопка по центру -->
+		<NcModal
+			v-if="sharePrompt"
+			size="small"
+			labelId="k4-share-prompt-title"
+			@close="sharePrompt = false">
+			<div class="k4-share-prompt">
+				<h2 id="k4-share-prompt-title">
+					Показать экран
+				</h2>
+				<p>Сейчас macOS спросит, что показать. Выберите экран или окно и подтвердите выбор в системном окне.</p>
+				<NcButton
+					ref="sharePromptButton"
+					variant="primary"
+					size="large"
+					wide
+					@click="confirmSharePrompt">
+					<template #icon>
+						<IconMonitorShare :size="24" />
+					</template>
+					Выбрать экран
+				</NcButton>
+			</div>
+		</NcModal>
 	</div>
 </template>
 
@@ -132,6 +156,7 @@ import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActions from '@nextcloud/vue/components/NcActions'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import NcModal from '@nextcloud/vue/components/NcModal'
 import NcPopover from '@nextcloud/vue/components/NcPopover'
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue'
 import IconMonitor from 'vue-material-design-icons/Monitor.vue'
@@ -146,7 +171,7 @@ import { PARTICIPANT } from '../../constants.ts'
 import { supportsScreenSharing } from '../../utils/browserCheck.ts'
 import { CONNECTION_QUALITY } from '../../utils/webrtc/analyzers/PeerConnectionAnalyzer.js'
 import { callAnalyzer } from '../../utils/webrtc/index.js'
-import { autoOpenMac } from '../CallView/k4draw/macBridge.js' // ket4tec: k4draw
+import { autoOpenMac, isMac } from '../CallView/k4draw/macBridge.js' // ket4tec: k4draw
 
 export default {
 
@@ -159,6 +184,7 @@ export default {
 		NcActions,
 		NcButton,
 		NcIconSvgWrapper,
+		NcModal,
 		NcPopover,
 		// Icons
 		IconCogOutline,
@@ -210,6 +236,7 @@ export default {
 			mouseover: false,
 			qualityWarningInGracePeriodTimeout: null,
 			isQualityWarningTooltipDismissed: false,
+			sharePrompt: false, // ket4tec
 		}
 	},
 
@@ -421,8 +448,19 @@ export default {
 			}
 
 			if (!this.isScreensharing) {
+				if (isMac()) {
+					this.sharePrompt = true // ket4tec: системный выбор откроет крупная кнопка по центру
+					this.$nextTick(() => this.$refs.sharePromptButton?.$el?.focus())
+					return
+				}
 				this.startShareScreen()
 			}
+		},
+
+		// ket4tec: клик по кнопке плашки — жест пользователя, системный выбор экрана и мост K4Draw открываются им
+		confirmSharePrompt() {
+			this.sharePrompt = false
+			this.startShareScreen()
 		},
 
 		showScreen() {
@@ -480,6 +518,29 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.k4-share-prompt {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: calc(var(--default-grid-baseline) * 4);
+	padding: calc(var(--default-grid-baseline) * 6);
+	text-align: center;
+
+	h2 {
+		margin: 0;
+	}
+
+	p {
+		font-size: 16px;
+		line-height: 1.4;
+	}
+
+	:deep(.button-vue) {
+		min-height: 56px;
+		font-size: 18px;
+	}
+}
+
 .buttons-bar {
 	display: flex;
 	align-items: center;
