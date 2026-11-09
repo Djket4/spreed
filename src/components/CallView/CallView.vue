@@ -753,6 +753,7 @@ export default {
 				}
 
 				this.sharedDatas[addedModel.attributes.peerId] = sharedData
+				addedModel.k4VideoBlocker = sharedData.remoteVideoBlocker // ket4tec: k4draw — камера в пульте приложения
 
 				// Not reactive, but not a problem
 				this.speakingUnwatchers[addedModel.attributes.peerId] = this.$watch(function() {

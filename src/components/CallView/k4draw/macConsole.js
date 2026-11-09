@@ -8,6 +8,9 @@ import { callParticipantCollection, localMediaModel } from '../../../utils/webrt
 
 const MAX = 8
 const vids = new Map() // id плитки -> <video> со своим потоком
+// Talk не принимает камеру участника, чья плитка не видна (при показе экрана полоса скрыта) — пока пульт
+// подключён, его плитки считаются видимыми: id -> RemoteVideoBlocker, которому добавлен счётчик
+const held = new Map()
 const cv = document.createElement('canvas')
 cv.width = 160
 cv.height = 90
@@ -73,9 +76,19 @@ function snapshot() {
 	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled) }]
 	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
 		const a = m.attributes
+		if (m.k4VideoBlocker && !held.has(String(a.peerId))) {
+			m.k4VideoBlocker.increaseVisibleCounter()
+			held.set(String(a.peerId), m.k4VideoBlocker)
+		}
 		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable) })
 	})
 	const ids = new Set(tiles.map((t) => t.id))
+	held.forEach((b, id) => {
+		if (!ids.has(id)) {
+			b.decreaseVisibleCounter()
+			held.delete(id)
+		}
+	})
 	vids.forEach((v, id) => {
 		if (!ids.has(id)) {
 			v.srcObject = null
@@ -97,6 +110,8 @@ export function consoleTick(send) {
 
 /** */
 export function stopConsole() {
+	held.forEach((b) => b.decreaseVisibleCounter())
+	held.clear()
 	vids.forEach((v) => {
 		v.srcObject = null
 	})

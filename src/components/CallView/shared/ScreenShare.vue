@@ -14,8 +14,15 @@
 			:disablePictureInPicture="!isBig ? 'true' : 'false'"
 			class="screen"
 			:class="screenClass" />
+		<!-- ket4tec: k4draw подключён — превью показывает настоящий кадр показа (как у собеседников), вместо заглушки строка -->
+		<div v-if="isLocalScreen && mac.st === 'on'" class="k4-share-line" data-theme-dark>
+			<span>Вы показываете экран — так его видят все</span>
+			<NcButton variant="error" size="small" @click="stopLocalScreen">
+				{{ t('spreed', 'Stop screensharing') }}
+			</NcButton>
+		</div>
 		<NcEmptyContent
-			v-if="isLocalScreen && showScreenPlaceholder"
+			v-else-if="isLocalScreen && showScreenPlaceholder"
 			class="screen-placeholder"
 			:name="t('spreed', 'You are sharing a screen')"
 			:description="t('spreed', 'Sharing this window may cause a mirroring effect')"
@@ -367,6 +374,23 @@ export default {
 	&--grabbing {
 		cursor: grabbing;
 	}
+}
+
+.k4-share-line {
+	position: absolute;
+	top: calc(var(--default-grid-baseline) * 2);
+	inset-inline-start: 50%;
+	transform: translateX(-50%);
+	z-index: 3;
+	display: flex;
+	align-items: center;
+	gap: calc(var(--default-grid-baseline) * 2);
+	padding: var(--default-grid-baseline) var(--default-grid-baseline) var(--default-grid-baseline) calc(var(--default-grid-baseline) * 3);
+	border-radius: var(--border-radius-pill);
+	background: rgba(0, 0, 0, 0.6);
+	color: #fff;
+	font-size: 13px;
+	white-space: nowrap;
 }
 
 .screen-placeholder {
