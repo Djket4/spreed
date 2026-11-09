@@ -524,12 +524,13 @@ function setCallLayout(layout: CallLayout) {
 			<!-- ket4tec: k4draw -->
 			<NcButton
 				v-if="k4Pencil"
+				class="k4-pencil"
 				title="Рисовать на показе"
 				aria-label="Рисовать на показе"
 				variant="tertiary"
 				@click="k4draw.mode = true">
 				<template #icon>
-					<IconPencil :size="20" />
+					<IconPencil :size="24" />
 				</template>
 			</NcButton>
 
@@ -724,6 +725,20 @@ function setCallLayout(layout: CallLayout) {
 <style lang="scss" scoped>
 .k4-hidden {
 	visibility: hidden;
+}
+
+// ket4tec: k4draw. Карандаш — квадрат 56 как соседние кнопки звонка (их размер задаёт тема облака по .buttons-bar)
+.bottom-bar .k4-pencil.button-vue {
+	flex: none;
+	width: 56px !important;
+	height: 56px;
+	min-width: 56px;
+	min-height: 56px;
+	padding: 0;
+	border: 1px solid rgba(255, 255, 255, .1);
+	border-radius: 8px;
+	background: #23262d;
+	color: #f3f5fb;
 }
 
 .bottom-bar {

@@ -12,17 +12,24 @@
 				height="0"
 				style="position:absolute"
 				aria-hidden="true">
-				<symbol id="k4i-laser" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M5.5 18.5l2.1-2.1M16.4 7.6l2.1-2.1" /></symbol>
-				<symbol id="k4i-fade" viewBox="0 0 24 24"><path d="M14 3.5l5.5 5.5-8 8H6V11.5z" /><path d="M3 21h2.5M9 21h2.5M15 21h2.5" /></symbol>
-				<symbol id="k4i-marker" viewBox="0 0 24 24"><path d="M15 3.5l5.5 5.5-8.5 8.5H6.5V12z" /><path d="M6.5 17.5L4 20M12 21h8" /></symbol>
-				<symbol id="k4i-arrow" viewBox="0 0 24 24"><path d="M4.5 19.5C8 13 12 8.5 19 5" /><path d="M13 4.2L19 5l-1.6 5.8" /></symbol>
+				<symbol id="k4i-laser" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" /><path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5" /></symbol>
+				<symbol id="k4i-fade" viewBox="0 0 24 24"><path d="M17.5 3l3.5 3.5-8.5 8.5H9v-3.5z" /><path d="M3 20c2-2.5 3.5-2.5 4.5-1s2.5 1.5 4.5-1 3.5-2 5 0" /></symbol>
+				<symbol id="k4i-marker" viewBox="0 0 24 24"><path d="M12 2.5l5.5 11.5v6.5h-11V14z" /><path d="M12 2.5v8" /><circle cx="12" cy="12.5" r="1.3" /></symbol>
+				<symbol id="k4i-arrow" viewBox="0 0 24 24"><path d="M5.5 18.5l13-13M9 5.5h9.5V15" /></symbol>
 				<symbol id="k4i-frame" viewBox="0 0 24 24"><rect
-					x="3.5"
-					y="6"
-					width="17"
-					height="12"
-					rx="3.5" /></symbol>
-				<symbol id="k4i-text" viewBox="0 0 24 24"><path d="M2.8 18.5L7.4 6l4.6 12.5M4.5 14.5h5.8M14.3 18.5l3.1-8 3.1 8M15.6 15.8h3.6" /></symbol>
+					x="3"
+					y="5.5"
+					width="18"
+					height="13"
+					rx="2" /></symbol>
+				<symbol id="k4i-text" viewBox="0 0 24 24"><text
+					x="12"
+					y="17.2"
+					text-anchor="middle"
+					font-size="15"
+					font-weight="600"
+					fill="currentColor"
+					stroke="none">Aa</text></symbol>
 				<symbol id="k4i-eraser" viewBox="0 0 24 24"><path d="M9 20h11" /><path d="M4.6 15.4l9.3-9.3a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10.6 19.4H8.6z" /><path d="M9 11l5 5" /></symbol>
 				<symbol id="k4i-undo" viewBox="0 0 24 24"><path d="M9 13.5L4.5 9 9 4.5" /><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-3" /></symbol>
 				<symbol id="k4i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></symbol>
@@ -316,15 +323,15 @@ onMounted(() => {
 }
 /* .k4-dock: общий button:not(.button-vue) облака сбрасывает ширину в auto */
 .k4-dock .k4-tb {
-	z-index: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--k4-fg2); transition: transform .12s ease-out, color .2s;
+	z-index: 1; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--k4-fg2); transition: transform .12s ease-out, color .2s;
 	&:active { transform: scale(.9); }
-	&.sel { color: var(--k4-fg); .k4-ico { stroke: var(--k4-me); } }
+	&.sel { color: #fff; }
 	&--close:hover { color: #ff6b81; }
 	&:disabled { opacity: .35; }
 	sup { position: absolute; right: 2px; top: 3px; min-width: 17px; height: 15px; padding: 0 3px; border-radius: 8px; background: #ffffff26; color: var(--k4-fg); font-weight: 700; font-size: 10px; line-height: 15px; text-align: center; }
 }
 .k4-sp {
-	position: absolute; top: 14px; left: 0; width: 44px; height: 44px; border-radius: 50%; background: #ffffff24; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);
+	position: absolute; top: 16px; left: 0; width: 40px; height: 40px; border-radius: 10px; background: #3d8cff; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);
 }
 .k4-fsel {
 	position: absolute; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 82px); display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 4px 0 16px; border-radius: 999px;
