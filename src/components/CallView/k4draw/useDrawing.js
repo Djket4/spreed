@@ -805,6 +805,8 @@ function forget(presenter) {
 }
 
 let bound = null
+/** Экранный поток показывающего (для моста k4draw: размер кадра и что показывается). */
+export const localScreen = () => bound?.attributes.localScreen || null
 const sync = () => (bound?.attributes.localScreen ? startShow() : endShow())
 
 /**
@@ -1004,11 +1006,15 @@ export function eraseMarks(show, marks) {
 
 /**
  *
+ * @param show
  */
-export function undo() {
-	const show = showOf(state.big)
-	const key = show?.hist.pop()
-	const m = key && show.marks.get(key)
+export function undo(show = showOf(state.big)) {
+	let m = null
+	while (show?.hist.length && !m) {
+		const key = show.hist.pop()
+		m = show.marks.get(key)
+		m = m && !m.fading ? m : null // история не чищена, пока показ не крупно (мост k4draw)
+	}
 	m && eraseMarks(show, [m])
 	show && refreshUndo(show)
 }
@@ -1021,9 +1027,12 @@ export function clearMine() {
 	show && local(show, { op: 'X' })
 }
 
-/** «Очистить всё»: только у показывающего (остальные такое сообщение отбросят). */
-export function clearAll() {
-	const show = showOf(state.big)
+/**
+ * «Очистить всё»: только у показывающего (остальные такое сообщение отбросят).
+ *
+ * @param show
+ */
+export function clearAll(show = showOf(state.big)) {
 	show && show.presenter === me() && local(show, { op: 'Z' })
 }
 
