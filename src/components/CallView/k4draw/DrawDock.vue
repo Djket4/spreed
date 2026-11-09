@@ -285,7 +285,7 @@ onMounted(() => {
 	&--ghost { background: #ffffff14; box-shadow: none; font-size: 14px; padding: 0 16px; }
 }
 .k4-dock {
-	position: absolute; left: 50%; bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 2px)); width: 470px; max-width: calc(100% - 24px); height: 72px; margin-left: -235px; border-radius: 999px; pointer-events: auto;
+	position: absolute; left: 50%; bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 2px)); width: 500px; max-width: calc(100% - 24px); height: 72px; margin-left: -250px; border-radius: 999px; pointer-events: auto;
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
 	animation: k4-up .42s var(--sp-in) both;
@@ -293,17 +293,18 @@ onMounted(() => {
 /* телефон: док во всю ширину, кнопки 36, «Снимок» скрыт — крестик закрытия всегда в доке */
 @media (max-width: 500px) {
 	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
-	.k4-dock .k4-tools { padding: 0 8px; }
-	.k4-dock .k4-tb, .k4-dock .k4-sp { width: 36px; height: 36px; }
-	.k4-dock .k4-sp { top: 18px; }
-	.k4-dock .k4-tb--snap { display: none; }
+	.k4-dockwrap .k4-dock .k4-tools { padding: 0 8px; }
+	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 36px; height: 36px; }
+	.k4-dockwrap .k4-dock .k4-sp { top: 18px; }
+	.k4-dockwrap .k4-dock .k4-tb--snap { display: none; }
 }
 .k4-fsel.k4-tsel { padding: 0 4px; }
 .k4-tools {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
 	hr { width: 1px; height: 28px; margin: 0; border: 0; background: var(--k4-hair); }
 }
-.k4-tb {
+/* .k4-dock: общий button:not(.button-vue) облака сбрасывает ширину в auto */
+.k4-dock .k4-tb {
 	z-index: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--k4-fg2); transition: transform .12s ease-out, color .2s;
 	&:active { transform: scale(.9); }
 	&.sel { color: var(--k4-fg); .k4-ico { stroke: var(--k4-me); } }
