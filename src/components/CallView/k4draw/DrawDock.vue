@@ -293,10 +293,10 @@ onMounted(() => {
 /* телефон: док во всю ширину, кнопки 36, «Снимок» скрыт — крестик закрытия всегда в доке */
 @media (max-width: 500px) {
 	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
-	.k4-tools { padding: 0 8px; }
-	.k4-tb, .k4-sp { width: 36px; height: 36px; }
-	.k4-sp { top: 18px; }
-	.k4-tb--snap { display: none; }
+	.k4-dock .k4-tools { padding: 0 8px; }
+	.k4-dock .k4-tb, .k4-dock .k4-sp { width: 36px; height: 36px; }
+	.k4-dock .k4-sp { top: 18px; }
+	.k4-dock .k4-tb--snap { display: none; }
 }
 .k4-fsel.k4-tsel { padding: 0 4px; }
 .k4-tools {
