@@ -7,7 +7,7 @@
 import { showWarning } from '@nextcloud/dialogs'
 import { reactive } from 'vue'
 import { consoleCmd, consoleTick, inCall, stopConsole } from './macConsole.js'
-import { downloadSnapshot } from './snapshot.js'
+import { downloadSnapshot, screenSnapshot } from './snapshot.js'
 import { clearAll, eraseMarks, hash, identity, localScreen, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
 const ORIGIN = 'http://127.0.0.1:47811'
@@ -162,7 +162,9 @@ function onCmd(d) {
 		return
 	}
 	if (d.t === 'snapshot') {
-		downloadSnapshot()
+		// приложение шлёт слой пометок PNG (≤ 40 МБ base64); итог — обратно, панель покажет «сохранён» / «не получился»
+		const png = typeof d.png === 'string' && d.png.length < 40e6 && /^[A-Za-z0-9+/=]+$/.test(d.png.slice(0, 64)) ? d.png : null
+		;(png ? screenSnapshot(png) : downloadSnapshot()).then((ok) => send({ t: 'snap', ok }))
 		return
 	}
 	if (!s) {

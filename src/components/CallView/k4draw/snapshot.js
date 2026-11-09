@@ -7,7 +7,7 @@ import { showError, showSuccess } from '@nextcloud/dialogs'
 import { generateOcsUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
 import { useActorStore } from '../../../stores/actor.ts'
-import { myId, onDraw, sendSnap, SP, state } from './useDrawing.js'
+import { localScreen, myId, onDraw, sendSnap, SP, state } from './useDrawing.js'
 
 export const snap = reactive({ n: 0, k: '', busy: false })
 const PERM = ['marker', 'arrow', 'frame', 'text']
@@ -195,28 +195,94 @@ export async function takeSnapshot(token, btn) {
 }
 
 /**
+ * PNG в «Загрузки».
+ *
+ * @param {Blob} blob
+ */
+function save(blob) {
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	const d = new Date()
+	const p2 = (n) => String(n).padStart(2, '0')
+	a.href = url
+	a.download = `Снимок показа ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}-${p2(d.getSeconds())}.png`
+	document.body.append(a)
+	a.click()
+	a.remove()
+	setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+/**
  * «Снимок»: кадр показа с пометками, которые сейчас на экране, — PNG скачивается тому, кто нажал.
+ *
+ * @return {Promise<boolean>} сохранён ли
  */
 export async function downloadSnapshot() {
 	if (snap.busy || !state.big) {
-		return
+		return false
 	}
 	snap.busy = true
 	try {
-		const url = URL.createObjectURL(await render(true))
-		const a = document.createElement('a')
-		const d = new Date()
-		const p2 = (n) => String(n).padStart(2, '0')
-		a.href = url
-		a.download = `Снимок показа ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}-${p2(d.getSeconds())}.png`
-		document.body.append(a)
-		a.click()
-		a.remove()
-		setTimeout(() => URL.revokeObjectURL(url), 10000)
+		save(await render(true))
+		return true
 	} catch (e) {
 		console.error('k4draw download snapshot', e)
 		showError('Снимок не получился')
+		return false
 	} finally {
+		snap.busy = false
+	}
+}
+
+/**
+ * Снимок показывающего из приложения для Мака: свой показ крупно у него не открыт (плашка «Вы демонстрируете экран»),
+ * поэтому кадр берём из своего потока экрана, а пометки — готовым PNG слоя приложения (как они на экране).
+ * Работает и в фоновой вкладке: ждём события видео, а не таймеры.
+ *
+ * @param {string} png base64 PNG слоя пометок от приложения
+ * @return {Promise<boolean>} сохранён ли
+ */
+export async function screenSnapshot(png) {
+	const track = localScreen()?.getVideoTracks()[0]
+	if (snap.busy || !track || track.readyState !== 'live') {
+		return false
+	}
+	snap.busy = true
+	const v = document.createElement('video')
+	try {
+		const ink = await loadImg('data:image/png;base64,' + png)
+		v.muted = true
+		v.playsInline = true
+		v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none' // Safari не отдаёт кадры <video> вне документа
+		document.body.append(v)
+		v.srcObject = new MediaStream([track])
+		await new Promise((resolve, reject) => {
+			const t = setTimeout(() => reject(new Error('no frame')), 10000)
+			v.addEventListener('loadeddata', () => {
+				clearTimeout(t)
+				resolve()
+			}, { once: true })
+			v.play().catch(() => {})
+		})
+		const vw = v.videoWidth
+		const vh = v.videoHeight
+		if (!vw || !vh) {
+			throw new Error('no video')
+		}
+		const cv = document.createElement('canvas')
+		cv.width = vw
+		cv.height = vh
+		const ctx = cv.getContext('2d')
+		ctx.drawImage(v, 0, 0, vw, vh)
+		ctx.drawImage(ink, 0, 0, vw, vh)
+		save(await new Promise((resolve, reject) => cv.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png')))
+		return true
+	} catch (e) {
+		console.error('k4draw screen snapshot', e)
+		return false
+	} finally {
+		v.srcObject = null
+		v.remove()
 		snap.busy = false
 	}
 }
