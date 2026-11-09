@@ -11,7 +11,8 @@ import { myId, onDraw, sendSnap, SP, state } from './useDrawing.js'
 
 export const snap = reactive({ n: 0, k: '', busy: false })
 const PERM = ['marker', 'arrow', 'frame', 'text']
-const keep = (tool, ttl, el) => PERM.includes(tool) && !(+ttl) && !el.classList.contains('out') // гаснущие тексты (ttl) в снимок не идут
+// в выжимку — только постоянные (гаснущие тексты с ttl не идут); снимок себе (all) — всё, что сейчас видно
+const keep = (tool, ttl, el, all) => !el.classList.contains('out') && (all || (PERM.includes(tool) && !(+ttl)))
 const STYLE = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight']
 
 /**
@@ -50,9 +51,10 @@ function loadImg(src) {
 }
 
 /**
+ * @param {boolean} all все видимые пометки, а не только постоянные
  * @return {Promise<Blob>} PNG
  */
-async function render() {
+async function render(all = false) {
 	const ink = document.querySelector('.k4-layer .k4-ink')
 	const video = ink?.closest('.screenContainer')?.querySelector('video')
 	if (!ink || !video || !video.videoWidth) {
@@ -78,7 +80,7 @@ async function render() {
 	svg.setAttribute('height', vh)
 	svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
 	ink.querySelectorAll(':scope > g').forEach((g) => {
-		if (!keep(g.getAttribute('class')?.split(' ')[0], g.dataset.ttl, g)) {
+		if (!keep(g.getAttribute('class')?.split(' ')[0], g.dataset.ttl, g, all)) {
 			return
 		}
 		const c = g.cloneNode(true)
@@ -97,7 +99,7 @@ async function render() {
 	// размер 1,6% высоты кадра, целиком в кадре, не поверх текстов.
 	// Разрешение PNG = разрешение принятого видео: у гостя при показе 4K приходит 1920x1080/2560x1440, у показывающего полное.
 	const fh = vh * 0.016 * 1.6 // высота капсулы; кегль 1,6% высоты кадра
-	const texts = [...ink.querySelectorAll(':scope > g.text')].filter((g) => keep('text', g.dataset.ttl, g)).map((g) => {
+	const texts = [...ink.querySelectorAll(':scope > g.text')].filter((g) => keep('text', g.dataset.ttl, g, all)).map((g) => {
 		const r = g.querySelector('rect')
 		return r && [+r.getAttribute('x') * k, +r.getAttribute('y') * k, +r.getAttribute('width') * k, +r.getAttribute('height') * k]
 	}).filter(Boolean)
@@ -108,7 +110,7 @@ async function render() {
 	ctx.font = `700 ${vh * 0.016}px sans-serif`
 	ink.parentElement.querySelectorAll('.k4-chip').forEach((el) => {
 		const by = el.dataset.by
-		if (el.dataset.tool === 'text' || done.has(by) || !keep(el.dataset.tool, el.dataset.ttl, el)) {
+		if (el.dataset.tool === 'text' || done.has(by) || !keep(el.dataset.tool, el.dataset.ttl, el, all)) {
 			return
 		}
 		const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(el.style.transform)
@@ -187,6 +189,33 @@ export async function takeSnapshot(token, btn) {
 	} catch (e) {
 		console.error('k4draw snapshot', e)
 		showError('Снимок не сохранился')
+	} finally {
+		snap.busy = false
+	}
+}
+
+/**
+ * «Снимок»: кадр показа с пометками, которые сейчас на экране, — PNG скачивается тому, кто нажал.
+ */
+export async function downloadSnapshot() {
+	if (snap.busy || !state.big) {
+		return
+	}
+	snap.busy = true
+	try {
+		const url = URL.createObjectURL(await render(true))
+		const a = document.createElement('a')
+		const d = new Date()
+		const p2 = (n) => String(n).padStart(2, '0')
+		a.href = url
+		a.download = `Снимок показа ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}-${p2(d.getSeconds())}.png`
+		document.body.append(a)
+		a.click()
+		a.remove()
+		setTimeout(() => URL.revokeObjectURL(url), 10000)
+	} catch (e) {
+		console.error('k4draw download snapshot', e)
+		showError('Снимок не получился')
 	} finally {
 		snap.busy = false
 	}

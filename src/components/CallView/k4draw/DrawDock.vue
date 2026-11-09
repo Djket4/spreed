@@ -25,6 +25,8 @@
 				<symbol id="k4i-text" viewBox="0 0 24 24"><path d="M2.8 18.5L7.4 6l4.6 12.5M4.5 14.5h5.8M14.3 18.5l3.1-8 3.1 8M15.6 15.8h3.6" /></symbol>
 				<symbol id="k4i-eraser" viewBox="0 0 24 24"><path d="M9 20h11" /><path d="M4.6 15.4l9.3-9.3a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10.6 19.4H8.6z" /><path d="M9 11l5 5" /></symbol>
 				<symbol id="k4i-undo" viewBox="0 0 24 24"><path d="M9 13.5L4.5 9 9 4.5" /><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-3" /></symbol>
+				<symbol id="k4i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></symbol>
+				<symbol id="k4i-camera" viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" /><circle cx="12" cy="12.5" r="3.4" /></symbol>
 				<symbol id="k4i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" /></symbol>
 			</svg>
 
@@ -56,7 +58,7 @@
 					@click="clearMine">
 					<svg class="k4-ico"><use href="#k4i-trash" /></svg>
 				</button>
-				<button class="k4-pill" type="button" @click="state.mode = false">
+				<button class="k4-pill" type="button" @click="close">
 					Готово
 				</button>
 			</header>
@@ -126,6 +128,24 @@
 						@click="undo">
 						<svg class="k4-ico"><use href="#k4i-undo" /></svg>
 					</button>
+					<button
+						class="k4-tb k4-tb--snap"
+						type="button"
+						aria-label="Снимок"
+						title="Снимок: кадр показа с пометками в PNG"
+						:disabled="snap.busy"
+						@click="downloadSnapshot">
+						<svg class="k4-ico"><use href="#k4i-camera" /></svg>
+					</button>
+					<hr>
+					<button
+						class="k4-tb k4-tb--close"
+						type="button"
+						aria-label="Закрыть рисование"
+						title="Закрыть рисование (Esc)"
+						@click="close">
+						<svg class="k4-ico"><use href="#k4i-close" /></svg>
+					</button>
 				</div>
 			</nav>
 		</div>
@@ -135,7 +155,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
-import { snap, takeSnapshot, watchSnaps } from './snapshot.js'
+import { downloadSnapshot, snap, takeSnapshot, watchSnaps } from './snapshot.js'
 import { clearAll, clearMine, isPresenter, reducedMotion, SP, state, TSIZE, undo } from './useDrawing.js'
 
 const TOOLS = [
@@ -181,6 +201,28 @@ function pick(id) {
 	state.tool = id
 	nextTick(place)
 }
+
+/**
+ * Закрыть режим рисования: панель и верхняя полоса уходят, пометки живут по своим правилам.
+ */
+function close() {
+	state.mode = false
+}
+
+/**
+ * Esc закрывает, кроме набора текста на кадре (там Esc отменяет текст).
+ *
+ * @param {KeyboardEvent} e событие
+ */
+function onKey(e) {
+	if (e.key !== 'Escape' || document.activeElement?.closest?.('.k4-layer')) {
+		return
+	}
+	close()
+}
+// в фазе захвата: поле чата и диалоги Talk гасят Esc раньше
+window.addEventListener('keydown', onKey, true)
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 
 onMounted(() => {
 	place()
@@ -243,12 +285,19 @@ onMounted(() => {
 	&--ghost { background: #ffffff14; box-shadow: none; font-size: 14px; padding: 0 16px; }
 }
 .k4-dock {
-	position: absolute; left: 50%; bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 2px)); width: 378px; max-width: calc(100% - 24px); height: 72px; margin-left: -189px; border-radius: 999px; pointer-events: auto;
+	position: absolute; left: 50%; bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 2px)); width: 470px; max-width: calc(100% - 24px); height: 72px; margin-left: -235px; border-radius: 999px; pointer-events: auto;
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
 	animation: k4-up .42s var(--sp-in) both;
 }
-@media (max-width: 401px) { .k4-dock { left: 12px; margin-left: 0; } .k4-tb, .k4-sp { width: 40px; height: 40px; } .k4-sp { top: 16px; } }
+/* телефон: док во всю ширину, кнопки 36, «Снимок» скрыт — крестик закрытия всегда в доке */
+@media (max-width: 500px) {
+	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
+	.k4-tools { padding: 0 8px; }
+	.k4-tb, .k4-sp { width: 36px; height: 36px; }
+	.k4-sp { top: 18px; }
+	.k4-tb--snap { display: none; }
+}
 .k4-fsel.k4-tsel { padding: 0 4px; }
 .k4-tools {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
@@ -258,6 +307,7 @@ onMounted(() => {
 	z-index: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--k4-fg2); transition: transform .12s ease-out, color .2s;
 	&:active { transform: scale(.9); }
 	&.sel { color: var(--k4-fg); .k4-ico { stroke: var(--k4-me); } }
+	&--close:hover { color: #ff6b81; }
 	&:disabled { opacity: .35; }
 	sup { position: absolute; right: 2px; top: 3px; min-width: 17px; height: 15px; padding: 0 3px; border-radius: 8px; background: #ffffff26; color: var(--k4-fg); font-weight: 700; font-size: 10px; line-height: 15px; text-align: center; }
 }
