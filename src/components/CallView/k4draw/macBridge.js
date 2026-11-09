@@ -6,8 +6,8 @@
  */
 import { showWarning } from '@nextcloud/dialogs'
 import { reactive } from 'vue'
-import { consoleCmd, inCall, startConsole, stopConsole } from './macConsole.js'
-import { clearAll, eraseMarks, hash, identity, localScreen, myId, onDraw, PALETTE, showOf, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
+import { consoleCmd, consoleTick, inCall, stopConsole } from './macConsole.js'
+import { clearAll, eraseMarks, hash, identity, localScreen, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
 const ORIGIN = 'http://127.0.0.1:47811'
 const URL = ORIGIN + '/'
@@ -15,20 +15,19 @@ const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
 const SIZES = ['s', 'm', 'l']
 const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : null)
 
-/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | on | lost (окно моста закрыто или приложение вышло) */
+/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
-export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent)
 
 let pop = null
 let off = null
 let timer = 0
-let tries = 0
 let cur = null
 let watch = 0
 
-const show = () => showOf(myId())
+const show = myShow // по ключу показа: id сессии сигналинга мог смениться посреди показа
 const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
 
 /**
@@ -39,7 +38,7 @@ const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
  */
 function ser(s, m) {
 	const id = identity(m.by)
-	const o = { t: 'mark', key: m.key, tool: m.tool, name: id.name, mine: m.by === myId(), done: m.done, ttl: m.ttl || 0 }
+	const o = { t: 'mark', key: m.key, tool: m.tool, name: id.name, mine: m.by === myId() || m.by === s.presenter, done: m.done, ttl: m.ttl || 0 }
 	o.color = PALETTE[s.cols[m.by] ?? hash(String(id.key || 'Гость')) % PALETTE.length]
 	if (m.tool === 'text') {
 		Object.assign(o, { x: m.x, y: m.y, size: m.size, text: m.text })
@@ -76,11 +75,11 @@ function onEv(ev) {
 		return
 	}
 	if (ev.t === 'show') {
-		ev.show.presenter === myId() && full()
+		ev.show === show() && full()
 		return
 	}
 	const s = ev.show
-	if (!s || s.presenter !== myId()) {
+	if (!s || s !== show()) {
 		return
 	}
 	const m = ev.mark
@@ -138,8 +137,15 @@ function onCmd(d) {
 		mac.st = 'on'
 		clearInterval(watch)
 		watch = setInterval(() => (inCall() ? pop?.closed && lost() : finish()), 1000)
-		startConsole(send)
 		return full()
+	}
+	if (d.t === 'tick') {
+		// часы от приложения: события в фоновой вкладке приходят сразу, а свои таймеры спят
+		if (!inCall()) {
+			return finish()
+		}
+		pumpNow()
+		return consoleTick(send)
 	}
 	if (d.t === 'bye') {
 		lost()
@@ -177,6 +183,7 @@ function onCmd(d) {
 			clearAll(s)
 			break
 	}
+	pumpNow() // штрих ведущего уходит зрителям сразу, не дожидаясь спящего таймера фоновой вкладки
 }
 
 /**
@@ -187,21 +194,18 @@ function onMsg(e) {
 }
 
 /**
- * Окно моста не ответило: ещё попытка или «запустите приложение».
+ * Окно моста не ответило: приложение не запущено. Окно со страницей ошибки закрыть — Safari его уже
+ * не загрузит заново (ни из вкладки, ни перезагрузкой), годится только свежее окно.
  */
 function retry() {
 	clearTimeout(timer)
 	timer = setTimeout(() => {
-		if (mac.st === 'on' || !pop || pop.closed) {
-			pop?.closed && (mac.st = 'idle')
+		if (mac.st !== 'wait') {
 			return
 		}
-		if (tries-- > 0) {
-			pop.location = URL
-			retry()
-		} else {
-			mac.st = 'launch'
-		}
+		pop?.close()
+		pop = null
+		mac.st = 'launch'
 	}, 1500)
 }
 
@@ -218,18 +222,14 @@ export function openMac() {
 		pop.focus()
 		return
 	}
-	const launch = mac.st === 'launch' && pop && !pop.closed
-	mac.st = 'wait'
-	if (launch) {
-		pop.location = 'k4draw://open' // приложение запустится, окно моста потом перейдёт на его страницу
-		tries = 10
-	} else {
-		pop && !pop.closed ? (pop.location = URL) : (pop = window.open(URL, 'k4draw', 'popup,width=380,height=170'))
-		tries = 0
-	}
-	if (!pop) {
-		mac.st = 'idle' // окно заблокировано
+	const launch = mac.st === 'launch'
+	pop?.close() // всегда свежее окно: окно, где Safari показал ошибку, больше не загрузится
+	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', 'popup,width=380,height=170')
+	if (launch || !pop) {
+		// запуск: Safari спросит, открыть ли приложение; после запуска — ещё раз нажать (пульт приложения подскажет)
+		mac.st = launch && pop ? 'start' : 'idle' // !pop: окно заблокировано
 		return
 	}
+	mac.st = 'wait'
 	retry()
 }

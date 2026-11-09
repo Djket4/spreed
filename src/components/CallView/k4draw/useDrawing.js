@@ -327,6 +327,17 @@ function flush() {
 	}
 }
 
+/**
+ * Свой показ по ключу, а не по id сессии: сессия сигналинга может смениться посреди показа
+ * (переподключение HPB в фоновой вкладке Safari), а показ и слой остаются под прежним id.
+ */
+export const myShow = () => (myK && shows.get(myK)) || null
+
+/** Отправить очередь сейчас (мост k4draw: в фоновой вкладке Safari interval flush почти спит, часы ведёт приложение). */
+export function pumpNow() {
+	sig && flush()
+}
+
 // ── приём ──
 /**
  *
@@ -1033,7 +1044,7 @@ export function clearMine() {
  * @param show
  */
 export function clearAll(show = showOf(state.big)) {
-	show && show.presenter === me() && local(show, { op: 'Z' })
+	show && show.k === myK && local(show, { op: 'Z' }) // по ключу: id сессии мог смениться посреди показа
 }
 
 /**
