@@ -429,6 +429,7 @@ function dropShow(presenter) {
 	old && shows.delete(old.k)
 	delete state.keys[presenter]
 	delete syncs[presenter]
+	pendG.clear() // отложенные переносы относятся к ушедшему показу
 }
 
 /**
