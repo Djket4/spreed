@@ -372,6 +372,55 @@ export default {
 		display: flex;
 		gap: var(--default-grid-baseline);
 	}
+
+	// ket4tec: плашка показывающего крупно и строго по центру области показа (проба владельца)
+	&:deep(.empty-content) {
+		justify-content: center;
+		margin: 0;
+		padding: 24px;
+	}
+
+	&:deep(.empty-content__icon), &:deep(.empty-content__icon svg) {
+		width: 80px !important;
+		height: 80px !important;
+		max-width: 80px !important;
+		max-height: 80px !important;
+	}
+
+	&:deep(.empty-content__name) {
+		font-size: 24px;
+		line-height: 32px;
+		margin-bottom: 8px;
+	}
+
+	&:deep(.empty-content__description) {
+		font-size: 16px;
+		line-height: 22px;
+	}
+
+	&:deep(.empty-content__action) {
+		margin-top: 24px;
+	}
+
+	&__actions {
+		gap: 12px;
+		flex-wrap: wrap;
+		justify-content: center;
+
+		:deep(.button-vue) {
+			min-height: 48px;
+			padding-inline: 24px;
+			border-radius: 10px;
+			font-size: 16px;
+		}
+
+		// красный как у «Покинуть вызов»: тема гасит error-кнопки
+		:deep(.button-vue--error) {
+			background-color: #c92c4c !important;
+			border-color: #c92c4c !important;
+			color: #fff !important;
+		}
+	}
 }
 
 </style>
