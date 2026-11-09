@@ -5,7 +5,7 @@
 
 import { createSharedComposable } from '@vueuse/core'
 import createHark from 'hark'
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, markRaw, onScopeDispose, ref, watch } from 'vue'
 import { PARTICIPANT } from '../constants.ts'
 import { useSoundsStore } from '../stores/sounds.js'
 import attachMediaStream from '../utils/attachmediastream.js'
@@ -279,24 +279,32 @@ export const useDevices = createSharedComposable(function() {
 			}
 		}
 
-		faceFrame.value = new FaceFrame()
-		virtualBackground.value = new VirtualBackground()
+		// ket4tec #43: объекты конвейера не реактивны. Через Proxy ref() источник запоминался как Proxy,
+		// а события шли от сырого объекта (обработчики привязаны в конструкторе) — TrackToStream
+		// отбрасывал трек от VirtualBackground, и превью оставалось пустым.
+		faceFrame.value = markRaw(new FaceFrame())
+		virtualBackground.value = markRaw(new VirtualBackground())
 		faceFrame.value.connectTrackSink('default', virtualBackground.value)
 		// The virtual background should be enabled and disabled as needed by components
 		virtualBackground.value.setEnabled(false)
 
-		videoTrackToStream.value = new TrackToStream()
+		videoTrackToStream.value = markRaw(new TrackToStream())
 		videoTrackToStream.value.addInputTrackSlot('video')
 
 		virtualBackground.value.connectTrackSink('default', videoTrackToStream.value, 'video')
-		// ket4tec #43: выход цепочки (размытие, кадр по лицу) может прийти позже setVideoStream —
-		// тогда к превью уже привязан пустой поток. Привязываем, когда поток появился.
-		window.__k4pv = { ff: faceFrame.value, vb: virtualBackground.value, tts: videoTrackToStream.value } // ket4tec: отладка превью #43
-		videoTrackToStream.value.on('streamSet', (trackToStream, stream) => {
-			if (stream && videoElement.value && videoStream.value && videoElement.value.srcObject !== stream) {
-				attachMediaStream(stream, videoElement.value, { autoplay: true, mirror: true, muted: true })
+		// ket4tec #43: выход цепочки (кадр по лицу, размытие) приходит позже setVideoStream.
+		// Новый поток или замена трека в нём -> переподключаем <video>: WebKit не перерисовывает
+		// превью после removeTrack/addTrack в уже назначенном srcObject.
+		const reattachPreview = () => {
+			const stream = videoTrackToStream.value?.getStream()
+			if (!stream || !videoElement.value || !videoStream.value) {
+				return
 			}
-		})
+			videoElement.value.srcObject = null
+			attachMediaStream(stream, videoElement.value, { autoplay: true, mirror: true, muted: true })
+		}
+		videoTrackToStream.value.on('streamSet', reattachPreview)
+		videoTrackToStream.value.on('trackReplaced', reattachPreview)
 
 		mediaDevicesManager.enableDeviceEvents()
 		updateAudioStream()
@@ -489,13 +497,6 @@ export const useDevices = createSharedComposable(function() {
 		}
 
 		faceFrame.value._setInputTrack('default', videoStream.value.getVideoTracks()[0])
-		// ket4tec #43: FaceFrame не пересылает тот же трек повторно, и TrackToStream мог остаться
-		// без входа при живом выходе цепочки -> пустое превью. Сверяем вход с выходом цепочки.
-		const chainOut = virtualBackground.value.getOutputTrack()
-		if (chainOut && videoTrackToStream.value.getInputTrack('video') !== chainOut) {
-			videoTrackToStream.value._setInputTrack('video', chainOut)
-		}
-
 		const options = { autoplay: true, mirror: true, muted: true }
 		attachMediaStream(videoTrackToStream.value.getStream(), videoElement.value, options)
 	}
