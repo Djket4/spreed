@@ -291,6 +291,7 @@ export const useDevices = createSharedComposable(function() {
 		virtualBackground.value.connectTrackSink('default', videoTrackToStream.value, 'video')
 		// ket4tec #43: выход цепочки (размытие, кадр по лицу) может прийти позже setVideoStream —
 		// тогда к превью уже привязан пустой поток. Привязываем, когда поток появился.
+		window.__k4pv = { ff: faceFrame.value, vb: virtualBackground.value, tts: videoTrackToStream.value } // ket4tec: отладка превью #43
 		videoTrackToStream.value.on('streamSet', (trackToStream, stream) => {
 			if (stream && videoElement.value && videoStream.value && videoElement.value.srcObject !== stream) {
 				attachMediaStream(stream, videoElement.value, { autoplay: true, mirror: true, muted: true })
