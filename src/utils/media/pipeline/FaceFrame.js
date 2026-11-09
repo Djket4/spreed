@@ -9,15 +9,15 @@ import { stepWindow } from './FaceSmooth.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
 const STORAGE_KEY = 'k4FaceFrameLevel'
-export const LEVELS = ['auto', '1', '1.5', '2']
-export const LEVEL_LABELS = { auto: 'Авто', 1: '1×', 1.5: '1,5×', 2: '2×' }
+export const LEVELS = ['off', 'auto', '1', '1.5', '2']
+export const LEVEL_LABELS = { off: 'Выкл', auto: 'Авто', 1: '1×', 1.5: '1,5×', 2: '2×' }
 
 const DETECT_INTERVAL_MS = 150 // ~6-7 раз/с
 const LOST_AFTER_MS = 2000
 const AUTO_MAX_ZOOM = 2.5
 const AUTO_FACE_SPAN = 2.6 // ширина окна = ширина рамки лиц * это
 
-let level = '1'
+let level = 'off'
 try {
 	const stored = localStorage.getItem(STORAGE_KEY)
 	if (LEVELS.includes(stored)) {
@@ -189,7 +189,7 @@ export default class FaceFrame extends TrackSinkSource {
 		const input = this.getInputTrack()
 		const lvl = getFaceFrameLevel()
 
-		if (!input || !input.enabled || lvl === '1') {
+		if (!input || !input.enabled || lvl === 'off') {
 			this._stopDigital()
 			this.path = 'off'
 			if (input && this._hwZoomed) {
@@ -297,11 +297,6 @@ export default class FaceFrame extends TrackSinkSource {
 			if (d.stopped) {
 				return
 			}
-			canvas.width = video.videoWidth
-			canvas.height = video.videoHeight
-			d.stream = canvas.captureStream()
-			d.output = d.stream.getVideoTracks()[0]
-			this._setOutput(d.output)
 			schedule()
 		}, { once: true })
 	}
@@ -359,6 +354,13 @@ export default class FaceFrame extends TrackSinkSource {
 		const sw = canvas.width / d.win.zoom
 		const sh = canvas.height / d.win.zoom
 		ctx.drawImage(video, d.win.cx * canvas.width - sw / 2, d.win.cy * canvas.height - sh / 2, sw, sh, 0, 0, canvas.width, canvas.height)
+
+		// пока канвас пуст, на выходе остаётся исходный трек (картинка как в стоке, без серого);
+		// на канвасный трек переключаемся после первой отрисовки
+		if (!d.output) {
+			d.output = canvas.captureStream().getVideoTracks()[0]
+			this._setOutput(d.output)
+		}
 	}
 
 	_stopDigital() {
