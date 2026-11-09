@@ -228,6 +228,10 @@ export default class FaceFrame extends TrackSinkSource {
 			await this._setHardwareZoom(input, 1)
 		}
 		this.path = 'digital'
+		// пока канвас не дал кадров, на выходе исходная камера: пустого превью не бывает
+		if (this._digital?.input !== input) {
+			this._setOutput(input)
+		}
 		this._startDigital(input)
 	}
 
