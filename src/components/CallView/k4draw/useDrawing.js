@@ -260,7 +260,7 @@ function enqueue(data) {
 	// живое не выкидываем: одно сообщение на id, очередь ограничена числом id
 	// p склеиваем без лимита: flush сам режет по MAX_PTS_MSG
 	const same = (q) => q.op === data.op && q.k === data.k && (data.op === 'c' || q.id === data.id)
-	if (data.op === 'p' || data.op === 't' || data.op === 'c') {
+	if (data.op === 'p' || data.op === 't' || data.op === 'c' || data.op === 'g') {
 		let i = -1
 		queue.forEach((q, j) => same(q) && (i = j))
 		if (i >= 0) {
@@ -648,6 +648,16 @@ function apply(d, from) {
 			endMark(show, m)
 			break
 		}
+		case 'g': {
+			// перенос или новый размер готовой рамки/стрелки автора: две точки целиком
+			const m = idOk(d.id) && show.marks.get(from + '/' + d.id)
+			if (!m || !m.done || (m.tool !== 'frame' && m.tool !== 'arrow') || !okPts(d.pts, 2) || d.pts.length !== 4) {
+				return
+			}
+			m.pts = pairs(d.pts)
+			emit({ t: 'upd', show, mark: m })
+			break
+		}
 		case 'm': {
 			const x = num(d.x)
 			const y = num(d.y)
@@ -1007,6 +1017,17 @@ export function textPut(show, t) {
 		show.hist.push(m.key)
 		refreshUndo(show)
 	}
+}
+
+/**
+ * Перенести или растянуть свою готовую рамку/стрелку: P — две точки 0..1.
+ *
+ * @param show показ
+ * @param m пометка
+ * @param P точки
+ */
+export function moveMark(show, m, P) {
+	m && m.done && m.by === me() && (m.tool === 'frame' || m.tool === 'arrow') && local(show, { op: 'g', id: m.id, pts: P.flatMap((p) => [r4(p[0]), r4(p[1])]) })
 }
 
 /**

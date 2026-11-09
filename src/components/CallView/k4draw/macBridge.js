@@ -8,7 +8,7 @@ import { showWarning } from '@nextcloud/dialogs'
 import { reactive } from 'vue'
 import { consoleCmd, consoleTick, inCall, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
-import { clearAll, eraseMarks, hash, identity, localScreen, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
+import { clearAll, eraseMarks, hash, identity, localScreen, moveMark, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
 const ORIGIN = 'http://127.0.0.1:47811'
 const URL = ORIGIN + '/'
@@ -188,9 +188,20 @@ function onCmd(d) {
 			cur && strokeEnd(s, cur)
 			cur = null
 			break
-		case 'text':
-			x !== null && y !== null && typeof d.text === 'string' && SIZES.includes(d.size) && textPut(s, { x, y, size: d.size, text: d.text })
+		case 'text': {
+			// с key — правка или перенос своего текста
+			const old = typeof d.key === 'string' ? s.marks.get(d.key) : null
+			const id = old && old.by === myId() && old.tool === 'text' ? old.id : undefined
+			x !== null && y !== null && typeof d.text === 'string' && SIZES.includes(d.size) && textPut(s, { id, x, y, size: d.size, text: d.text })
 			break
+		}
+		case 'move': {
+			// перенос или новый размер своей рамки/стрелки: pts = [x0, y0, x1, y1]
+			const m = typeof d.key === 'string' ? s.marks.get(d.key) : null
+			const P = Array.isArray(d.pts) && d.pts.length === 4 ? d.pts.map(num) : []
+			m && m.by === myId() && P.length === 4 && !P.includes(null) && moveMark(s, m, [[P[0], P[1]], [P[2], P[3]]])
+			break
+		}
 		case 'erase':
 			Array.isArray(d.keys) && eraseMarks(s, d.keys.slice(0, 200).map((k) => s.marks.get(k)).filter((m) => m && m.by === myId()))
 			break
