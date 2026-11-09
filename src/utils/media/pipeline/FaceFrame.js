@@ -5,6 +5,7 @@
 
 import { FaceDetector } from '@mediapipe/tasks-vision'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
+import { stepWindow } from './FaceSmooth.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
 const STORAGE_KEY = 'k4FaceFrameLevel'
@@ -13,9 +14,6 @@ export const LEVEL_LABELS = { auto: 'Авто', 1: '1×', 1.5: '1,5×', 2: '2×'
 
 const DETECT_INTERVAL_MS = 150 // ~6-7 раз/с
 const LOST_AFTER_MS = 2000
-const TAU_MS = 400 // постоянная экспоненциального сглаживания
-const DEAD_CENTER = 0.03 // мёртвая зона сдвига окна, доля ширины кадра
-const DEAD_ZOOM = 0.06 // мёртвая зона приближения, доля
 const AUTO_MAX_ZOOM = 2.5
 const AUTO_FACE_SPAN = 2.6 // ширина окна = ширина рамки лиц * это
 
@@ -82,31 +80,7 @@ export function computeTarget(faces, lvl) {
 	return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, zoom: Math.max(1, zoom) }
 }
 
-/**
- * Один шаг сглаживания окна к цели. Возвращает новое состояние.
- *
- * @param {{cx: number, cy: number, zoom: number}} state текущее окно
- * @param {{cx: number, cy: number, zoom: number}} target цель
- * @param {number} dtMs время с прошлого шага
- */
-export function stepWindow(state, target, dtMs) {
-	const a = 1 - Math.exp(-dtMs / TAU_MS)
-	const next = { ...state }
-	if (Math.abs(target.cx - state.cx) > DEAD_CENTER) {
-		next.cx += (target.cx - state.cx) * a
-	}
-	if (Math.abs(target.cy - state.cy) > DEAD_CENTER) {
-		next.cy += (target.cy - state.cy) * a
-	}
-	if (Math.abs(target.zoom - state.zoom) / state.zoom > DEAD_ZOOM || target.zoom === 1) {
-		next.zoom += (target.zoom - state.zoom) * a
-	}
-	// окно не выходит за кадр
-	const half = 0.5 / next.zoom
-	next.cx = Math.min(1 - half, Math.max(half, next.cx))
-	next.cy = Math.min(1 - half, Math.max(half, next.cy))
-	return next
-}
+export { stepWindow }
 
 // Резервный проход для далёких лиц: если в полном кадре лиц нет, по очереди
 // (одна плитка за детекцию) прогоняется центр, 4 угловых плитки 60% и сетка 3×3 по 40% с перекрытием.
@@ -377,7 +351,7 @@ export default class FaceFrame extends TrackSinkSource {
 			d.target.zoom = parseFloat(lvl)
 		}
 
-		const dt = d.lastTick ? Math.min(now - d.lastTick, 200) : 0
+		const dt = d.lastTick ? Math.min(now - d.lastTick, 100) : 0
 		d.lastTick = now
 		d.win = stepWindow(d.win, d.target, dt)
 		this.window = d.win
