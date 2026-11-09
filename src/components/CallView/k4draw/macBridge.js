@@ -7,25 +7,31 @@
 import { showWarning } from '@nextcloud/dialogs'
 import { reactive } from 'vue'
 import { consoleCmd, consoleTick, inCall, stopConsole } from './macConsole.js'
+import { downloadSnapshot } from './snapshot.js'
 import { clearAll, eraseMarks, hash, identity, localScreen, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
 const ORIGIN = 'http://127.0.0.1:47811'
 const URL = ORIGIN + '/'
+/** Страница скачивания приложения с инструкцией (статика облака, без входа) */
+export const MAC_DL = 'https://cloud.ket4tec.online/k4draw/'
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
 const SIZES = ['s', 'm', 'l']
 const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : null)
 
-/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | on | lost (окно моста закрыто или приложение вышло) */
+/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (приложения нет: скачать) | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
-export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
-export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent)
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Скачать приложение для Мака', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
+export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
 
 let pop = null
 let off = null
 let timer = 0
 let cur = null
 let watch = 0
+// уже просили запустить: следующий неответ = приложения нет. Раньше не узнать: в Safari окно после k4draw://
+// остаётся about:blank и когда приложение есть, и когда схемы нет (проверено 09.11)
+let launched = false
 
 const show = myShow // по ключу показа: id сессии сигналинга мог смениться посреди показа
 const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
@@ -52,6 +58,7 @@ function ser(s, m) {
 	return o
 }
 
+const myColor = (s) => (s ? PALETTE[s.cols[myId()] ?? hash(String(identity(myId()).key || 'Гость')) % PALETTE.length] : null)
 const undoN = (s) => (s ? s.hist.filter((k) => s.marks.has(k) && !s.marks.get(k).fading).length : 0)
 
 /** Состояние, размер кадра и все пометки заново (подключение, новый показ). */
@@ -62,7 +69,7 @@ function full() {
 	send({ t: 'hello', me: myId(), w: g.width || 0, h: g.height || 0, surface: g.displaySurface || null })
 	send({ t: 'reset' })
 	s?.marks.forEach((m) => send(ser(s, m)))
-	send({ t: 'state', live: !!s, undo: undoN(s) })
+	send({ t: 'state', live: !!s, undo: undoN(s), color: myColor(s) })
 }
 
 /**
@@ -93,7 +100,7 @@ function onEv(ev) {
 	}
 	if (ev.t === 'end' || ev.t === 'del' || ev.t === 'fade') {
 		// после текущего вызова: strokeEnd/textPut кладут пометку в историю уже после события `end`
-		queueMicrotask(() => send({ t: 'state', live: true, undo: undoN(s) }))
+		queueMicrotask(() => send({ t: 'state', live: true, undo: undoN(s), color: myColor(s) }))
 	}
 }
 
@@ -154,6 +161,10 @@ function onCmd(d) {
 	if (consoleCmd(d.t)) {
 		return
 	}
+	if (d.t === 'snapshot') {
+		downloadSnapshot()
+		return
+	}
 	if (!s) {
 		cur = null
 		return
@@ -205,7 +216,8 @@ function retry() {
 		}
 		pop?.close()
 		pop = null
-		mac.st = 'launch'
+		mac.st = launched ? 'noapp' : 'launch'
+		launched = false
 	}, 1500)
 }
 
@@ -222,11 +234,17 @@ export function openMac() {
 		pop.focus()
 		return
 	}
+	if (mac.st === 'noapp') {
+		window.open(MAC_DL, '_blank', 'noopener')
+		mac.st = 'idle'
+		return
+	}
 	const launch = mac.st === 'launch'
+	launched = mac.st === 'start'
 	pop?.close() // всегда свежее окно: окно, где Safari показал ошибку, больше не загрузится
 	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', 'popup,width=380,height=170')
 	if (launch || !pop) {
-		// запуск: Safari спросит, открыть ли приложение; после запуска — ещё раз нажать (пульт приложения подскажет)
+		// запуск: Safari спросит, открыть ли приложение; после запуска — ещё раз нажать (панель приложения подскажет)
 		mac.st = launch && pop ? 'start' : 'idle' // !pop: окно заблокировано
 		return
 	}
