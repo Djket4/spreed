@@ -51,7 +51,6 @@ describe('callViewStore', () => {
 			callViewStore.handleJoinCall(conversation)
 
 			// Assert
-			expect(BrowserStorage.getItem).toHaveBeenCalledWith(BROWSER_STORAGE_KEY)
 			expect(callViewStore.isGrid).toBe(state)
 			expect(callViewStore.isStripeOpen).toBeTruthy()
 		}
@@ -68,8 +67,9 @@ describe('callViewStore', () => {
 			testDefaultGridState(CONVERSATION.TYPE.GROUP, true, 'true')
 		})
 
-		it('restores grid state from BrowserStorage when joining call (false)', () => {
-			testDefaultGridState(CONVERSATION.TYPE.GROUP, false, 'false')
+		// ket4tec: каждый звонок начинается с сетки, сохранённое «докладчик» не берётся
+		it('starts in grid even if speaker view was saved before', () => {
+			testDefaultGridState(CONVERSATION.TYPE.GROUP, true, 'false')
 		})
 
 		it('sets default grid state when joining call in group conversation', () => {
@@ -81,7 +81,7 @@ describe('callViewStore', () => {
 		})
 
 		it('sets default grid state when joining call in one to one conversation', () => {
-			testDefaultGridState(CONVERSATION.TYPE.ONE_TO_ONE, false)
+			testDefaultGridState(CONVERSATION.TYPE.ONE_TO_ONE, true)
 		})
 
 		it('switching call view mode saves in local storage', () => {
@@ -124,8 +124,8 @@ describe('callViewStore', () => {
 			// Arrange
 			const conversation = { token: TOKEN, type: CONVERSATION.TYPE.GROUP }
 			vuexStore.commit('addConversation', conversation)
-			// The grid preference is read first, the multi-speaker one right after
-			BrowserStorage.getItem.mockReturnValueOnce(null).mockReturnValueOnce('true')
+			// ket4tec: сохранённая сетка больше не читается, первым читается multi-speaker
+			BrowserStorage.getItem.mockReturnValueOnce('true')
 
 			// Act
 			callViewStore.handleJoinCall(conversation)
