@@ -1144,3 +1144,5 @@ export default {
 }
 
 </style>
+<!-- ket4tec: «Стол» v7, вид звонка (глобальный, не scoped: звонок, панель, плитки, вход) -->
+<style lang="scss" src="./k7call.scss"></style>

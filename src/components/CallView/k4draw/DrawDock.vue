@@ -263,7 +263,7 @@ onMounted(() => {
 	--k4-fg2: #bdb3ad;
 	--k4-fg3: #857b76;
 	--k4-hair: #ffffff14;
-	--k4-glass: #2a2426b3;
+	--k4-glass: #2a2426e0;
 	--k4-acc: #a86bff;
 	--k4-acc2: #5b2a86;
 	--k4-grad: linear-gradient(135deg, var(--k4-acc2), var(--k4-acc));
@@ -282,9 +282,10 @@ onMounted(() => {
 	.k4-ico { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
 }
 .k4-dh {
-	position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; pointer-events: auto;
-	padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
-	background: #141112f5; backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+	position: absolute; left: 8px; right: 8px; top: calc(env(safe-area-inset-top, 0px) + 6px); display: flex; align-items: center; gap: 8px; pointer-events: auto;
+	padding: 8px 8px 8px 16px; border-radius: 28px;
+	background: #1a1718; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 10px 30px #0005;
 	animation: k4-in .3s ease-out;
 }
 .k4-ttl {
@@ -293,11 +294,16 @@ onMounted(() => {
 	b i { width: 10px; height: 10px; border-radius: 50%; background: var(--k4-me); box-shadow: 0 0 10px var(--k4-me); }
 	span { font-size: 13px; color: var(--k4-fg3); }
 }
-.k4-cb {
+// тема облака в светлом режиме красит все button белым: держим фон дока
+.k4-dockwrap button:not(.k4-pill):not(.k4-cb) { background: transparent !important; }
+.k4-dockwrap .k4-cb { background: #ffffff12 !important; }
+.k4-dockwrap .k4-pill { background: var(--k4-grad) !important; }
+.k4-dockwrap .k4-pill--ghost { background: #ffffff14 !important; }
+.k4-dockwrap .k4-cb {
 	flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: #ffffff12; transition: transform .12s ease-out;
 	&:active { transform: scale(.9); }
 }
-.k4-pill {
+.k4-dockwrap .k4-pill {
 	flex: none; height: 44px; padding: 0 20px; border-radius: 999px; background: var(--k4-grad); color: #fff; font-weight: 700; font-size: 15px; box-shadow: 0 6px 20px #a86bff40; transition: transform .12s ease-out;
 	&:active { transform: scale(.94); }
 	&--ghost { background: #ffffff14; box-shadow: none; font-size: 14px; padding: 0 16px; }
@@ -310,12 +316,20 @@ onMounted(() => {
 }
 /* телефон: док во всю ширину, кнопки 36, «Снимок» скрыт — крестик закрытия всегда в доке */
 @media (max-width: 500px) {
+	.k4-dh { padding-left: 12px; gap: 6px; }
+	.k4-ttl { min-width: 0; }
+	.k4-ttl b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+	.k4-ttl b i { display: inline-block; margin-right: 8px; vertical-align: middle; }
+	.k4-ttl span { display: none; }
+	.k4-dockwrap .k4-pill--ghost { padding: 0 12px; font-size: 13px; }
 	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
 	.k4-dockwrap .k4-dock .k4-tools { padding: 0 8px; }
 	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 36px; height: 36px; }
 	.k4-dockwrap .k4-dock .k4-sp { top: 18px; }
 	.k4-dockwrap .k4-dock .k4-tb--snap { display: none; }
 }
+/* custom.css темы красит глобальный .k4-ico плиткой приложения: в доке это значок */
+body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !important; border-radius: 0; position: static; }
 .k4-fsel.k4-tsel { padding: 0 4px; }
 .k4-tools {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
@@ -323,7 +337,7 @@ onMounted(() => {
 }
 /* .k4-dock: общий button:not(.button-vue) облака сбрасывает ширину в auto */
 .k4-dock .k4-tb {
-	z-index: 1; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--k4-fg2); transition: transform .12s ease-out, color .2s;
+	z-index: 1; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--k4-fg2); transition: transform .12s ease-out, color .2s;
 	&:active { transform: scale(.9); }
 	&.sel { color: #fff; }
 	&--close:hover { color: #ff6b81; }
@@ -331,7 +345,7 @@ onMounted(() => {
 	sup { position: absolute; right: 2px; top: 3px; min-width: 17px; height: 15px; padding: 0 3px; border-radius: 8px; background: #ffffff26; color: var(--k4-fg); font-weight: 700; font-size: 10px; line-height: 15px; text-align: center; }
 }
 .k4-sp {
-	position: absolute; top: 16px; left: 0; width: 40px; height: 40px; border-radius: 10px; background: #3d8cff; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);
+	position: absolute; top: 16px; left: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--k4-grad); box-shadow: 0 4px 14px #a86bff55; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);
 }
 .k4-fsel {
 	position: absolute; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 82px); display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 4px 0 16px; border-radius: 999px;
