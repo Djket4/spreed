@@ -15,6 +15,7 @@ const URL = ORIGIN + '/'
 /** Страница скачивания приложения с инструкцией (статика облака, без входа) */
 export const MAC_DL = 'https://cloud.ket4tec.online/k4draw/'
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
+const AUTO = 'k4draw.mac'
 const SIZES = ['s', 'm', 'l']
 const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : null)
 
@@ -142,6 +143,10 @@ function onCmd(d) {
 	if (d.t === 'ready') {
 		clearTimeout(timer)
 		mac.st = 'on'
+		try {
+			localStorage.setItem(AUTO, '1') // приложение здесь уже подключали: дальше подключаем само при начале показа
+		} catch (e) { // хранилище закрыто (частный режим): просто без автоподключения
+		}
 		clearInterval(watch)
 		watch = setInterval(() => (inCall() ? pop?.closed && lost() : finish()), 1000)
 		return full()
@@ -252,4 +257,19 @@ export function openMac() {
 	}
 	mac.st = 'wait'
 	retry()
+}
+
+/**
+ * Начало показа на Маке (из клика «Показать экран», жест ещё действует): если приложение в этом браузере уже
+ * подключали — подключаем само, без второй кнопки. Без этого ведущий рисовал «локально» и не видел пометок зрителей.
+ */
+export function autoOpenMac() {
+	let used = false
+	try {
+		used = localStorage.getItem(AUTO) === '1'
+	} catch (e) { // хранилище закрыто: без автоподключения
+	}
+	if (used && isMac() && mac.st !== 'on' && mac.st !== 'wait') {
+		openMac()
+	}
 }

@@ -146,6 +146,7 @@ import { PARTICIPANT } from '../../constants.ts'
 import { supportsScreenSharing } from '../../utils/browserCheck.ts'
 import { CONNECTION_QUALITY } from '../../utils/webrtc/analyzers/PeerConnectionAnalyzer.js'
 import { callAnalyzer } from '../../utils/webrtc/index.js'
+import { autoOpenMac } from '../CallView/k4draw/macBridge.js' // ket4tec: k4draw
 
 export default {
 
@@ -452,6 +453,7 @@ export default {
 						break
 				}
 			})
+			autoOpenMac() // ket4tec: k4draw — приложение для Мака подключается само при начале показа
 		},
 
 		executeQualityWarningTooltipAction() {
