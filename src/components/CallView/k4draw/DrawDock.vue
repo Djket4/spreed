@@ -6,7 +6,7 @@
 <template>
 	<!-- в body: над верхней панелью звонка, вне её контекста наложения -->
 	<Teleport to="body">
-		<div class="k4-dockwrap" :style="vars">
+		<div class="k4-dockwrap" :style="[vars, scene]">
 			<svg
 				width="0"
 				height="0"
@@ -200,6 +200,19 @@ const sub = computed(() => {
 	return t.sub + (state.tool === 'fade' ? state.ft + ' с' : '') + (state.tool === 'text' ? ' · ' + state.tsz.toUpperCase() + ' · ' + (state.tl ? 'гаснет ' + state.tl + ' с' : 'остаётся') : '')
 })
 const vars = { '--sp-in': SP.in, '--sp-menu': SP.menu }
+// шапка-капсула живёт в пределах сцены звонка: под шапкой Стола и шапкой беседы, шапка Стола остаётся кликабельной
+const scene = reactive({})
+function placeScene() {
+	const cc = document.getElementById('call-container')?.getBoundingClientRect()
+	if (!cc) {
+		return
+	}
+	const tb = document.querySelector('.top-bar')?.getBoundingClientRect()
+	scene['--k4-sl'] = Math.max(cc.left, 0) + 12 + 'px'
+	scene['--k4-sr'] = Math.max(window.innerWidth - cc.right, 0) + 12 + 'px'
+	scene['--k4-st'] = Math.max(tb ? tb.bottom : 0, cc.top) + 12 + 'px'
+}
+let sceneRO = null
 
 /**
  *
@@ -240,10 +253,18 @@ function onKey(e) {
 }
 // в фазе захвата: поле чата и диалоги Talk гасят Esc раньше
 window.addEventListener('keydown', onKey, true)
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
+onBeforeUnmount(() => {
+	window.removeEventListener('keydown', onKey, true)
+	window.removeEventListener('resize', placeScene)
+	sceneRO?.disconnect()
+})
 
 onMounted(() => {
 	place()
+	placeScene()
+	window.addEventListener('resize', placeScene)
+	sceneRO = new ResizeObserver(placeScene)
+	;[document.getElementById('call-container'), document.querySelector('.top-bar')].forEach((n) => n && sceneRO.observe(n))
 	if (reducedMotion()) {
 		return
 	}
@@ -282,10 +303,10 @@ onMounted(() => {
 	.k4-ico { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
 }
 .k4-dh {
-	position: absolute; left: 8px; right: 8px; top: calc(env(safe-area-inset-top, 0px) + 6px); display: flex; align-items: center; gap: 8px; pointer-events: auto;
-	padding: 8px 8px 8px 16px; border-radius: 28px;
-	background: #1a1718; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
-	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 10px 30px #0005;
+	position: absolute; left: var(--k4-sl, 12px); right: var(--k4-sr, 12px); top: var(--k4-st, calc(env(safe-area-inset-top, 0px) + 12px)); max-width: 640px; margin-inline: auto; display: flex; align-items: center; gap: 8px; pointer-events: auto;
+	padding: 8px 8px 8px 16px; border-radius: 999px;
+	background: var(--k4-glass); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
+	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
 	animation: k4-in .3s ease-out;
 }
 .k4-ttl {
