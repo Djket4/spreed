@@ -28,6 +28,7 @@ import {
 	identity,
 	join,
 	LIFE,
+	moveMark,
 	myId,
 	onDraw,
 	ping,
@@ -614,9 +615,11 @@ function onEvent(ev) {
 			const v = view(m)
 			v.g.classList.remove('fade')
 			v.g.style.opacity = ''
-			v.chip?.remove()
-			v.chip = null
-			v.cw = 0
+			if (m.tool === 'text') { // рамка/стрелка после переноса остаётся с подписью, она едет следом
+				v.chip?.remove()
+				v.chip = null
+				v.cw = 0
+			}
 			draw(v)
 			break
 		}
@@ -741,7 +744,60 @@ function onDown(e) {
 		eraseAt(p)
 		return
 	}
+	const g = state.tool === 'frame' && grabFrame(p[0] * W, p[1] * H)
+	if (g) {
+		cur = { mv: g.m, P: g.m.pts.map((q) => [...q]), corner: g.corner, o: p }
+		return
+	}
 	cur = { m: strokeStart(show(), state.tool, p), last: p }
+}
+
+/**
+ * Своя рамка под точкой (инструмент «рамка»): за угол — новый размер, за край — перенос; внутри рисуется новая.
+ *
+ * @param x px внутри кадра
+ * @param y px внутри кадра
+ */
+function grabFrame(x, y) {
+	let r = null
+	views.forEach((v) => {
+		const m = v.m
+		if (r || m.tool !== 'frame' || m.by !== myId() || !m.done || v.gone || m.pts.length < 2) {
+			return
+		}
+		const [a, b] = [m.pts[0], m.pts[m.pts.length - 1]].map((q) => [q[0] * W, q[1] * H])
+		const corner = [a, b, [a[0], b[1]], [b[0], a[1]]].findIndex((c) => Math.hypot(c[0] - x, c[1] - y) < 14)
+		const [x0, x1] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])]
+		const [y0, y1] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])]
+		const inX = x > x0 - 10 && x < x1 + 10
+		const inY = y > y0 - 10 && y < y1 + 10
+		const edge = inX && inY && (Math.abs(x - x0) < 10 || Math.abs(x - x1) < 10 || Math.abs(y - y0) < 10 || Math.abs(y - y1) < 10)
+		if (corner >= 0 || edge) {
+			r = { m, corner }
+		}
+	})
+	return r
+}
+
+/**
+ * Перетаскивание своей рамки: новые две точки по исходным и сдвигу.
+ *
+ * @param c текущее перетаскивание
+ * @param p точка 0..1
+ */
+function dragFrame(c, p) {
+	const [a, b] = [c.P[0], c.P[c.P.length - 1]]
+	let P
+	if (c.corner < 0) {
+		const dx = Math.min(1 - Math.max(a[0], b[0]), Math.max(-Math.min(a[0], b[0]), p[0] - c.o[0]))
+		const dy = Math.min(1 - Math.max(a[1], b[1]), Math.max(-Math.min(a[1], b[1]), p[1] - c.o[1]))
+		P = [[a[0] + dx, a[1] + dy], [b[0] + dx, b[1] + dy]]
+	} else {
+		// противоположный угол стоит на месте
+		const opp = [b, a, [b[0], a[1]], [a[0], b[1]]][c.corner]
+		P = [opp, p]
+	}
+	moveMark(show(), c.mv, P)
 }
 
 /**
@@ -765,6 +821,10 @@ function onMove(e) {
 		const p = nrm(ev)
 		if (cur.txt) {
 			break
+		}
+		if (cur.mv) {
+			dragFrame(cur, p)
+			continue
 		}
 		if (cur.er) {
 			eraseAt(p)
@@ -809,6 +869,9 @@ function onUp(e) {
 	}
 	if (c.er) {
 		erc.value.classList.remove('on')
+		return
+	}
+	if (c.mv) {
 		return
 	}
 	const m = c.m
