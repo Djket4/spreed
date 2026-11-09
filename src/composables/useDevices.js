@@ -489,6 +489,12 @@ export const useDevices = createSharedComposable(function() {
 		}
 
 		faceFrame.value._setInputTrack('default', videoStream.value.getVideoTracks()[0])
+		// ket4tec #43: FaceFrame не пересылает тот же трек повторно, и TrackToStream мог остаться
+		// без входа при живом выходе цепочки -> пустое превью. Сверяем вход с выходом цепочки.
+		const chainOut = virtualBackground.value.getOutputTrack()
+		if (chainOut && videoTrackToStream.value.getInputTrack('video') !== chainOut) {
+			videoTrackToStream.value._setInputTrack('video', chainOut)
+		}
 
 		const options = { autoplay: true, mirror: true, muted: true }
 		attachMediaStream(videoTrackToStream.value.getStream(), videoElement.value, options)
