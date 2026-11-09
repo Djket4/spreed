@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
 	getFirstAvailableMediaDevice,
+	isVirtualCamera,
 	listMediaDevices,
 	populateMediaDevicesPreferences,
 	promoteMediaDevice,
@@ -130,6 +131,26 @@ describe('mediaDevicePreferences', () => {
 
 			// Assert
 			expect(output).toMatchObject({ newAudioInputList: null, newVideoInputList: null })
+		})
+	})
+
+	describe('virtual cameras (ket4tec)', () => {
+		const ndi = { deviceId: 'ndi1', groupId: 'gndi', kind: 'videoinput', label: 'NDI Webcam Video 1' }
+		const obs = { deviceId: 'obs1', groupId: 'gobs', kind: 'videoinput', label: 'OBS Virtual Camera' }
+		const c922 = { deviceId: 'c922', groupId: 'gc922', kind: 'videoinput', label: 'C922 Pro Stream Webcam (046d:085c)' }
+
+		it('detects virtual cameras by label', () => {
+			expect([ndi, obs, c922, videoInputDeviceA].map(isVirtualCamera)).toEqual([true, true, false, false])
+		})
+
+		it('registers physical cameras before virtual ones', () => {
+			const { newVideoInputList } = populateMediaDevicesPreferences([ndi, obs, c922], [], [], [])
+			expect(newVideoInputList).toEqual([c922, ndi, obs])
+		})
+
+		it('puts a new physical camera before the first virtual one', () => {
+			const { newVideoInputList } = populateMediaDevicesPreferences([ndi, c922, videoInputDeviceA], [], [], [ndi, c922])
+			expect(newVideoInputList).toEqual([videoInputDeviceA, ndi, c922])
 		})
 	})
 

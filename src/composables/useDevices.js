@@ -50,6 +50,13 @@ export const useDevices = createSharedComposable(function() {
 	const audioStreamError = ref(null)
 	const videoStream = ref(null)
 	const videoStreamError = ref(null)
+	// ket4tec: камера не ответила за 4 с — { label, next } для превью (см. MediaDevicesManager)
+	const cameraNotice = ref(null)
+	let cameraNoticeTimer
+	mediaDevicesManager.on('cameraNotResponding', (manager, notice) => {
+		clearTimeout(cameraNoticeTimer)
+		cameraNotice.value = notice
+	})
 
 	const devices = computed(() => {
 		return mediaDevicesManager.attributes.devices
@@ -564,6 +571,11 @@ export const useDevices = createSharedComposable(function() {
 		mediaDevicesManager.getUserMedia({ video: true })
 			.then((stream) => {
 				videoStreamError.value = null
+				if (cameraNotice.value) {
+					cameraNoticeTimer = setTimeout(() => {
+						cameraNotice.value = null
+					}, 4000)
+				}
 				if (!initialized) {
 					// The promise was fulfilled once the stream is no
 					// longer needed, so just discard it.
@@ -602,6 +614,7 @@ export const useDevices = createSharedComposable(function() {
 		audioStreamError,
 		videoStream,
 		videoStreamError,
+		cameraNotice,
 		// MediaSettings only
 		updatePreferences,
 		virtualBackground,

@@ -96,7 +96,25 @@ function getFirstAvailableMediaDevice(devices: MediaDeviceInfo[], inputList: Med
  */
 function registerNewMediaDevice(device: MediaDeviceInfo, devicesList: MediaDeviceInfo[]): MediaDeviceInfo[] {
 	console.debug('Registering new device:', device)
+	// ket4tec: виртуальные камеры (NDI, OBS) по умолчанию после физических — без источника они вешают getUserMedia
+	if (device.kind === DeviceKind.VideoInput && !isVirtualCamera(device)) {
+		const firstVirtual = devicesList.findIndex(isVirtualCamera)
+		if (firstVirtual !== -1) {
+			return [...devicesList.slice(0, firstVirtual), device, ...devicesList.slice(firstVirtual)]
+		}
+	}
 	return [...devicesList, device]
+}
+
+/**
+ * ket4tec: виртуальная камера по названию (NDI, OBS, «Virtual»).
+ *
+ * @param device device
+ * @param device.kind
+ * @param device.label
+ */
+function isVirtualCamera(device: { kind: string, label?: string }): boolean {
+	return device.kind === DeviceKind.VideoInput && /\b(ndi|obs|virtual|vcam|manycam|xsplit|snap camera)\b/i.test(device.label ?? '')
 }
 
 /**
@@ -200,6 +218,7 @@ function populateMediaDevicesPreferences(
 
 export {
 	getFirstAvailableMediaDevice,
+	isVirtualCamera,
 	listMediaDevices,
 	populateMediaDevicesPreferences,
 	promoteMediaDevice,
