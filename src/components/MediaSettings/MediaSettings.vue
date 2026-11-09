@@ -630,7 +630,10 @@ export default {
 				return null
 			}
 			const hung = n.label ? `Камера «${n.label}» не отвечает` : 'Камера не отвечает'
-			return n.next ? `${hung}, включаю «${n.next}»` : `${hung}. Выберите другую камеру`
+			if (n.next) {
+				return `${hung}, включаю «${n.next}»`
+			}
+			return n.reload ? `${hung}. Обновите страницу и выберите другую камеру` : `${hung}. Выберите другую камеру`
 		},
 
 		videoStreamErrorMessage() {
