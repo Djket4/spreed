@@ -231,9 +231,8 @@ function view(m) {
 			g.append(v.r = mk('circle', { class: 'r', r: 9, fill: 'none', stroke: v.c, 'stroke-width': 3 }), v.p = mk('circle', { r: 8, fill: v.c, stroke: '#0005', 'stroke-width': 1.5 }))
 		} else if (m.tool === 'laser') {
 			g.append(
-				v.gl = mk('path', { class: 'gl', stroke: v.c, 'stroke-width': 16 }),
-				v.po = mk('path', { class: 'po', stroke: v.c, 'stroke-width': 5 }),
-				v.p = mk('path', { class: 'p', stroke: v.c, 'stroke-width': 6 }),
+				v.gl = mk('g', { stroke: v.c }),
+				v.p = mk('g', { stroke: v.c }),
 				v.tc = mk('circle', { r: 13, fill: v.c, opacity: 0.35 }),
 				v.tp = mk('circle', { class: 'tip', r: 5.5, stroke: v.c, 'stroke-width': 3 }),
 			)
@@ -328,12 +327,21 @@ function drawLaser(v) {
 			T.push(m.ts[i])
 		}
 	})
-	const k = T.findIndex((t) => now - t < LIFE / 2)
-	const old = k < 0 ? P : P.slice(0, k + 1)
-	const nw = k < 0 ? [] : P.slice(k)
-	v.po.setAttribute('d', smooth(old))
-	v.p.setAttribute('d', smooth(nw))
-	v.gl.setAttribute('d', smooth(nw))
+	// хвост гаснет плавно по всей длине: кривая Катмулла–Рома, у каждого кусочка свои толщина и прозрачность по возрасту
+	const [Q, QT] = curve(P, T)
+	const gl = []
+	const core = []
+	for (let i = 1; i < Q.length; i++) {
+		const f = Math.min(1, Math.max(0, (now - (QT[i - 1] + QT[i]) / 2) / LIFE))
+		if (f >= 1) {
+			continue
+		}
+		const xy = { x1: f1(Q[i - 1][0]), y1: f1(Q[i - 1][1]), x2: f1(Q[i][0]), y2: f1(Q[i][1]) }
+		gl.push(mk('line', { ...xy, 'stroke-width': f1(2 + 14 * (1 - f)), 'stroke-opacity': (0.26 * (1 - f)).toFixed(3) }))
+		core.push(mk('line', { ...xy, 'stroke-width': f1(1.2 + 5 * (1 - f) ** 0.7), 'stroke-opacity': ((1 - f) ** 1.3).toFixed(3) }))
+	}
+	v.gl.replaceChildren(...gl)
+	v.p.replaceChildren(...core)
 	const tip = P.length && !m.done ? P[P.length - 1] : null
 	for (const n of ['tc', 'tp']) {
 		v[n].style.display = tip ? '' : 'none'
@@ -342,6 +350,33 @@ function drawLaser(v) {
 			v[n].setAttribute('cy', f1(tip[1]))
 		}
 	}
+}
+
+/**
+ * Точки по кривой Катмулла–Рома (4 на отрезок) и время каждой.
+ *
+ * @param P точки в пикселях
+ * @param T время точек
+ */
+function curve(P, T) {
+	if (P.length < 2) {
+		return [P, T]
+	}
+	const Q = [P[0]]
+	const QT = [T[0]]
+	for (let i = 0; i < P.length - 1; i++) {
+		const p0 = P[Math.max(0, i - 1)]
+		const p1 = P[i]
+		const p2 = P[i + 1]
+		const p3 = P[Math.min(P.length - 1, i + 2)]
+		for (let s = 1; s <= 4; s++) {
+			const t = s / 4
+			const cr = (a, b, c, d) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t)
+			Q.push([cr(p0[0], p1[0], p2[0], p3[0]), cr(p0[1], p1[1], p2[1], p3[1])])
+			QT.push(T[i] + (T[i + 1] - T[i]) * t)
+		}
+	}
+	return [Q, QT]
 }
 
 /**
@@ -1058,8 +1093,7 @@ onBeforeUnmount(() => {
 	z-index: 3;
 	path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 	.sh { stroke: #000; stroke-opacity: .28; }
-	.laser .gl { stroke-opacity: .28; }
-	.laser .po { stroke-opacity: .38; }
+	.laser line { stroke-linecap: butt; }
 	.laser .tip { fill: #fff; }
 	g { transition: opacity .22s ease-in; }
 	g.out { opacity: 0; }
