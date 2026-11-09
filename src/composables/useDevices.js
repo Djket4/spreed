@@ -289,6 +289,13 @@ export const useDevices = createSharedComposable(function() {
 		videoTrackToStream.value.addInputTrackSlot('video')
 
 		virtualBackground.value.connectTrackSink('default', videoTrackToStream.value, 'video')
+		// ket4tec #43: выход цепочки (размытие, кадр по лицу) может прийти позже setVideoStream —
+		// тогда к превью уже привязан пустой поток. Привязываем, когда поток появился.
+		videoTrackToStream.value.on('streamSet', (trackToStream, stream) => {
+			if (stream && videoElement.value && videoStream.value && videoElement.value.srcObject !== stream) {
+				attachMediaStream(stream, videoElement.value, { autoplay: true, mirror: true, muted: true })
+			}
+		})
 
 		mediaDevicesManager.enableDeviceEvents()
 		updateAudioStream()
