@@ -57,7 +57,10 @@ export default function attachmediastream(stream, el, options) {
 	if (opts.autoplay) {
 		element.autoplay = 'autoplay'
 	}
-	element.muted = !!opts.muted
+	// ket4tec: у <video> звук всегда выключен (его играет отдельный <audio>) и выключен ДО srcObject —
+	// иначе автозапуск считается «со звуком», браузер его блокирует и плитка остаётся чёрной на паузе
+	// (так было с плитками, которые создаются после остановки показа экрана)
+	element.muted = opts.audio ? !!opts.muted : true
 	if (!opts.audio) {
 		['', 'moz', 'webkit', 'o', 'ms'].forEach(function(prefix) {
 			const styleName = prefix ? prefix + 'Transform' : 'transform'
@@ -70,5 +73,8 @@ export default function attachmediastream(stream, el, options) {
 	}
 
 	element.srcObject = stream
+	if (opts.autoplay && stream) {
+		element.play?.()?.catch(() => {}) // ket4tec: autoplay-атрибута мало, если элемент создан без жеста пользователя
+	}
 	return element
 }
