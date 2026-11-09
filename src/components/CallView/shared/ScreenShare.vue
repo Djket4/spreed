@@ -28,6 +28,10 @@
 					<NcButton variant="error" @click="stopLocalScreen">
 						{{ t('spreed', 'Stop screensharing') }}
 					</NcButton>
+					<!-- ket4tec: k4draw. Приложение для Мака: пометки поверх всего экрана и пульт звонка -->
+					<NcButton v-if="isMac()" variant="primary" @click="openMac()">
+						{{ macLabel[mac.st] }}
+					</NcButton>
 					<NcButton variant="tertiary" @click="showScreenPlaceholder = false">
 						{{ t('spreed', 'Dismiss') }}
 					</NcButton>
@@ -65,6 +69,7 @@ import DrawLayer from '../k4draw/DrawLayer.vue' // ket4tec: k4draw
 import VideoBottomBar from './VideoBottomBar.vue'
 import { useGuestNameStore } from '../../../stores/guestName.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
+import { isMac, mac, macLabel, openMac } from '../k4draw/macBridge.js' // ket4tec: k4draw
 import { bindLocalScreen, hasHpb, state as k4state, myId } from '../k4draw/useDrawing.js' // ket4tec: k4draw
 
 const ZOOM_MIN = 1
@@ -216,6 +221,10 @@ export default {
 		}
 
 		return {
+			isMac, // ket4tec: k4draw
+			mac,
+			macLabel,
+			openMac,
 			guestNameStore,
 			screen,
 			k4Presenter,

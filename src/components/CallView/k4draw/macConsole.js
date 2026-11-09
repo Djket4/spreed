@@ -6,14 +6,12 @@ import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 
-const FPS = 5
 const MAX = 8
 const vids = new Map() // id плитки -> <video> со своим потоком
 const cv = document.createElement('canvas')
 cv.width = 160
 cv.height = 90
 let box = null
-let timer = 0
 
 /**
  * Скрытый, но в DOM: Safari не отдаёт кадры <video> вне документа.
@@ -89,17 +87,16 @@ function snapshot() {
 }
 
 /**
+ * Кадр пульта: по `tick` приложения (5 раз в секунду), а не по своему таймеру — в фоновой вкладке Safari он спит.
+ *
  * @param send отправка в окно моста
  */
-export function startConsole(send) {
-	stopConsole()
-	timer = setInterval(() => send(snapshot()), 1000 / FPS)
+export function consoleTick(send) {
+	send(snapshot())
 }
 
 /** */
 export function stopConsole() {
-	clearInterval(timer)
-	timer = 0
 	vids.forEach((v) => {
 		v.srcObject = null
 	})

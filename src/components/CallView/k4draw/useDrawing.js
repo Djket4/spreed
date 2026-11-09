@@ -283,9 +283,35 @@ function enqueue(data) {
 }
 
 /**
+ * Сессия сигналинга сменилась посреди своего показа (переподключение с новой сессией — «переподключился к
+ * вызову», бывает у фоновой вкладки Safari). Зрители принимают `h` только с ключом от id отправителя, поэтому
+ * тот же показ (с пометками) получает ключ от нового id; старый id остаётся псевдонимом для слоя, смонтированного с ним.
+ */
+function rekey() {
+	const sid = me()
+	if (!myK || !sid || myK.startsWith(sid + ':')) {
+		return
+	}
+	const old = myK
+	myK = sid + ':' + Date.now()
+	const s = shows.get(old)
+	if (s) {
+		shows.delete(old)
+		s.k = myK
+		shows.set(myK, s)
+	}
+	Object.keys(state.keys).forEach((p) => state.keys[p] === old && (state.keys[p] = myK))
+	state.keys[sid] = myK
+	queue = queue.map((q) => (q.k === old ? { ...q, k: myK } : q))
+	snap = null
+	wire({ op: 'h', k: myK })
+}
+
+/**
  *
  */
 function flush() {
+	rekey()
 	const now = performance.now()
 	tokens = Math.min(RATE, tokens + (now - lastRefill) * RATE / 1000)
 	lastRefill = now
@@ -325,6 +351,17 @@ function flush() {
 			again && startSnap() // `q` пришёл во время прохода: ещё один (целиком)
 		}
 	}
+}
+
+/**
+ * Свой показ по ключу, а не по id сессии: сессия сигналинга может смениться посреди показа
+ * (переподключение HPB в фоновой вкладке Safari), а показ и слой остаются под прежним id.
+ */
+export const myShow = () => (myK && shows.get(myK)) || null
+
+/** Отправить очередь сейчас (мост k4draw: в фоновой вкладке Safari interval flush почти спит, часы ведёт приложение). */
+export function pumpNow() {
+	sig && flush()
 }
 
 // ── приём ──
@@ -1033,7 +1070,7 @@ export function clearMine() {
  * @param show
  */
 export function clearAll(show = showOf(state.big)) {
-	show && show.presenter === me() && local(show, { op: 'Z' })
+	show && show.k === myK && local(show, { op: 'Z' }) // по ключу: id сессии мог смениться посреди показа
 }
 
 /**

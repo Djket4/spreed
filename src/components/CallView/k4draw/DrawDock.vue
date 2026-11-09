@@ -44,13 +44,14 @@
 					Очистить всё
 				</button>
 				<!-- ket4tec: k4draw. Приложение для Мака: пометки поверх всего экрана показывающего -->
+				<span v-if="presenter && isMac() && mac.st === 'noapp'">Нет приложения для Мака</span>
 				<button
 					v-if="presenter && isMac()"
 					class="k4-pill k4-pill--ghost"
 					type="button"
-					:title="mac.st === 'launch' ? 'Приложение не отвечает: нажмите ещё раз, чтобы запустить его' : 'Пометки поверх всего экрана в приложении для Мака'"
+					:title="mac.st === 'noapp' ? 'Страница скачивания и короткая инструкция по установке' : mac.st === 'launch' ? 'Приложение не отвечает: нажмите ещё раз, чтобы запустить его' : mac.st === 'start' ? 'Когда приложение откроется, нажмите, чтобы подключить его' : 'Пометки поверх всего экрана в приложении для Мака'"
 					@click="openMac()">
-					{{ { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', on: 'На экране ✓', lost: 'Связь с приложением потеряна — переподключить' }[mac.st] }}
+					{{ mac.st === 'noapp' ? 'Скачать' : macLabel[mac.st] }}
 				</button>
 				<button
 					ref="snapBtn"
@@ -164,7 +165,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
-import { isMac, mac, openMac } from './macBridge.js'
+import { isMac, mac, macLabel, openMac } from './macBridge.js'
 import { downloadSnapshot, snap, takeSnapshot, watchSnaps } from './snapshot.js'
 import { clearAll, clearMine, isPresenter, reducedMotion, SP, state, TSIZE, undo } from './useDrawing.js'
 
