@@ -12,7 +12,15 @@ const STORAGE_KEY = 'k4FaceFrameLevel'
 export const LEVELS = ['off', 'auto', '1', '1.5', '2']
 export const LEVEL_LABELS = { off: 'Выкл', auto: 'Авто', 1: '1×', 1.5: '1,5×', 2: '2×' }
 
-const DETECT_INTERVAL_MS = 150 // ~6-7 раз/с
+const DETECT_INTERVAL_MS = 125 // не чаще 8 раз/с
+const TILE_INTERVAL_MS = 500 // плитки (лица нет) не чаще 2 раз/с
+const SLOW_DETECT_MS = 25 // дольше — следующая детекция откладывается
+const RVFC_WAIT_MS = 300 // нет первого rVFC -> requestAnimationFrame
+const MIN_FRAMES = 3 // кадров канваса до переключения выхода
+const NO_FRAMES_MS = 1500
+const MIN_FPS = 15
+const LOW_FPS_MS = 2000
+const STATS_LOG_MS = 5000
 const LOST_AFTER_MS = 2000
 const AUTO_MAX_ZOOM = 2.5
 const AUTO_FACE_SPAN = 2.6 // ширина окна = ширина рамки лиц * это
@@ -253,9 +261,16 @@ export default class FaceFrame extends TrackSinkSource {
 		const video = document.createElement('video')
 		video.muted = true
 		video.playsInline = true
+		video.autoplay = true
+		video.setAttribute('playsinline', '')
+		video.setAttribute('autoplay', '')
+		// iOS WebKit не декодирует <video> вне DOM: вставляем невидимым
+		video.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none'
 		video.srcObject = new MediaStream([input])
+		document.body.appendChild(video)
 		const canvas = document.createElement('canvas')
 		const ctx = canvas.getContext('2d')
+		const t0 = performance.now()
 		const d = {
 			input,
 			video,
@@ -265,10 +280,25 @@ export default class FaceFrame extends TrackSinkSource {
 			target: { cx: 0.5, cy: 0.5, zoom: 1 },
 			lastFace: 0,
 			tileIdx: 0,
-			lastDetect: 0,
+			noFace: true,
+			nextDetectAt: 0,
+			nextTileAt: 0,
 			lastTick: 0,
 			stopped: false,
 			detector: null,
+			startedAt: t0,
+			frames: 0, // отрисовок канваса с ненулевым размером
+			published: false,
+			sid: 0,
+			useRaf: !video.requestVideoFrameCallback,
+			rvfcFired: false,
+			durs: [],
+			detCount: 0,
+			fpsT: t0,
+			fpsFrames: 0,
+			fps: 0,
+			lowSince: 0,
+			lastLog: t0,
 		}
 		this._digital = d
 		video.play().catch(() => {})
@@ -276,29 +306,153 @@ export default class FaceFrame extends TrackSinkSource {
 			d.detector = detector
 		}).catch((e) => console.error('FaceFrame: детектор не загрузился', e))
 
-		const tick = (now) => {
-			if (d.stopped) {
-				return
-			}
-			this._renderFrame(d, now || performance.now())
-			schedule()
-		}
 		const schedule = () => {
-			if (video.requestVideoFrameCallback) {
-				video.requestVideoFrameCallback((now) => tick(now))
+			const id = ++d.sid // устаревшие колбэки (rVFC после перехода на rAF) игнорируются
+			const run = (now) => {
+				if (d.stopped || id !== d.sid) {
+					return
+				}
+				d.rvfcFired = d.rvfcFired || !d.useRaf
+				this._renderFrame(d, performance.now())
+				schedule()
+			}
+			if (d.useRaf) {
+				requestAnimationFrame(run)
 			} else {
-				d.timer = setTimeout(() => tick(performance.now()), 33)
+				video.requestVideoFrameCallback(run)
 			}
 		}
-		d.schedule = schedule
-
-		// выход создаём, когда известен размер кадра
-		video.addEventListener('loadedmetadata', () => {
-			if (d.stopped) {
-				return
+		schedule()
+		// rVFC на iOS может не стрелять — тогда рисуем по requestAnimationFrame
+		d.rvfcTimer = setTimeout(() => {
+			if (!d.stopped && !d.useRaf && !d.rvfcFired) {
+				d.useRaf = true
+				schedule()
 			}
-			schedule()
-		}, { once: true })
+		}, RVFC_WAIT_MS)
+		d.watch = setInterval(() => this._watch(d), 500)
+	}
+
+	// страховка и замеры: раз в 0,5 с
+	_watch(d) {
+		if (d.stopped) {
+			return
+		}
+		const now = performance.now()
+		if (now - d.fpsT >= 1000) {
+			d.fps = d.fpsFrames * 1000 / (now - d.fpsT)
+			d.fpsT = now
+			d.fpsFrames = 0
+		}
+		const sorted = [...d.durs].sort((a, b) => a - b)
+		const stats = {
+			path: this.path,
+			level: getFaceFrameLevel(),
+			fps: Math.round(d.fps * 10) / 10,
+			detAvg: sorted.length ? Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length * 10) / 10 : 0,
+			detP95: sorted.length ? Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] * 10) / 10 : 0,
+			detCount: d.detCount,
+			frames: d.frames,
+			scheduler: d.useRaf ? 'raf' : 'rvfc',
+			published: d.published,
+		}
+		window.__k4ffStats = stats
+		if (now - d.lastLog >= STATS_LOG_MS) {
+			d.lastLog = now
+			console.debug('FaceFrame', stats)
+		}
+
+		if (!d.published) {
+			if (now - d.startedAt > NO_FRAMES_MS) {
+				this._fallback(d, `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
+			}
+			return
+		}
+		if (d.fps < MIN_FPS) {
+			d.lowSince = d.lowSince || now
+			if (now - d.lowSince >= LOW_FPS_MS) {
+				this._fallback(d, `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс`)
+			}
+		} else {
+			d.lowSince = 0
+		}
+	}
+
+	// откат на исходный трек: уровень «Выкл» (селектор покажет), путь 'fallback'
+	_fallback(d, reason) {
+		if (d.stopped) {
+			return
+		}
+		console.warn('FaceFrame: кадр по лицу отключён —', reason)
+		const input = d.input
+		this._stopDigital()
+		setFaceFrameLevel('off')
+		this._setOutput(input)
+		this.path = 'fallback'
+		if (window.__k4ffStats) {
+			window.__k4ffStats.path = 'fallback'
+		}
+	}
+
+	_detectBoxes(d, source, W, H, now) {
+		const res = d.detector.detectForVideo(source, nextTs(now))
+		return res.detections
+			.filter((x) => x.boundingBox)
+			.map((x) => ({
+				x: x.boundingBox.originX / W,
+				y: x.boundingBox.originY / H,
+				w: x.boundingBox.width / W,
+				h: x.boundingBox.height / H,
+			}))
+	}
+
+	// не больше одной детекции за кадр: полный кадр (до 8 раз/с), а когда лица нет — плитка (до 2 раз/с)
+	_maybeDetect(d, now, lvl) {
+		const { video, canvas } = d
+		const full = now >= d.nextDetectAt
+		const tileDue = !full && d.noFace && now >= d.nextTileAt
+		if (!d.detector || !(full || tileDue)) {
+			return
+		}
+		const t = performance.now()
+		try {
+			let faces
+			let tile = null
+			if (full) {
+				faces = this._detectBoxes(d, video, canvas.width, canvas.height, now)
+			} else {
+				// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
+				tile = TILES[d.tileIdx % TILES.length]
+				const tc = d.tileCanvas ||= document.createElement('canvas')
+				tc.width = canvas.width
+				tc.height = canvas.height
+				tc.getContext('2d').drawImage(video, tile.x * canvas.width, tile.y * canvas.height, tile.w * canvas.width, tile.h * canvas.height, 0, 0, tc.width, tc.height)
+				faces = this._detectBoxes(d, tc, tc.width, tc.height, now).map((b) => tileToFrame(b, tile))
+			}
+			if (full) {
+				d.noFace = !faces.length
+			}
+			if (tile && !faces.length) {
+				d.tileIdx++
+			}
+			const target = computeTarget(faces, lvl)
+			if (target) {
+				d.target = target
+				d.lastFace = now
+			}
+		} catch (e) { /* пропускаем детекцию */ }
+		const dur = performance.now() - t
+		d.detCount++
+		d.durs.push(dur)
+		if (d.durs.length > 60) {
+			d.durs.shift()
+		}
+		if (full) {
+			d.nextDetectAt = now + (dur > SLOW_DETECT_MS ? Math.max(DETECT_INTERVAL_MS, dur * 4) : DETECT_INTERVAL_MS)
+		} else {
+			d.nextTileAt = now + TILE_INTERVAL_MS
+			d.nextDetectAt = Math.max(d.nextDetectAt, now + (dur > SLOW_DETECT_MS ? dur * 4 : 0))
+		}
 	}
 
 	_renderFrame(d, now) {
@@ -312,34 +466,6 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		const lvl = getFaceFrameLevel()
 
-		if (d.detector && now - d.lastDetect >= DETECT_INTERVAL_MS) {
-			d.lastDetect = now
-			try {
-				const toBoxes = (res, W, H) => res.detections
-					.filter((x) => x.boundingBox)
-					.map((x) => ({
-						x: x.boundingBox.originX / W,
-						y: x.boundingBox.originY / H,
-						w: x.boundingBox.width / W,
-						h: x.boundingBox.height / H,
-					}))
-				let faces = toBoxes(d.detector.detectForVideo(video, nextTs(now)), canvas.width, canvas.height)
-				if (!faces.length) {
-					// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
-					const tile = TILES[d.tileIdx++ % TILES.length]
-					const tc = d.tileCanvas ||= document.createElement('canvas')
-					tc.width = canvas.width
-					tc.height = canvas.height
-					tc.getContext('2d').drawImage(video, tile.x * canvas.width, tile.y * canvas.height, tile.w * canvas.width, tile.h * canvas.height, 0, 0, tc.width, tc.height)
-					faces = toBoxes(d.detector.detectForVideo(tc, nextTs(now)), tc.width, tc.height).map((b) => tileToFrame(b, tile))
-				}
-				const target = computeTarget(faces, lvl)
-				if (target) {
-					d.target = target
-					d.lastFace = now
-				}
-			} catch (e) { /* пропускаем кадр детекции */ }
-		}
 		if (now - d.lastFace > LOST_AFTER_MS) {
 			d.target = { cx: 0.5, cy: 0.5, zoom: 1 }
 		} else if (lvl !== 'auto') {
@@ -354,13 +480,28 @@ export default class FaceFrame extends TrackSinkSource {
 		const sw = canvas.width / d.win.zoom
 		const sh = canvas.height / d.win.zoom
 		ctx.drawImage(video, d.win.cx * canvas.width - sw / 2, d.win.cy * canvas.height - sh / 2, sw, sh, 0, 0, canvas.width, canvas.height)
+		d.frames++
+		d.fpsFrames++
 
-		// пока канвас пуст, на выходе остаётся исходный трек (картинка как в стоке, без серого);
-		// на канвасный трек переключаемся после первой отрисовки
 		if (!d.output) {
-			d.output = canvas.captureStream().getVideoTracks()[0]
+			try {
+				d.output = canvas.captureStream().getVideoTracks()[0]
+				if (!d.output) {
+					throw new Error('captureStream без видеотрека')
+				}
+			} catch (e) {
+				this._fallback(d, 'canvas.captureStream недоступен: ' + e.message)
+				return
+			}
+		}
+		// пока канвас не дал 3 кадров, на выходе остаётся исходный трек
+		if (!d.published && d.frames >= MIN_FRAMES) {
+			d.published = true
 			this._setOutput(d.output)
 		}
+
+		// детекция после отрисовки: кадр от неё не зависит
+		this._maybeDetect(d, now, lvl)
 	}
 
 	_stopDigital() {
@@ -369,8 +510,10 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 		d.stopped = true
-		clearTimeout(d.timer)
+		clearTimeout(d.rvfcTimer)
+		clearInterval(d.watch)
 		d.video.srcObject = null
+		d.video.remove()
 		if (d.output) {
 			this._disableRemoveTrackWhenEnded(d.output)
 			// останавливаем уже после того, как получатели переключились на новый
