@@ -503,6 +503,10 @@ class PollController extends AEnvironmentAwareOCSController {
 		'format' => '(ods|csv)',
 	])]
 	public function exportPoll(int $pollId, string $format): DataDownloadResponse|DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(['error' => 'poll'], Http::STATUS_NOT_FOUND);
+		}
+
 		try {
 			$poll = $this->pollService->getPoll($this->room->getId(), $pollId);
 		} catch (DoesNotExistException) {

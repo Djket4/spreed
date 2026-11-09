@@ -1130,7 +1130,13 @@ class RoomShareProvider implements IShareProvider, IPartialShareProvider, IShare
 			throw new ShareNotFound();
 		}
 
-		if ($room->getType() !== Room::TYPE_PUBLIC && $this->getCurrentParticipant($room) === null) {
+		$participant = $this->getCurrentParticipant($room);
+		if ($room->getType() !== Room::TYPE_PUBLIC && $participant === null) {
+			throw new ShareNotFound();
+		}
+
+		if ($participant !== null && $participant->cannotSeeChat()) {
+			// ket4tec #55: checked on every resolution, so it also covers chat revoked after the share was opened
 			throw new ShareNotFound();
 		}
 
