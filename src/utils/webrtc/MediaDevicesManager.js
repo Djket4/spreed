@@ -8,6 +8,7 @@ import { reactive } from 'vue'
 import BrowserStorage from '../../services/BrowserStorage.js'
 import {
 	getFirstAvailableMediaDevice,
+	isVirtualCamera,
 	listMediaDevices,
 	populateMediaDevicesPreferences,
 	promoteMediaDevice,
@@ -133,6 +134,38 @@ export default function MediaDevicesManager() {
 		this.attributes.videoInputId = null
 	}
 }
+
+const CAMERA_TIMEOUT_MS = 4000
+const CAMERA_TIMEOUT = Symbol('camera timeout')
+
+/**
+ * ket4tec: CAMERA_TIMEOUT через CAMERA_TIMEOUT_MS после того, как разрешение на камеру выдано
+ * (пока висит запрос разрешения, ожидание не идёт). Если браузер не говорит о разрешении (Firefox) —
+ * не срабатывает никогда.
+ *
+ * @return {Promise<symbol>}
+ */
+async function cameraTimeout() {
+	let status
+	try {
+		status = await navigator.permissions.query({ name: 'camera' })
+	} catch {
+		return new Promise(() => {})
+	}
+	if (status.state !== 'granted') {
+		await new Promise((resolve) => {
+			status.addEventListener('change', function onChange() {
+				if (status.state === 'granted') {
+					status.removeEventListener('change', onChange)
+					resolve()
+				}
+			})
+		})
+	}
+	await new Promise((resolve) => setTimeout(resolve, CAMERA_TIMEOUT_MS))
+	return CAMERA_TIMEOUT
+}
+
 MediaDevicesManager.prototype = {
 
 	get(key) {
@@ -522,7 +555,7 @@ MediaDevicesManager.prototype = {
 
 		this._stopIncompatibleTracks(constraints)
 
-		return navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+		return this._getUserMediaWithCameraFallback(constraints).then((stream) => {
 			this._registerStream(stream)
 
 			// In Firefox the dialog to grant media permissions allows the user
@@ -544,6 +577,53 @@ MediaDevicesManager.prototype = {
 
 			throw error
 		})
+	},
+
+	/**
+	 * ket4tec: камера без источника (NDI, OBS) вешает getUserMedia навсегда. Если через
+	 * CAMERA_TIMEOUT_MS после выданного разрешения кадра нет — бросаем её и берём следующую
+	 * камеру, физические раньше виртуальных. Ход виден превью через событие «cameraNotResponding».
+	 *
+	 * @param {object} constraints уже с deviceId
+	 * @param {Set<string>} tried камеры, которые не ответили
+	 * @return {Promise<MediaStream>}
+	 */
+	async _getUserMediaWithCameraFallback(constraints, tried = new Set()) {
+		const pending = navigator.mediaDevices.getUserMedia(constraints)
+		if (!constraints.video) {
+			return pending
+		}
+		const isOuterCall = tried.size === 0
+		const stream = await Promise.race([pending, cameraTimeout()])
+		if (stream !== CAMERA_TIMEOUT) {
+			return stream
+		}
+		// поздний ответ зависшей камеры не должен остаться висеть включённым
+		pending.then((late) => late.getTracks().forEach((track) => track.stop()), () => {})
+
+		const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput' && device.deviceId)
+		const hungId = constraints.video.deviceId?.exact ?? devices[0]?.deviceId ?? ''
+		tried.add(hungId)
+		const hung = devices.find((device) => device.deviceId === hungId)
+		const next = devices
+			.filter((device) => !tried.has(device.deviceId))
+			.sort((a, b) => isVirtualCamera(a) - isVirtualCamera(b))[0]
+		console.warn('Camera does not respond: ' + (hung?.label || hungId) + (next ? ', trying ' + next.label : ''))
+		this._trigger('cameraNotResponding', [{ label: hung?.label || '', next: next?.label || null }])
+		if (!next) {
+			throw new DOMException('Camera does not respond', 'TimeoutError')
+		}
+
+		const video = constraints.video === true ? {} : { ...constraints.video }
+		video.deviceId = { exact: next.deviceId }
+		const result = await this._getUserMediaWithCameraFallback({ ...constraints, video }, tried)
+		if (isOuterCall) {
+			// ответившая камера становится выбранной и первой в предпочтениях, зависшая уходит ниже
+			this.set('videoInputId', result.getVideoTracks()[0]?.getSettings().deviceId || next.deviceId)
+			const promote = () => this.updatePreferences('videoinput')
+			;(this._pendingEnumerateDevicesPromise ?? Promise.resolve()).then(promote, promote)
+		}
+		return result
 	},
 
 	_stopIncompatibleTracks(constraints) {

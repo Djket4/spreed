@@ -81,6 +81,10 @@
 							disableTooltip />
 					</div>
 
+					<p v-if="cameraNoticeText" class="preview__notice" role="status">
+						{{ cameraNoticeText }}
+					</p>
+
 					<!-- Audio and video toggles -->
 					<div class="media-settings__toggles">
 						<!-- Audio toggle -->
@@ -369,6 +373,7 @@ export default {
 			unsubscribeFromDevices,
 			audioStreamError,
 			videoStreamError,
+			cameraNotice,
 			virtualBackground,
 			registerVideoElement,
 		} = useDevices()
@@ -411,6 +416,7 @@ export default {
 			registerVideoElement,
 			audioStreamError,
 			videoStreamError,
+			cameraNotice,
 			virtualBackground,
 			tabs,
 			dialogHeaderId,
@@ -618,9 +624,22 @@ export default {
 			return t('spreed', 'Error while accessing microphone')
 		},
 
+		cameraNoticeText() {
+			const n = this.cameraNotice
+			if (!n) {
+				return null
+			}
+			const hung = n.label ? `Камера «${n.label}» не отвечает` : 'Камера не отвечает'
+			return n.next ? `${hung}, включаю «${n.next}»` : `${hung}. Выберите другую камеру`
+		},
+
 		videoStreamErrorMessage() {
 			if (!this.videoStreamError) {
 				return null
+			}
+
+			if (this.videoStreamError.name === 'TimeoutError') {
+				return 'Камера не отвечает. Выберите другую камеру'
 			}
 
 			if (this.videoStreamError.name === 'NotSupportedError' && !window.RTCPeerConnection) {
@@ -1100,6 +1119,22 @@ export default {
 		width: 100%;
 		height: 100%;
 		border-radius: var(--border-radius-element);
+	}
+
+	// ket4tec: «Камера не отвечает, включаю …» поверх превью
+	&__notice {
+		position: absolute;
+		top: calc(var(--default-grid-baseline) * 3);
+		inset-inline: calc(var(--default-grid-baseline) * 3);
+		z-index: 2;
+		margin: 0;
+		padding: calc(var(--default-grid-baseline) * 2) calc(var(--default-grid-baseline) * 3);
+		border-radius: var(--border-radius-element);
+		background: rgba(0, 0, 0, 0.72);
+		color: #fff;
+		font-size: 15px;
+		line-height: 1.35;
+		text-align: center;
 	}
 }
 
