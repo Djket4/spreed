@@ -50,7 +50,7 @@
 					type="button"
 					:title="mac.st === 'launch' ? 'Приложение не отвечает: нажмите ещё раз, чтобы запустить его' : 'Пометки поверх всего экрана в приложении для Мака'"
 					@click="openMac()">
-					{{ { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', on: 'На экране ✓', lost: 'Связь с приложением потеряна — переподключить' }[mac.st] }}
+					{{ macLabel[mac.st] }}
 				</button>
 				<button
 					ref="snapBtn"
@@ -164,7 +164,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
-import { isMac, mac, openMac } from './macBridge.js'
+import { isMac, mac, macLabel, openMac } from './macBridge.js'
 import { downloadSnapshot, snap, takeSnapshot, watchSnaps } from './snapshot.js'
 import { clearAll, clearMine, isPresenter, reducedMotion, SP, state, TSIZE, undo } from './useDrawing.js'
 

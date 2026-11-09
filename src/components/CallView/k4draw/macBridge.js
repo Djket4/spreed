@@ -17,6 +17,8 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(
 
 /** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
+/** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent)
 
 let pop = null
