@@ -30,7 +30,7 @@ describe('FaceFrame в цепочке превью', () => {
 		expect(tts.getStream()?.getTracks()).toEqual([track])
 		ff.destroy() // иначе узел реагирует на смену уровня в следующем тесте
 	})
-	test('страховка: канвас без кадров -> через 1,5 с на выходе исходный трек', () => {
+	test('страховка: канвас без кадров -> через 2 с на выходе исходный трек', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
 		window.MediaStream = function(tracks = []) {
 			this._tracks = [...tracks]
@@ -44,7 +44,7 @@ describe('FaceFrame в цепочке превью', () => {
 		ff._setInputTrack('default', track)
 		return vi.advanceTimersByTimeAsync(100).then(() => {
 			expect(ff.path).toBe('digital')
-			return vi.advanceTimersByTimeAsync(2000)
+			return vi.advanceTimersByTimeAsync(2600)
 		}).then(() => {
 			expect(ff.path).toBe('fallback')
 			expect(ff.getOutputTrack()).toBe(track)

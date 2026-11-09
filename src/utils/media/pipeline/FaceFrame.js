@@ -17,7 +17,7 @@ const TILE_INTERVAL_MS = 500 // плитки (лица нет) не чаще 2 �
 const SLOW_DETECT_MS = 25 // дольше — следующая детекция откладывается
 const RVFC_WAIT_MS = 300 // нет первого rVFC -> requestAnimationFrame
 const MIN_FRAMES = 3 // кадров канваса до переключения выхода
-const NO_FRAMES_MS = 1500
+const NO_FRAMES_MS = 2000
 const MIN_FPS = 15
 const LOW_FPS_MS = 2000
 const STATS_LOG_MS = 5000
@@ -362,6 +362,12 @@ export default class FaceFrame extends TrackSinkSource {
 			console.debug('FaceFrame', stats)
 		}
 
+		// вкладка в фоне: rAF/rVFC стоят, fps 0 — это не поломка, страховку не судим
+		if (document.hidden) {
+			d.lowSince = 0
+			d.startedAt = now
+			return
+		}
 		if (!d.published) {
 			if (now - d.startedAt > NO_FRAMES_MS) {
 				this._fallback(d, `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
