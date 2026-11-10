@@ -522,7 +522,9 @@ html.k7f body {
 			line-height: 20px !important;
 			color: var(--k7u-fg2) !important;
 		}
-		.input-field__input:is(:focus, :not(:placeholder-shown)) + .input-field__label {
+		// пустое поле — подпись по центру и в фокусе (курсор встаёт по центру рядом с ней); с текстом — вверху, мельче
+		.input-field__input:placeholder-shown { padding-block: 16px !important; }
+		.input-field__input:not(:placeholder-shown) + .input-field__label {
 			inset-block-start: 8px !important;
 			transform: none;
 			font-size: 12px !important;
@@ -559,7 +561,8 @@ html.k7f body {
 			line-height: 20px !important;
 			color: var(--k7u-fg2) !important;
 		}
-		.textarea__input:is(:focus, :not(:placeholder-shown)) + .textarea__label {
+		.textarea__input:placeholder-shown { padding-top: 17px !important; }
+		.textarea__input:not(:placeholder-shown) + .textarea__label {
 			inset-block-start: 8px !important;
 			font-size: 12px !important;
 			line-height: 16px !important;
@@ -652,4 +655,11 @@ html.k7f .message--sided.outgoing > .message-body { border-start-end-radius: 8px
 		:is(.action-button, .action-link, .action-router) { min-height: 52px; font-size: 16px; }
 		.action-button__longtext-wrapper, .action-button__text { white-space: normal; }
 	}
+}
+
+// ---------- Блок 5: круглая кнопка разделов Стола (#k7-fab) в списке бесед на телефоне ----------
+// меньше и ниже правого края времени; у списка запас снизу, чтобы последняя беседа выезжала из-под кнопки
+@media (max-width: $phone) {
+	html.k7f[data-k7-app="spreed"] #k7.k7-phone .k7-fan { width: 60px !important; height: 60px !important; right: 12px !important; }
+	html.k7f[data-k7-app="spreed"] .left-sidebar .scroller { padding-bottom: 88px; box-sizing: border-box; }
 }
