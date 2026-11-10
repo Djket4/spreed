@@ -641,7 +641,7 @@ html.k7f .message--sided.outgoing > .message-body { border-start-end-radius: 8px
 		.v-popper__inner {
 			width: 100%;
 			max-width: none !important;
-			max-height: calc(100dvh - 110px - var(--k7-sheet-bottom, 0px)) !important;
+			max-height: calc(var(--k7-vh, 100dvh) - 110px - var(--k7-sheet-bottom, 0px)) !important;
 			overflow-y: auto !important;
 			overscroll-behavior: contain;
 			padding: 10px 8px max(10px, env(safe-area-inset-bottom, 0px)) !important;
