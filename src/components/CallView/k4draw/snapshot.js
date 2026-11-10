@@ -197,13 +197,8 @@ export async function shoot(token, btn = null, quiet = false) {
 	try {
 		const blob = await render(true)
 		fly(blob, btn)
-		const file = new File([blob], fileName(), { type: 'image/png' })
-		// «Поделиться» — до запроса к серверу, пока жест пользователя ещё действует
-		if (quiet) {
-			// без системных окон
-		} else if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
-			navigator.share({ files: [file] }).catch(() => {})
-		} else if (amGuest()) {
+		// ket4tec (NAS_CLOUD#103 п.40): снимок тихо уходит в Файлы, без системного окна «Поделиться»; гостю (у него нет Файлов) — скачать
+		if (!quiet && amGuest()) {
 			save(blob)
 		}
 		const fd = new FormData()
@@ -212,7 +207,7 @@ export async function shoot(token, btn = null, quiet = false) {
 		const id = res.data?.ocs?.data?.id
 		sendSnap(snap.n + 1)
 		const link = id && !amGuest() ? generateUrl('/f/{id}', { id }) : ''
-		showSuccess(link ? 'Сохранено в Файлы · открыть' : 'Сохранено в Файлы', link ? { onClick: () => window.open(link, '_blank', 'noopener') } : {})
+		showSuccess(link ? 'Сохранено · открыть' : 'Сохранено', link ? { onClick: () => window.open(link, '_blank', 'noopener') } : {})
 		return true
 	} catch (e) {
 		console.error('k4draw shoot', e)

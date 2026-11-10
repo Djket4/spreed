@@ -34,52 +34,9 @@
 				<symbol id="k4i-undo" viewBox="0 0 24 24"><path d="M9 13.5L4.5 9 9 4.5" /><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-3" /></symbol>
 				<symbol id="k4i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></symbol>
 				<symbol id="k4i-camera" viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" /><circle cx="12" cy="12.5" r="3.4" /></symbol>
+				<symbol id="k4i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></symbol>
 				<symbol id="k4i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" /></symbol>
 			</svg>
-
-			<header class="k4-dh">
-				<div class="k4-ttl">
-					<b><i />{{ board ? 'Доска' : 'Пометки видят все' }}</b>
-					<span>{{ sub }}</span>
-				</div>
-				<button
-					v-if="mod"
-					class="k4-pill k4-pill--ghost"
-					type="button"
-					:aria-pressed="state.gd"
-					title="Модератор: могут ли гости рисовать"
-					@click="setGuestsDraw(!state.gd)">
-					Гости: {{ state.gd ? 'да' : 'нет' }}
-				</button>
-				<button
-					v-if="canClear"
-					class="k4-pill k4-pill--ghost"
-					type="button"
-					aria-label="Очистить всё"
-					@click="clearAll()">
-					Очистить всё
-				</button>
-				<!-- ket4tec: k4draw. Приложение для Мака: пометки поверх всего экрана показывающего -->
-				<span v-if="presenter && !board && isMac() && mac.st === 'noapp'">Нет приложения для Мака</span>
-				<button
-					v-if="presenter && !board && isMac()"
-					class="k4-pill k4-pill--ghost"
-					type="button"
-					:title="mac.st === 'noapp' ? 'Страница скачивания и короткая инструкция по установке' : mac.st === 'launch' ? 'Приложение не отвечает: нажмите ещё раз, чтобы запустить его' : mac.st === 'start' ? 'Когда приложение откроется, нажмите, чтобы подключить его' : 'Пометки поверх всего экрана в приложении для Мака'"
-					@click="openMac()">
-					{{ mac.st === 'noapp' ? 'Скачать' : macLabel[mac.st] }}
-				</button>
-				<button
-					class="k4-cb"
-					type="button"
-					aria-label="Очистить своё"
-					@click="clearMine">
-					<svg class="k4-ico"><use href="#k4i-trash" /></svg>
-				</button>
-				<button class="k4-pill" type="button" @click="close">
-					Готово
-				</button>
-			</header>
 
 			<div class="k4-fsel" :class="{ on: state.tool === 'fade' }">
 				<span>Гаснет через</span>
@@ -122,11 +79,12 @@
 				</div>
 			</div>
 
-			<!-- ket4tec: k4draw. Свой цвет и толщина: на компьютере строка над доком, на телефоне поповер по точке в доке -->
+			<!-- ket4tec: k4draw. Свой цвет и толщина — поповер по точке в доке, одинаково на iPhone, iPad и компьютере (п.11, 12) -->
 			<div
 				class="k4-style"
 				:class="{ up: state.tool === 'fade' || state.tool === 'text', open: pal }"
-				@mousedown.prevent>
+				@mousedown.prevent
+				@click="$event.target.closest('.k4-sw') && (pal = false)">
 				<button
 					type="button"
 					class="k4-sw k4-sw--auto"
@@ -157,6 +115,38 @@
 				</div>
 			</div>
 
+			<!-- ket4tec (п.8, 12–14, 38): вместо верхней шапки — меню «Ещё» у дока; на iPhone и iPad одинаково -->
+			<div
+				class="k4-more"
+				:class="{ open: more }"
+				@mousedown.prevent>
+				<button
+					v-if="mod"
+					type="button"
+					:aria-pressed="state.gd"
+					title="Модератор: могут ли гости рисовать"
+					@click="setGuestsDraw(!state.gd)">
+					Гости рисуют: {{ state.gd ? 'да' : 'нет' }}
+				</button>
+				<button type="button" @click="clearMine(); more = false">
+					Стереть своё
+				</button>
+				<button
+					v-if="canClear"
+					type="button"
+					@click="clearAll(); more = false">
+					Стереть всё у всех
+				</button>
+				<!-- ket4tec: k4draw. Приложение для Мака: пометки поверх всего экрана показывающего -->
+				<button
+					v-if="presenter && !board && isMac()"
+					type="button"
+					:title="mac.st === 'noapp' ? 'Страница скачивания и короткая инструкция по установке' : mac.st === 'launch' ? 'Приложение не отвечает: нажмите ещё раз, чтобы запустить его' : mac.st === 'start' ? 'Когда приложение откроется, нажмите, чтобы подключить его' : 'Пометки поверх всего экрана в приложении для Мака'"
+					@click="openMac()">
+					{{ mac.st === 'noapp' ? 'Приложение для Мака: скачать' : macLabel[mac.st] }}
+				</button>
+			</div>
+
 			<nav ref="dock" class="k4-dock">
 				<div class="k4-tools">
 					<i class="k4-sp" :style="{ '--px': px + 'px' }" />
@@ -168,16 +158,16 @@
 						:class="{ sel: state.tool === b.id }"
 						type="button"
 						:aria-label="b.label"
+						:title="b.label"
 						@click="pick(b.id)">
 						<svg class="k4-ico"><use :href="'#k4i-' + b.id" /></svg>
-						<sup v-if="b.id === 'fade'">{{ state.ft }}</sup>
 					</button>
 					<button
 						class="k4-tb k4-dot"
 						type="button"
 						aria-label="Цвет и толщина"
 						:aria-expanded="pal"
-						@click="pal = !pal">
+						@click="pal = !pal; more = false">
 						<i :style="{ background: meColor() }" />
 					</button>
 					<hr>
@@ -200,12 +190,20 @@
 						<svg class="k4-ico"><use href="#k4i-camera" /></svg>
 						<sup v-if="snap.n">{{ snap.n }}</sup>
 					</button>
+					<button
+						class="k4-tb"
+						type="button"
+						aria-label="Ещё"
+						:aria-expanded="more"
+						@click="more = !more; pal = false">
+						<svg class="k4-ico"><use href="#k4i-more" /></svg>
+					</button>
 					<hr>
 					<button
 						class="k4-tb k4-tb--close"
 						type="button"
-						:aria-label="board ? 'Закрыть доску' : 'Закрыть рисование'"
-						:title="board ? 'Закрыть доску' : 'Закрыть рисование (Esc)'"
+						:aria-label="closeLabel"
+						:title="closeLabel"
 						@click="board ? closeBoardBtn() : close()">
 						<svg class="k4-ico"><use href="#k4i-close" /></svg>
 					</button>
@@ -233,7 +231,8 @@ const TOOLS = [
 ]
 
 const TL = [0, 3, 10]
-const pal = ref(false) // телефон: поповер цвета и толщины
+const pal = ref(false) // поповер цвета и толщины
+const more = ref(false) // меню «Ещё»
 const meColor = () => myColor()
 const token = useGetToken()
 const snapBtn = ref(null)
@@ -257,10 +256,7 @@ function closeBoardBtn() {
 		state.boardHidden = true
 	}
 }
-const sub = computed(() => {
-	const t = TOOLS.find((x) => x.id === state.tool)
-	return (state.tool === 'eraser' && amMod() ? 'ластик · любые пометки' : t.sub) + (state.tool === 'fade' ? state.ft + ' с' : '') + (state.tool === 'text' ? ' · ' + state.tsz.toUpperCase() + ' · ' + (state.tl ? 'гаснет ' + state.tl + ' с' : 'остаётся') : '')
-})
+const closeLabel = computed(() => (board.value ? (presenter.value ? 'Закрыть доску у всех' : 'Скрыть доску у себя') : 'Закрыть рисование (Esc)'))
 const vars = { '--sp-in': SP.in, '--sp-menu': SP.menu }
 // шапка-капсула живёт в пределах сцены звонка: под шапкой Стола и шапкой беседы, шапка Стола остаётся кликабельной
 const scene = reactive({})
@@ -276,6 +272,9 @@ function placeScene() {
 	scene['--k4-sl'] = Math.max(cc.left, 0) + 12 + 'px'
 	scene['--k4-sr'] = Math.max(window.innerWidth - cc.right, 0) + 12 + 'px'
 	scene['--k4-st'] = Math.max(tb ? tb.bottom : 0, cc.top) + 12 + 'px'
+	// док стоит над панелью звонка: она теперь видна и в режиме рисования (п.9)
+	const bb = document.querySelector('#call-container > .bottom-bar')?.getBoundingClientRect()
+	scene['--k4-sb'] = Math.max(0, window.innerHeight - (bb ? bb.top : window.innerHeight)) + 'px'
 }
 let sceneRO = null
 
@@ -330,7 +329,7 @@ onMounted(() => {
 	placeScene()
 	window.addEventListener('resize', placeScene)
 	sceneRO = new ResizeObserver(placeScene)
-	;[document.getElementById('call-container'), document.querySelector('.top-bar')].forEach((n) => n && sceneRO.observe(n))
+	;[document.getElementById('call-container'), document.querySelector('.top-bar'), document.querySelector('#call-container > .bottom-bar')].forEach((n) => n && sceneRO.observe(n))
 	if (reducedMotion()) {
 		return
 	}
@@ -368,59 +367,22 @@ onMounted(() => {
 	button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; position: relative; touch-action: manipulation; }
 	.k4-ico { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
 }
-.k4-dh {
-	position: absolute; left: var(--k4-sl, 12px); right: var(--k4-sr, 12px); top: var(--k4-st, calc(env(safe-area-inset-top, 0px) + 12px)); max-width: 640px; margin-inline: auto; display: flex; align-items: center; gap: 8px; pointer-events: auto;
-	padding: 8px 8px 8px 16px; border-radius: 999px;
-	background: var(--k4-glass); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
-	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
-	animation: k4-in .3s ease-out;
-}
-.k4-ttl {
-	flex: 1; min-width: 0; line-height: 1.15;
-	b { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; letter-spacing: -.012em; }
-	b i { width: 10px; height: 10px; border-radius: 50%; background: var(--k4-me); box-shadow: 0 0 10px var(--k4-me); }
-	span { font-size: 13px; color: var(--k4-fg3); }
-}
 // тема облака в светлом режиме красит все button белым: держим фон дока
-.k4-dockwrap button:not(.k4-pill):not(.k4-cb):not(.k4-sw) { background: transparent !important; }
-.k4-dockwrap .k4-cb { background: #ffffff12 !important; }
-.k4-dockwrap .k4-pill { background: var(--k4-grad) !important; }
-.k4-dockwrap .k4-pill--ghost { background: #ffffff14 !important; }
-.k4-dockwrap .k4-cb {
-	flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: #ffffff12; transition: transform .12s ease-out;
-	&:active { transform: scale(.9); }
-}
-.k4-dockwrap .k4-pill {
-	flex: none; height: 44px; padding: 0 20px; border-radius: 999px; background: var(--k4-grad); color: #fff; font-weight: 700; font-size: 15px; box-shadow: 0 6px 20px #a86bff40; transition: transform .12s ease-out;
-	&:active { transform: scale(.94); }
-	&--ghost { background: #ffffff14; box-shadow: none; font-size: 14px; padding: 0 16px; }
-}
+.k4-dockwrap button:not(.k4-sw) { background: transparent !important; }
+// ket4tec (п.9, 36): док над панелью звонка, по центру сцены звонка (не окна) — на одной оси с доской и при открытой боковой панели
 .k4-dock {
-	position: absolute; left: 50%; bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 2px)); width: 500px; max-width: calc(100% - 24px); height: 72px; margin-left: -250px; border-radius: 999px; pointer-events: auto;
+	position: absolute; left: var(--k4-sl, 12px); right: var(--k4-sr, 12px); bottom: calc(var(--k4-sb, 0px) + 8px); width: min(560px, calc(100% - var(--k4-sl, 12px) - var(--k4-sr, 12px))); height: 56px; margin-inline: auto; border-radius: 999px; pointer-events: auto;
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
 	animation: k4-up .42s var(--sp-in) both;
 }
-/* телефон: док во всю ширину, кнопки 34; «Снимок» в доке — на телефоне это главный путь */
+/* телефон: 12 кнопок в ширину экрана — кнопки 30 */
 @media (max-width: 500px) {
-	.k4-dh { padding-left: 12px; gap: 6px; }
-	.k4-ttl { min-width: 0; }
-	.k4-ttl b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
-	.k4-ttl b i { display: inline-block; margin-right: 8px; vertical-align: middle; }
-	.k4-ttl span { display: none; }
-	.k4-dockwrap .k4-pill--ghost { padding: 0 10px; font-size: 12.5px; }
-	.k4-dockwrap .k4-pill:not(.k4-pill--ghost) { padding: 0 14px; }
-	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
-	.k4-dockwrap .k4-dock .k4-tools { padding: 0 8px; }
-	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 31px; height: 31px; }
-	.k4-dockwrap .k4-dock .k4-sp { top: 20.5px; }
-	.k4-dockwrap .k4-dock .k4-dot { display: grid; }
 	.k4-dockwrap .k4-dock .k4-tools { padding: 0 6px; }
-	/* поповер: 9 цветов в ряд, толщина строкой ниже; закрыт, пока не нажали точку */
-	.k4-style { display: none; width: calc(100% - 24px); max-width: 340px; flex-wrap: wrap; justify-content: center; border-radius: 24px; padding: 8px; gap: 8px 6px; }
-	.k4-style.open { display: flex; }
+	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 30px; height: 30px; }
+	.k4-dockwrap .k4-dock .k4-sp { top: 13px; }
+	.k4-tools hr { display: none; }
 	.k4-dockwrap .k4-style .k4-sw { width: 30px; height: 30px; }
-	.k4-style .k4-wsz { flex-basis: 100%; width: 100%; margin-left: 0; }
 }
 /* custom.css темы красит глобальный .k4-ico плиткой приложения: в доке это значок */
 body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !important; border-radius: 0; position: static; }
@@ -436,13 +398,14 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	&.sel { color: #fff; }
 	&--close:hover { color: #ff6b81; }
 	&:disabled { opacity: .35; }
-	sup { position: absolute; right: 2px; top: 3px; min-width: 17px; height: 15px; padding: 0 3px; border-radius: 8px; background: #ffffff26; color: var(--k4-fg); font-weight: 700; font-size: 10px; line-height: 15px; text-align: center; }
+	// счётчик снимков — бейдж за краем значка, не поверх него (п.10/41)
+	sup { position: absolute; right: -5px; top: -3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--k4-acc); color: #fff; font-weight: 700; font-size: 10px; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px #2a2426; }
 }
 .k4-sp {
-	position: absolute; top: 16px; left: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--k4-grad); box-shadow: 0 4px 14px #a86bff55; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);
+	position: absolute; top: 8px; left: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--k4-grad); box-shadow: 0 4px 14px #a86bff55; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);
 }
 .k4-fsel {
-	position: absolute; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 82px); display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 4px 0 16px; border-radius: 999px;
+	position: absolute; left: calc(50% + (var(--k4-sl, 0px) - var(--k4-sr, 0px)) / 2); bottom: calc(var(--k4-sb, 0px) + 72px); display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 4px 0 16px; border-radius: 999px;
 	transform: translate(-50%, 10px) scale(.92); opacity: 0; visibility: hidden; pointer-events: auto;
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair); font-size: 13.5px; color: var(--k4-fg2); white-space: nowrap;
@@ -455,12 +418,20 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	button { z-index: 1; text-align: center; font-size: 13.5px; font-weight: 600; color: var(--k4-fg2); border-radius: 999px; transition: color .2s; }
 	button[aria-pressed=true] { color: #fff; }
 }
-.k4-style {
-	position: absolute; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 82px); display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 999px;
-	transform: translateX(-50%); pointer-events: auto;
+.k4-style, .k4-more {
+	position: absolute; left: calc(50% + (var(--k4-sl, 0px) - var(--k4-sr, 0px)) / 2); bottom: calc(var(--k4-sb, 0px) + 72px); display: none; align-items: center; pointer-events: auto;
+	transform: translateX(-50%);
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
-	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair);
-	&.up { bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 138px); }
+	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 8px 24px #0005;
+	&.open { display: flex; }
+	&.up { bottom: calc(var(--k4-sb, 0px) + 128px); }
+}
+// цвета и толщина: 9 цветов в ряд, толщина строкой ниже
+.k4-style { width: min(340px, calc(100% - 24px)); flex-wrap: wrap; justify-content: center; gap: 8px 6px; padding: 8px; border-radius: 24px; }
+.k4-style .k4-wsz { flex-basis: 100%; width: 100%; margin-left: 0; }
+.k4-more {
+	flex-direction: column; align-items: stretch; gap: 2px; min-width: 220px; padding: 6px; border-radius: 20px;
+	button { height: 44px; padding: 0 14px; border-radius: 14px; text-align: start; font-size: 15px; font-weight: 600; color: var(--k4-fg); }
 }
 .k4-dockwrap .k4-style .k4-sw {
 	flex: none; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: var(--c) !important; box-shadow: inset 0 0 0 1px #0004; transition: transform .12s ease-out;
@@ -469,16 +440,15 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	&:active { transform: scale(.88); }
 }
 .k4-style .k4-wsz {
-	width: 108px; height: 34px; margin-left: 4px;
+	height: 34px;
 	button { display: grid; place-items: center; }
 	b { display: block; width: 18px; border-radius: 3px; background: currentColor; }
 }
-.k4-dock .k4-dot { display: none; }
 .k4-dock .k4-dot i { width: 20px; height: 20px; border-radius: 50%; box-shadow: 0 0 0 2px #fff, inset 0 0 0 1px #0004; }
 @keyframes k4-in { from { opacity: 0; transform: translateY(-8px); } }
 @keyframes k4-up { from { opacity: 0; transform: translateY(24px) scale(.94); } }
 @media (prefers-reduced-motion: reduce) {
-	.k4-dh, .k4-dock { animation: none; }
+	.k4-dock { animation: none; }
 	.k4-sp, .k4-seg > i, .k4-fsel { transition: none; }
 }
 </style>
