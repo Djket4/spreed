@@ -41,6 +41,7 @@ const roomName = computed<string>(() => store.getters.conversation(token.value)?
 	padding: 24px 16px;
 	box-sizing: border-box;
 	color: var(--k7-fg, #f3eee9);
+	background: var(--k7-bg, #1a1718); // тёплый фон темы, не белый лист под бежевой шапкой
 
 	&__name {
 		margin: 0;
