@@ -247,6 +247,10 @@
 						</template>
 						{{ k4BoardLabel() }}
 					</NcButton>
+					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна -->
+					<p v-if="isBeforeJoinCall && isGuest && !guestNameStore.guestUserName.length" class="k4-join-hint">
+						Введите имя, чтобы войти
+					</p>
 					<NcButton
 						v-if="showUpdateChangesButton"
 						class="action-button"
@@ -1252,4 +1256,19 @@ export default {
 	width: unset !important;
 }
 
+</style>
+
+<style lang="scss">
+// ket4tec 9Б (приёмка 10.11). Вес :root:root:root — поверх k7call.scss, сам k7call.scss не трогаем (там же работает 9А).
+// п.1: микрофон и камера — в нижний угол превью, не на лицо
+:root:root:root body .media-settings__toggles { inset: auto; inset-block-end: 12px; inset-inline-start: 12px; transform: none; gap: 8px; }
+:root:root:root body .media-settings__toggles .button-vue { width: 44px; min-width: 44px; height: 44px; }
+// п.2: длинное имя камеры — многоточие с отступом от стрелки
+:root:root:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected-options { padding-inline-end: 12px !important; }
+// п.26
+.media-settings .k4-join-hint { margin: 10px 0 0; text-align: center; font-size: 14px; color: var(--k7-fg2, var(--color-text-maxcontrast)); }
+@media (max-width: 500px) {
+	:root:root:root body .media-settings__toggles { inset-block-end: 10px; inset-inline-start: 10px; }
+	:root:root:root body .media-settings__toggles .button-vue { width: 40px; min-width: 40px; height: 40px; }
+}
 </style>

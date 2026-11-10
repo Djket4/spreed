@@ -661,6 +661,8 @@ body#body-public {
 
 <style lang="scss" src="./assets/k7ui.scss"></style>
 
+<style lang="scss" src="./assets/k7guest.scss"></style>
+
 <style lang="scss" scoped>
 
 .content {

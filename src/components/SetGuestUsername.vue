@@ -132,15 +132,16 @@ function toggleEdit() {
 				v-model="guestUserName"
 				:placeholder="t('spreed', 'Guest')"
 				class="username-form__input"
-				:label="t('spreed', 'Display name (required)')"
+				:label="compact ? 'Ваше имя' /* ket4tec 9Б п.25: длинная подпись обрезалась */ : t('spreed', 'Display name (required)')"
 				:showTrailingButton="!!guestUserName && !compact"
 				trailingButtonIcon="arrowEnd"
 				:trailingButtonLabel="t('spreed', 'Save name')"
 				@trailingButtonClick="!compact ? updateDisplayName() : null"
 				@keydown.enter="!compact ? updateDisplayName() : null"
 				@keydown.esc="toggleEdit" />
+			<!-- ket4tec 9Б п.25: в компактном поле кубик без подписи непонятен — только в правке имени -->
 			<NcButton
-				v-if="isEditingUsername || compact"
+				v-if="isEditingUsername && !compact"
 				variant="tertiary"
 				:aria-label="t('spreed', 'Придумать имя')"
 				:title="t('spreed', 'Придумать имя')"

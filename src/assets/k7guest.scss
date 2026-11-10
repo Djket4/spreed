@@ -1,0 +1,29 @@
+// ket4tec 9Б п.23/55: гость без учётки. У него нет шапки Стола: ни data-k7-app, ни body.k4-light (их ставит
+// ket4tec_launchpad только залогиненным), и токены --tk-* не приходят — звонок и проверка устройств падали
+// в тёмные запасные цвета, а страница гостя (custom.css #body-public.has-topbar) идёт по prefers-color-scheme.
+// Отсюда «наполовину чёрный» интерфейс, в том числе во встроенном браузере Telegram.
+// Один источник темы для гостя — prefers-color-scheme, как у страницы и у ядра облака. Цвета — из custom.css.
+body#body-public {
+	--tk-bg: #f4efe9; --tk-bg2: #ffffff; --tk-bg3: #f3eee8; --tk-bg2-rgb: 255, 255, 255;
+	--tk-line: #0000000f; --tk-line2: #0000001a; --tk-fg: #1d1819; --tk-fg2: #6d6360;
+	--tk-acc: #a86bff; --tk-acc2: #5b2a86; --tk-accs: #a86bff22; --tk-pill: #1d181914;
+	--tk-grad: linear-gradient(135deg, #5b2a86, #a86bff); --tk-dng: #e5453d; --tk-dngfg: #d23a32;
+	// то же, что body.k4-light в k7call.scss
+	--k7-tile-a: #ece3f1;
+	--k7-tile-b: #d9cde7;
+	--k7-glass: color-mix(in srgb, var(--k7-bg2) 78%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+	body#body-public {
+		--tk-bg: #1a1718; --tk-bg2: #242021; --tk-bg3: #2c2627; --tk-bg2-rgb: 36, 32, 33;
+		--tk-line: #ffffff12; --tk-line2: #ffffff1f; --tk-fg: #f3eee9; --tk-fg2: #bdb3ad;
+		--tk-accs: #a86bff26; --tk-pill: #ffffff1f; --tk-dngfg: #ff7a72;
+		--k7-tile-a: #3b2f3f;
+		--k7-tile-b: #1d1620;
+		--k7-glass: color-mix(in srgb, var(--k7-bg2) 74%, transparent);
+	}
+}
+
+// п.27: пока открыта «Проверка устройств», имя и «Войти» за окном (боковая панель, пустое место гостя) не дублируем
+body#body-public:has(.modal-container .media-settings) :is(.app-sidebar .username-form, .guest-join) { visibility: hidden; }
