@@ -5,6 +5,7 @@
 
 <template>
 	<div
+		v-if="!isChatHidden"
 		class="chatView"
 		@dragover.prevent="handleDragOver"
 		@dragleave.prevent="handleDragLeave"
@@ -83,6 +84,7 @@ import { EventBus } from '../services/EventBus.ts'
 import { useActorStore } from '../stores/actor.ts'
 import { useChatExtrasStore } from '../stores/chatExtras.ts'
 import { useSettingsStore } from '../stores/settings.ts'
+import { isChatHiddenForActor } from '../utils/chatHidden.ts'
 
 export default {
 
@@ -140,6 +142,10 @@ export default {
 	},
 
 	computed: {
+		isChatHidden() {
+			return isChatHiddenForActor(this.actorStore.actorType, this.conversation?.permissions)
+		},
+
 		isGuest() {
 			return this.actorStore.isActorGuest
 		},

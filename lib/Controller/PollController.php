@@ -290,6 +290,10 @@ class PollController extends AEnvironmentAwareOCSController {
 		'pollId' => '\d+',
 	])]
 	public function showPoll(int $pollId): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(['error' => 'poll'], Http::STATUS_NOT_FOUND);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\PollController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\PollController::class);
@@ -338,6 +342,10 @@ class PollController extends AEnvironmentAwareOCSController {
 		'pollId' => '\d+',
 	])]
 	public function votePoll(int $pollId, array $optionIds = []): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(['error' => 'poll'], Http::STATUS_NOT_FOUND);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\PollController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\PollController::class);
@@ -410,6 +418,10 @@ class PollController extends AEnvironmentAwareOCSController {
 		'pollId' => '\d+',
 	])]
 	public function closePoll(int $pollId): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(['error' => 'poll'], Http::STATUS_NOT_FOUND);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\PollController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\PollController::class);
@@ -491,6 +503,10 @@ class PollController extends AEnvironmentAwareOCSController {
 		'format' => '(ods|csv)',
 	])]
 	public function exportPoll(int $pollId, string $format): DataDownloadResponse|DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(['error' => 'poll'], Http::STATUS_NOT_FOUND);
+		}
+
 		try {
 			$poll = $this->pollService->getPoll($this->room->getId(), $pollId);
 		} catch (DoesNotExistException) {

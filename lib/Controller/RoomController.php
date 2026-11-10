@@ -1412,7 +1412,7 @@ class RoomController extends AEnvironmentAwareOCSController {
 			return $response;
 		}
 
-		if ($this->participant->getAttendee()->getParticipantType() === Participant::GUEST) {
+		if ($this->participant->getAttendee()->getParticipantType() === Participant::GUEST && !$this->participant->cannotSeeChat()) {
 			return new DataResponse(null, Http::STATUS_FORBIDDEN);
 		}
 
@@ -1445,7 +1445,7 @@ class RoomController extends AEnvironmentAwareOCSController {
 		'token' => '[a-z0-9]{4,30}',
 	])]
 	public function getBreakoutRoomParticipants(bool $includeStatus = false): DataResponse {
-		if ($this->participant->getAttendee()->getParticipantType() === Participant::GUEST) {
+		if ($this->participant->getAttendee()->getParticipantType() === Participant::GUEST && !$this->participant->cannotSeeChat()) {
 			return new DataResponse(null, Http::STATUS_FORBIDDEN);
 		}
 
@@ -1471,6 +1471,13 @@ class RoomController extends AEnvironmentAwareOCSController {
 	 * @return DataResponse<Http::STATUS_OK, list<TalkParticipant>, array{X-Nextcloud-Has-User-Statuses?: true}>
 	 */
 	protected function formatParticipantList(array $participants, bool $includeStatus): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			// ket4tec #55: guest without chat sees only the call participants and themselves
+			$selfId = $this->participant->getAttendee()->getId();
+			$participants = array_filter($participants, static fn (Participant $p): bool => $p->getAttendee()->getId() === $selfId
+				|| ($p->getSession() instanceof Session && $p->getSession()->getInCall() > Participant::FLAG_DISCONNECTED));
+		}
+
 		$results = $headers = $statuses = [];
 		$maxPingAge = $this->timeFactory->getTime() - Session::SESSION_TIMEOUT_KILL;
 
