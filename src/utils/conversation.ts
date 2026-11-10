@@ -18,6 +18,18 @@ const supportsAvatar = hasTalkFeature('local', 'avatar')
 const supportsConversationTags = hasTalkFeature('local', 'conversation-tags')
 
 /**
+ * ket4tec: служебные беседы — «Личные заметки», «Обновления приложения», образцы («Давайте начнём!»).
+ * В облаке KET4TEC их не показываем ни в списке, ни в поиске, ни в выборе беседы.
+ *
+ * @param conversation conversation object
+ */
+export function isK7ServiceConversation(conversation: Conversation): boolean {
+	return conversation.type === CONVERSATION.TYPE.NOTE_TO_SELF
+		|| conversation.type === CONVERSATION.TYPE.CHANGELOG
+		|| conversation.objectType === 'sample'
+}
+
+/**
  * Check if the conversation is classified (CLASSIFIED attribute bit is set)
  * Feature is supported with `classified-conversations` capability.
  *

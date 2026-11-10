@@ -375,7 +375,7 @@ body .vs__dropdown-menu {
 
 // ---------- Параметры обсуждения (NcAppSettingsDialog): на телефоне — шторка под шапкой Стола ----------
 @media (max-width: $phone) {
-	:is(.modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container)) {
+	:is(.modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container), .modal-mask#k7-app-settings, .modal-mask:has(#k7-app-settings)) {
 		.modal-wrapper { align-items: flex-end !important; padding: 0 !important; }
 		.modal-container {
 			position: fixed !important;
@@ -404,5 +404,62 @@ body .vs__dropdown-menu {
 			background: var(--k7u-pill) !important;
 		}
 		.dialog__content, .app-settings__content { background: none !important; }
+	}
+}
+
+// ---------- Строка поиска: фильтр, «новая беседа», «Настройки» — круглые капсулы 40 px; пустой низ списка не занимает место ----------
+html.k7f .new-conversation :is(.filters .action-item__menutoggle, .actions .action-item__menutoggle, .k7-settings-button.button-vue) {
+	width: 40px !important;
+	min-width: 40px !important;
+	height: 40px !important;
+	min-height: 40px !important;
+	padding: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7u-pill) !important;
+	color: var(--k7u-fg) !important;
+}
+html.k7f .navigation-bottom:not(:has(button)) { display: none !important; }
+
+// ---------- Окна настроек (Настройки, Параметры обсуждения): строки NcFormBox — плитки v7, кнопки — капсулы ----------
+// классы NcFormBox — CSS-модули с хэшем (_ncFormBox_xxxx), поэтому [class*=…]
+:is(.modal-mask#k7-app-settings, .modal-mask:has(#k7-app-settings), .modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container)) {
+	.app-settings-section__name { font-size: 20px !important; font-weight: 700 !important; letter-spacing: -.015em; color: var(--k7u-fg) !important; }
+	[class*="_ncFormBox_col_"] { gap: 3px !important; border: 0 !important; background: none !important; }
+	// плитка = прямой ребёнок колонки ([class*="_formBoxItem_"] задело бы и внутренние _formBoxItem__content_ и т.п.)
+	[class*="_ncFormBox_col_"] > * {
+		box-sizing: border-box;
+		min-height: 56px;
+		padding: 12px 16px !important;
+		border: 0 !important;
+		border-radius: 8px !important;
+		background: var(--k7u-bg3) !important;
+		box-shadow: none !important;
+		color: var(--k7u-fg) !important;
+		&:first-child { border-top-left-radius: 20px !important; border-top-right-radius: 20px !important; }
+		&:last-child { border-bottom-left-radius: 20px !important; border-bottom-right-radius: 20px !important; }
+		&:hover, &:has(:focus-visible) { background: color-mix(in srgb, var(--k7u-fg) 8%, var(--k7u-bg3)) !important; }
+	}
+	[class*="_ncFormBox_col_"] > * [class*="_formBoxItem__"] { padding: 0 !important; margin: 0 !important; border: 0 !important; background: none !important; max-width: none !important; }
+	[class*="_formBoxItem__element_"] { color: var(--k7u-fg) !important; font-size: 15px; font-weight: 600; }
+	[class*="_formBoxItem__description_"] { color: var(--k7u-fg2) !important; font-size: 13px; line-height: 1.35; }
+	[class*="_formGroup__label_"] { color: var(--k7u-fg) !important; font-size: 15px; font-weight: 700; }
+	// «список / пузыри» — две капсулы поровну, не вылезают за край
+	[class*="_ncFormBox_row_"] { display: flex !important; gap: 8px !important; border: 0 !important; background: none !important; }
+	[class*="_ncFormBox_row_"] > .button-vue { flex: 1 1 0 !important; min-width: 0 !important; height: 44px !important; border: 0 !important; border-radius: 999px !important; }
+	[class*="_ncFormBox_row_"] > .button-vue { padding-inline: 10px !important; }
+	[class*="_ncFormBox_row_"] > .button-vue .button-vue__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px !important; }
+	// пункты левого меню (компьютер) — переносом, а не обрезкой
+	.navigation-list__link { height: auto !important; min-height: 40px; padding-block: 8px !important; display: flex !important; align-items: center; margin-bottom: 4px; }
+	.navigation-list__link-text { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.25; }
+	[class*="_ncFormBox_row_"] > .button-vue--secondary { background: var(--k7u-bg3) !important; color: var(--k7u-fg) !important; }
+	// одиночная кнопка раздела («Проверка устройств») — нейтральная капсула
+	.app-settings-section__content > .button-vue--secondary {
+		min-height: 48px !important;
+		margin-top: 10px;
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--k7u-pill) !important;
+		color: var(--k7u-fg) !important;
+		font-weight: 600;
 	}
 }

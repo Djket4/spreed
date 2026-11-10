@@ -1015,6 +1015,11 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 		}
 	}
 }
+// ket4tec: заглушки с картинками (встречи, упоминания, напоминания) не показываем — списки с данными остаются.
+// Раньше это делала тема облака; для форка её правила главной выключены (html:not(.k7f)), поэтому здесь.
+html.k7f .talk-dashboard__items:not(:has(.dashboard-section--list)),
+html.k7f .talk-dashboard-wrapper :is(.event-section, .talk-dashboard__chats > div):not(:has(.dashboard-section--list)) { display: none !important; }
+
 // ket4tec: главная Talk на телефоне — «Начать встречу» во всю ширину (Слива), под ней две капсулы в ряд
 @media (max-width: 700px) {
 	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions {
