@@ -961,6 +961,7 @@ function buildState(show) {
 
 /** Показывающий начал показ: объявить ключ. */
 export function startShow() {
+	console.debug('k4snap startShow ' + myK + ' ' + (bound?.attributes.localScreen ? 'screen' : 'noscreen'))
 	isBoard(myK) && closeBoard() // показ экрана закрывает свою доску
 	if (myK) {
 		return
@@ -1308,6 +1309,7 @@ export function requestCloseBoard() {
  * @param {boolean} pass не закрывать, а передать доску следующему в звонке (я ухожу из звонка)
  */
 export function closeBoard(pass = false) {
+	console.debug('k4snap closeBoard ' + myK + ' pass=' + pass + ' ' + new Error().stack.split('\n').slice(2, 5).join('|'))
 	if (!isBoard(myK)) {
 		return
 	}
@@ -1368,6 +1370,7 @@ function moveBoard(show, next) {
 export function passBoard(old) {
 	const show = shows.get(state.keys[old])
 	const next = show && isBoard(show.k) && pickOwner(old)
+	console.debug('k4snap passBoard ' + old + ' next=' + next + ' me=' + me())
 	next ? moveBoard(show, next) : boardGone(old)
 }
 
