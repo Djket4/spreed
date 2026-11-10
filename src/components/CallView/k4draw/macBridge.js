@@ -191,7 +191,10 @@ function onCmd(d) {
 		case 'text': {
 			// с key — правка или перенос своего текста
 			const old = typeof d.key === 'string' ? s.marks.get(d.key) : null
-			const id = old && old.by === myId() && old.tool === 'text' ? old.id : undefined
+			if (d.key !== undefined && !(old && old.by === myId() && old.tool === 'text' && !old.fading)) {
+				break // правка текста, которого уже нет (отменён, стёрт, погас): не создаём новый
+			}
+			const id = old ? old.id : undefined
 			x !== null && y !== null && typeof d.text === 'string' && SIZES.includes(d.size) && textPut(s, { id, x, y, size: d.size, text: d.text })
 			break
 		}
