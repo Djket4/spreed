@@ -253,7 +253,8 @@ const barStyle = ref(null)
  *
  */
 function measureBar() {
-	const bar = document.querySelector('#call-container .bottom-bar')
+	// у плиток тоже есть .bottom-bar (VideoBottomBar, LocalVideo): берём панель звонка по её кнопкам
+	const bar = document.querySelector('#call-container .bottom-bar-call-controls')?.closest('.bottom-bar')
 	const top = bar?.getBoundingClientRect().top
 	barStyle.value = top > 0 && top < window.innerHeight
 		? { '--k4s-bar': Math.round(window.innerHeight - top) + 'px', '--k4s-safe': '0px' }
