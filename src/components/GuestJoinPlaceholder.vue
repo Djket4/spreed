@@ -9,9 +9,12 @@ import { useStore } from 'vuex'
 import SetGuestUsername from './SetGuestUsername.vue'
 import CallButton from './TopBar/CallButton.vue'
 import { useGetToken } from '../composables/useGetToken.ts'
+import { useActorStore } from '../stores/actor.ts'
+import { isChatHiddenForActor } from '../utils/chatHidden.ts'
 
 const store = useStore()
 const token = useGetToken()
+const actorStore = useActorStore()
 const roomName = computed<string>(() => store.getters.conversation(token.value)?.displayName ?? '')
 </script>
 
@@ -20,7 +23,7 @@ const roomName = computed<string>(() => store.getters.conversation(token.value)?
 		<h2 class="guest-join__name">
 			{{ roomName }}
 		</h2>
-		<SetGuestUsername compact class="guest-join__username" />
+		<SetGuestUsername v-if="isChatHiddenForActor(actorStore.actorType)" compact class="guest-join__username" />
 		<!-- та же кнопка, что в шапке: те же проверки и joinCall -->
 		<CallButton class="guest-join__button" label="Войти в звонок" />
 	</div>

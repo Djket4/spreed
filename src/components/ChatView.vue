@@ -4,8 +4,8 @@
 -->
 
 <template>
-	<!-- ket4tec v7: гостю чат скрыт — вместо пустоты название, имя и «Войти в звонок» -->
-	<GuestJoinPlaceholder v-if="isChatHidden && !isSidebar" />
+	<!-- ket4tec #103: чата нет ни у кого (слово Андрея 10.11) — в центре название и «Войти в звонок» -->
+	<GuestJoinPlaceholder v-if="!isSidebar" />
 	<div
 		v-else-if="!isChatHidden"
 		class="chatView"
