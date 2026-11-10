@@ -17,6 +17,9 @@ import { useSidebarStore } from './stores/sidebar.ts'
 
 initializeTalkOnce()
 
+// ket4tec: метка форка v7 — тема облака (custom.css) не применяет к нему правила штатного Talk (html:not(.k7f))
+document.documentElement.classList.add('k7f')
+
 if (!IS_DESKTOP) {
 	// CSP config for webpack dynamic chunk loading
 	__webpack_nonce__ = getCSPNonce()

@@ -843,16 +843,16 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 
 	&__x {
 		position: absolute;
-		top: 12px;
+		top: 12px !important;
 		inset-inline-end: 12px;
-		width: 40px;
-		height: 40px;
+		width: 40px !important;
+		height: 40px !important;
 		display: grid;
 		place-items: center;
-		border: 0;
-		border-radius: 999px;
-		background: var(--m-pill);
-		color: var(--m-fg);
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--m-pill) !important;
+		color: var(--m-fg) !important;
 		cursor: pointer;
 	}
 
@@ -870,15 +870,17 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 	}
 
 	&__input {
-		height: 52px;
-		margin: 0;
-		padding: 0 20px;
-		border: 0;
-		border-radius: 999px;
-		background: var(--m-bg3);
-		color: var(--m-fg);
-		font-size: 16px; // 16px: iOS does not zoom the page on focus
-		box-shadow: inset 0 0 0 1px var(--m-line);
+		box-sizing: border-box;
+		width: 100% !important;
+		height: 52px !important;
+		margin: 0 !important;
+		padding: 0 20px !important;
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--m-bg3) !important;
+		color: var(--m-fg) !important;
+		font-size: 16px !important; // 16px: iOS does not zoom the page on focus
+		box-shadow: inset 0 0 0 1px var(--m-line) !important;
 
 		&:focus {
 			outline: none;
@@ -887,24 +889,24 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 	}
 
 	&__btn {
-		height: 52px;
-		min-height: 52px;
-		margin: 0;
-		border: 0;
-		border-radius: 999px;
-		font-size: 16px;
-		font-weight: 700;
+		height: 52px !important;
+		min-height: 52px !important;
+		margin: 0 !important;
+		border: 0 !important;
+		border-radius: 999px !important;
+		font-size: 16px !important;
+		font-weight: 700 !important;
 		cursor: pointer;
 
 		&--primary {
-			background: var(--m-grad);
-			color: #fff;
+			background: var(--m-grad) !important;
+			color: #fff !important;
 			box-shadow: 0 8px 22px #5b2a8666;
 		}
 
 		&--soft {
-			background: var(--m-pill);
-			color: var(--m-fg);
+			background: var(--m-pill) !important;
+			color: var(--m-fg) !important;
 		}
 
 		&:disabled {
@@ -923,6 +925,8 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 		align-items: center;
 		gap: 12px;
 		padding-inline-end: 44px;
+
+		.k7-meet__title { padding-inline-end: 0; white-space: nowrap; }
 	}
 
 	&__check {
@@ -966,5 +970,41 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 			box-shadow: 0 24px 80px #0007, inset 0 0 0 1px var(--m-line);
 		}
 	}
+}
+// ket4tec: главная Talk на телефоне — «Начать встречу» во всю ширину (Слива), под ней две капсулы в ряд
+@media (max-width: 700px) {
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions {
+		display: grid !important;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		width: 100%;
+		margin: 0;
+	}
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > * { width: auto !important; min-width: 0 !important; height: auto !important; margin: 0 !important; flex: none !important; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :first-child { grid-column: 1 / -1; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions .button-vue {
+		box-sizing: border-box;
+		width: 100% !important;
+		height: 52px !important;
+		min-height: 52px !important;
+		padding: 0 10px !important;
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--tk-bg2, #242021) !important;
+		color: var(--tk-fg, #f3eee9) !important;
+		box-shadow: inset 0 0 0 1px var(--tk-line2, #ffffff1f) !important;
+	}
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :first-child.button-vue,
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :first-child .button-vue {
+		background: linear-gradient(135deg, #5B2A86, #A86BFF) !important;
+		color: #fff !important;
+		box-shadow: 0 8px 22px #5b2a8655 !important;
+	}
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions .button-vue__wrapper { justify-content: center; gap: 6px; width: 100%; }
+	// две капсулы в ряд — без значков, иначе «Проверка устройств» не влезает в 402 px
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :not(:first-child) { padding-inline: 8px !important; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :not(:first-child) .button-vue__icon { display: none !important; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :not(:first-child) .button-vue__text { letter-spacing: -.01em; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions .button-vue__text { min-width: 0; margin: 0 !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px !important; font-weight: 600 !important; }
 }
 </style>

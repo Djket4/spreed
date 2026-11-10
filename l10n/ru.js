@@ -1174,7 +1174,7 @@ OC.L10N.register(
     "Microphone" : "Микрофон",
     "Speaker" : "Динамик",
     "Microphone settings" : "Параметры микрофона",
-    "Check devices" : "Проверить устройства",
+    "Check devices" : "Проверка устройств",
     "Access to camera was denied" : "Доступ к камере запрещён",
     "Error while accessing camera: It is likely in use by another program" : "Не удалось получить доступ к камере: вероятно, она занята другой программой",
     "Error while accessing camera" : "Ошибка при доступе к камере",
