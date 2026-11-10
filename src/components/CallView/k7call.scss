@@ -72,7 +72,7 @@ $glass: blur(24px) saturate(180%);
 #call-container .local-video { box-shadow: 0 10px 30px #0005, 0 0 0 1px var(--k7-line2); }
 
 // вход в звонок (проверка устройств): крупная карточка, на телефоне — шторка снизу
-:root body .modal-container:has(.media-settings) { border-radius: 28px; background: var(--k7-bg2); color: var(--k7-fg); box-shadow: 0 24px 80px #0007, inset 0 0 0 1px var(--k7-line2); font-family: var(--k7-font); }
+:root body .modal-container:has(.media-settings) { border-radius: 28px; background: var(--k7-bg2) !important; color: var(--k7-fg); box-shadow: 0 24px 80px #0007, inset 0 0 0 1px var(--k7-line2); font-family: var(--k7-font); }
 :root body .media-settings { --color-main-text: var(--k7-fg); --color-text-maxcontrast: var(--k7-fg2); --color-primary-element: var(--k7-acc); --color-primary-element-text: #fff; }
 :root body .media-settings__title { margin: 0 0 14px; padding-inline-end: 56px; text-align: start; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.02em; color: var(--k7-fg); }
 :root body .modal-container:has(.media-settings) .modal-container__close { z-index: 3; top: 16px; inset-inline-end: 16px; width: 40px; height: 40px; border-radius: 999px; background: var(--k7-pill); color: var(--k7-fg); }
@@ -281,7 +281,10 @@ $glass: blur(24px) saturate(180%);
 	// предел высоты — у самой прокрутки, не у контейнера: Safari не сжимает flex-ребёнка под max-height родителя, и листалась маска со всей шторкой
 	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: calc(var(--k7-vh, 100dvh) - 110px - var(--k7-sheet-bottom, 0px)) !important; }
 	// компактно, чтобы на 874 всё влезало без прокрутки: превью ниже, аватар меньше, списки 48
-	:root body .media-settings__preview { width: 100% !important; height: 168px !important; aspect-ratio: auto !important; }
+	:root body .media-settings__preview { width: 100% !important; height: 148px !important; aspect-ratio: auto !important; }
+	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
+	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
+	:root:root body .media-settings .button-vue.join-call:disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.5); }
 	:root body .media-settings__toggles { bottom: 10px; }
 	:root:root body .media-settings__toggles .button-vue { width: 48px; min-width: 48px; height: 48px; }
