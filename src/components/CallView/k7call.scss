@@ -378,3 +378,18 @@ $glass: blur(24px) saturate(180%);
 :root body .k7-view-item :is(.action-button__text, .action-button__longtext) { color: var(--k7-fg) !important; font-weight: 600; }
 :root body .v-popper__popper .k7-view-item .material-design-icon { color: var(--k7-fg2); }
 :root body .k7-view-item .checkbox-radio-switch__icon, :root body .k7-view-item .action-button__pressed-icon { color: var(--k7-acc) !important; }
+
+// один в звонке: своя камера крупно по центру, «Ждём остальных» и ссылка над ней (Андрей 10.11); полоска со стрелкой не нужна
+#call-container.k7-alone {
+	--k7-alone-top: 170px;
+	.empty-call-view:not(.empty-call-view--small) { justify-content: flex-start !important; padding-top: 96px !important; z-index: 2; pointer-events: none; }
+	.empty-call-view .empty-call-view__link { pointer-events: auto; }
+	#videos .video__promoted { display: none !important; }
+	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px 96px !important; box-sizing: border-box; background: none !important; }
+	.grid-main-wrapper .stripe-controls-position { display: none !important; }
+	:is(.videos-wrapper--stripe, .stripe-wrapper, .stripe-wrapper > .grid) { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; background: none !important; overflow: visible !important; }
+	.stripe-wrapper .localVideoContainer { position: relative !important; inset: auto !important; flex: none !important; width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; aspect-ratio: 3 / 4; }
+}
+// по высоте свободного места; на узком экране упирается в ширину (форма чуть шире 3:4, видео без искажений — cover)
+#call-container.k7-alone .stripe-wrapper .localVideoContainer { height: 100% !important; }
+@media (orientation: landscape) { #call-container.k7-alone .stripe-wrapper .localVideoContainer { aspect-ratio: 16 / 10; } }
