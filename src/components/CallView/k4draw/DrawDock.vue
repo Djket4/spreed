@@ -49,7 +49,7 @@
 					:aria-pressed="state.gd"
 					title="Модератор: могут ли гости рисовать"
 					@click="setGuestsDraw(!state.gd)">
-					Гости: {{ state.gd ? 'рисуют' : 'нет' }}
+					Гости: {{ state.gd ? 'да' : 'нет' }}
 				</button>
 				<button
 					v-if="canClear"
