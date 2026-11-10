@@ -5,7 +5,8 @@
 <script lang="ts" setup>
 import type { Conversation } from '../../types/index.ts'
 
-import { showError } from '@nextcloud/dialogs'
+import { getRequestToken } from '@nextcloud/auth'
+import { showError, showSuccess } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
 import { isRTL, t } from '@nextcloud/l10n'
 import { generateUrl, imagePath } from '@nextcloud/router'
@@ -155,6 +156,38 @@ const meetingPassword = ref('')
 // 'copied' | 'ready' (clipboard write failed: user has to tap "Copy")
 const meetingCopyState = ref<'copied' | 'ready'>('copied')
 const meetingInput = ref<HTMLInputElement | null>(null)
+
+// ket4tec: «Мой звонок» — постоянная ссылка на личную открытую беседу «Личные переговоры» (NAS_CLOUD#100).
+// Ссылку выдаёт приложение «Стол» (/apps/ket4tec_launchpad/api/links, создаёт беседу при первом обращении); нет приложения — нет кнопки.
+// Берём заранее: iOS Safari пускает «Поделиться» и буфер только прямо в обработчике нажатия.
+const myCallLink = ref('')
+fetch(generateUrl('/apps/ket4tec_launchpad/api/links'), { headers: { Accept: 'application/json', requesttoken: getRequestToken() ?? '' } })
+	.then((r) => (r.ok ? r.json() : null))
+	.then((d) => { myCallLink.value = d?.call || '' })
+	.catch(() => {})
+
+/**
+ * Телефон — системное «Поделиться», компьютер (или «Поделиться» нет) — ссылка в буфер.
+ */
+function shareMyCall() {
+	const url = myCallLink.value
+	if (navigator.share && (isMobile.value || matchMedia('(pointer: coarse)').matches)) {
+		navigator.share({ title: t('spreed', 'Personal call'), url }).catch((e) => {
+			if (e?.name !== 'AbortError') {
+				copyMyCall(url)
+			}
+		})
+		return
+	}
+	copyMyCall(url)
+}
+
+/**
+ * @param url ссылка на беседу
+ */
+function copyMyCall(url: string) {
+	navigator.clipboard.writeText(url).then(() => showSuccess(t('spreed', 'Link copied')), () => showError(t('spreed', 'The link could not be copied')))
+}
 
 /**
  * Opens the "new meeting" window with an empty form.
@@ -319,6 +352,17 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 						<IconVideoOutline />
 					</template>
 					{{ t('spreed', 'Start meeting') }}
+				</NcButton>
+				<NcButton
+					v-if="myCallLink && isCallEnabled"
+					class="talk-dashboard__action k7-mycall"
+					variant="secondary"
+					:title="t('spreed', 'Permanent link to your personal call')"
+					@click="shareMyCall">
+					<template #icon>
+						<IconPhoneOutline :size="20" />
+					</template>
+					{{ t('spreed', 'My call link') }}
 				</NcButton>
 				<NcButton
 					v-if="canStartConversations"
@@ -982,6 +1026,7 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 	}
 	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > * { width: auto !important; min-width: 0 !important; height: auto !important; margin: 0 !important; flex: none !important; }
 	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :first-child { grid-column: 1 / -1; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > .k7-mycall { grid-column: 1 / -1; } // «Мой звонок» во всю ширину под «Начать встречу»
 	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions .button-vue {
 		box-sizing: border-box;
 		width: 100% !important;
