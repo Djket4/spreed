@@ -17,10 +17,9 @@
 		@update:open="handleUpdateOpen"
 		@update:active="handleUpdateActive"
 		@closed="handleClosed">
-		<!-- Use a custom icon when sidebar is used for chat messages during the call -->
+		<!-- ket4tec v7 (решение владельца 10.11): в звонке чата в панели нет — «Участники» и «Файлы» -->
 		<template v-if="isInCall" #toggle-icon>
-			<IconMessageTextOutline :size="20" />
-			<span v-if="unreadMessagesCounter > 0" class="chat-button-unread-marker" />
+			<IconAccountMultipleOutline :size="20" />
 		</template>
 		<template #info>
 			<RightSidebarContent
@@ -55,17 +54,6 @@
 		</NcAppSidebarTab>
 		<template v-else>
 			<NcAppSidebarTab
-				v-if="isInCall && !isChatHidden"
-				id="chat"
-				key="chat"
-				:order="1"
-				:name="t('spreed', 'Chat')">
-				<template #icon>
-					<IconMessageOutline :size="20" />
-				</template>
-				<ChatView :isVisible="opened" isSidebar />
-			</NcAppSidebarTab>
-			<NcAppSidebarTab
 				v-if="showParticipantsTab"
 				id="participants"
 				key="participants"
@@ -80,7 +68,7 @@
 					:canAdd="canAddParticipants" />
 			</NcAppSidebarTab>
 			<NcAppSidebarTab
-				v-if="showBreakoutRoomsTab"
+				v-if="showBreakoutRoomsTab && !isInCall"
 				id="breakout-rooms"
 				key="breakout-rooms"
 				ref="breakout-rooms"
@@ -95,7 +83,7 @@
 					:isActive="activeTab === 'breakout-rooms'" />
 			</NcAppSidebarTab>
 			<NcAppSidebarTab
-				v-if="showDetailsTab"
+				v-if="showDetailsTab && !isInCall"
 				id="details-tab"
 				key="details-tab"
 				:order="4"
@@ -122,10 +110,11 @@
 				key="shared-items"
 				ref="sharedItemsTab"
 				:order="5"
-				:name="t('spreed', 'Shared items')">
+				:name="isInCall ? 'Файлы' : t('spreed', 'Shared items')">
 				<template #icon>
 					<NcIconSvgWrapper :svg="IconPermMediaOutline" :size="20" inline />
 				</template>
+				<K4Snaps v-if="isInCall" :active="opened && activeTab === 'shared-items'" />
 				<SharedItemsTab
 					:active="activeTab === 'shared-items'"
 					@showThreadsTab="handleUpdateState('threads')" />
@@ -148,9 +137,7 @@ import IconAccountMultipleOutline from 'vue-material-design-icons/AccountMultipl
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue'
 import IconDotsCircle from 'vue-material-design-icons/DotsCircle.vue'
 import IconInformationOutline from 'vue-material-design-icons/InformationOutline.vue'
-import IconMessageOutline from 'vue-material-design-icons/MessageOutline.vue'
-import IconMessageTextOutline from 'vue-material-design-icons/MessageTextOutline.vue'
-import ChatView from '../ChatView.vue'
+import K4Snaps from '../CallView/k4draw/K4Snaps.vue'
 import SetGuestUsername from '../SetGuestUsername.vue'
 import BreakoutRoomsTab from './BreakoutRooms/BreakoutRoomsTab.vue'
 import InternalSignalingHint from './InternalSignalingHint.vue'
@@ -180,7 +167,7 @@ export default {
 	name: 'RightSidebar',
 	components: {
 		BreakoutRoomsTab,
-		ChatView,
+		K4Snaps,
 		InternalSignalingHint,
 		LobbyStatus,
 		NcAppSidebar,
@@ -199,8 +186,6 @@ export default {
 		IconCogOutline,
 		IconDotsCircle,
 		IconInformationOutline,
-		IconMessageOutline,
-		IconMessageTextOutline,
 	},
 
 	props: {
@@ -278,7 +263,7 @@ export default {
 			contactsLoading: false,
 			unreadNotificationHandle: null,
 			contentState: 'default',
-			previousActiveTab: this.isInCall ? 'chat' : 'participants',
+			previousActiveTab: 'participants',
 		}
 	},
 
@@ -416,8 +401,8 @@ export default {
 		inCallToggleAttrs() {
 			return {
 				'data-theme-dark': true,
-				'aria-label': t('spreed', 'Open chat'),
-				title: t('spreed', 'Open chat'),
+				'aria-label': 'Участники и файлы',
+				title: 'Участники и файлы',
 			}
 		},
 	},
@@ -434,11 +419,7 @@ export default {
 			}
 
 			// In other case switch to other tabs
-			if (this.isInCall) {
-				this.activeTab = 'chat'
-			} else {
-				this.activeTab = 'participants'
-			}
+			this.activeTab = this.isInCall ? this.inCallTab() : 'participants'
 		},
 
 		showParticipantsTab: {
@@ -479,9 +460,9 @@ export default {
 
 		isInCall(newValue) {
 			if (newValue) {
-				// Set 'chat' tab as active, and switch to it if sidebar is open
+				// ket4tec v7: в звонке вкладки «Участники» и «Файлы», чата нет
 				this.contentState = 'default'
-				this.activeTab = 'chat'
+				this.activeTab = this.inCallTab()
 				// ket4tec v7: при входе в звонок боковая панель закрыта (решение владельца 10.11), после звонка — как была
 				this.k7reopen = this.sidebarStore.show
 				this.sidebarStore.hideSidebar({ cache: false })
@@ -495,13 +476,8 @@ export default {
 				this.sidebarStore.showSidebar({ cache: false })
 			}
 
-			// If 'chat' tab wasn't active, leave it as is
-			if (this.activeTab !== 'chat') {
-				return
-			}
-
-			// In other case switch to other tabs
-			if (!this.isOneToOne) {
+			// после звонка — участники (в один-на-один их нет, остаются «Общие файлы»)
+			if (!this.isOneToOne && this.showParticipantsTab) {
 				this.activeTab = 'participants'
 			}
 		},
@@ -535,9 +511,8 @@ export default {
 			if (newValue && !this.isInCall) {
 				// Switch active tab to participants list if guest was promoted to moderators
 				this.activeTab = 'participants'
-			} else {
-				// Switch active tab to chat if guest was demoted from moderators
-				this.activeTab = 'chat'
+			} else if (this.isInCall) {
+				this.activeTab = this.inCallTab()
 			}
 		},
 	},
@@ -555,9 +530,9 @@ export default {
 
 		handleUpdateOpen(open) {
 			if (open) {
-				// In call ('Open chat') by default
-				if (this.isInCall) {
-					this.activeTab = 'chat'
+				// в звонке по умолчанию «Участники»
+				if (this.isInCall && !['participants', 'shared-items'].includes(this.activeTab)) {
+					this.activeTab = this.inCallTab()
 				}
 				this.sidebarStore.showSidebar()
 			} else {
@@ -606,6 +581,11 @@ export default {
 			}
 		},
 
+		/** Вкладка звонка по умолчанию: «Участники», если их нет — «Файлы». */
+		inCallTab() {
+			return this.showParticipantsTab ? 'participants' : 'shared-items'
+		},
+
 		showSettings() {
 			emit('show-settings', {})
 		},
@@ -621,10 +601,8 @@ export default {
 			}
 			if (message) {
 				this.unreadNotificationHandle = showMessage(message, {
-					onClick: () => {
-						this.handleUpdateActive('chat')
-						this.sidebarStore.showSidebar()
-					},
+					// в звонке чата в панели нет: тост только сообщает
+					onClick: () => this.isInCall || this.sidebarStore.showSidebar(),
 				})
 			}
 		},
@@ -661,28 +639,12 @@ export default {
 	min-height: inherit !important;
 }
 
-.app-sidebar-tabs__content #tab-chat {
-	/* Remove padding to maximize the space for the chat view. */
-	padding: 0;
-	height: 100%;
-}
-
 .app-sidebar-tabs__content #tab-participants {
 	/* Remove padding to maximize the space for the participants list. */
 	padding: var(--default-grid-baseline) 0;
 	height: 100%;
 }
 
-.chat-button-unread-marker {
-	position: absolute;
-	top: 4px;
-	inset-inline-end: 4px;
-	width: 8px;
-	height: 8px;
-	border-radius: 8px;
-	background-color: var(--color-primary-element);
-	pointer-events: none;
-}
 </style>
 
 <style lang="scss">
