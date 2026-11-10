@@ -20,6 +20,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconChevronUp from 'vue-material-design-icons/ChevronUp.vue'
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue' // ket4tec v7: настройки звонка
+import IconDraw from 'vue-material-design-icons/Draw.vue' // ket4tec: k4draw — доска
 import IconFullscreen from 'vue-material-design-icons/Fullscreen.vue'
 import IconFullscreenExit from 'vue-material-design-icons/FullscreenExit.vue'
 import IconPencil from 'vue-material-design-icons/Pencil.vue' // ket4tec: k4draw
@@ -48,7 +49,7 @@ import { useLiveTranscriptionStore } from '../../stores/liveTranscription.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
-import { state as k4draw } from './k4draw/useDrawing.js' // ket4tec: k4draw
+import { boardBtn, boardLabel, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
 
 const { isSidebar = false } = defineProps<{
 	isSidebar: boolean
@@ -70,7 +71,10 @@ const conversation = computed(() => {
 	return store.getters.conversation(token.value) || store.getters.dummyConversation
 })
 // ket4tec: k4draw. Карандаш виден, пока крупно идёт показ с известным ключом (HPB и форк у показывающего)
-const k4Pencil = computed(() => !isSidebar && !!k4draw.big && !!k4draw.keys[k4draw.big])
+const k4Pencil = computed(() => !isSidebar && !!k4draw.big && !!k4draw.keys[k4draw.big] && canDraw())
+// ket4tec: k4draw. «Доска» в панели — на компьютере; на телефоне она в шторке настроек (MediaSettings)
+const k4Board = computed(() => !isSidebar && (k4draw.board, k4draw.gd, k4draw.boardHidden, boardBtn()))
+const k4BoardLabel = computed(() => (k4draw.board, k4draw.boardHidden, boardLabel()))
 const isGuestActor = computed(() => actorStore.actorType === ATTENDEE.ACTOR_TYPE.GUESTS)
 const isVoiceRoom = computed(() => Boolean(conversation.value.attributes & CONVERSATION.ATTRIBUTE.VOICE_ROOM))
 
@@ -535,6 +539,17 @@ function setCallLayout(layout: CallLayout) {
 					<IconPencil :size="24" />
 				</template>
 			</NcButton>
+			<NcButton
+				v-if="k4Board"
+				class="k4-pencil k4-board-btn"
+				:title="k4BoardLabel"
+				:aria-label="k4BoardLabel"
+				:variant="k4draw.board && !k4draw.boardHidden ? 'secondary' : 'tertiary'"
+				@click="toggleBoard()">
+				<template #icon>
+					<IconDraw :size="24" />
+				</template>
+			</NcButton>
 
 			<!-- ket4tec v7: настройки во время звонка — та же шторка устройств: микрофон, камера, динамик, кадр по лицу, фон.
 				Стрелки-меню у микрофона и камеры не показываем (k7call.scss) -->
@@ -741,6 +756,10 @@ function setCallLayout(layout: CallLayout) {
 <style lang="scss" scoped>
 .k4-hidden {
 	visibility: hidden;
+}
+
+@media (max-width: 600px) {
+	.bottom-bar .k4-board-btn.button-vue { display: none; }
 }
 
 // ket4tec: k4draw. Карандаш — квадрат 56 как соседние кнопки звонка (их размер задаёт тема облака по .buttons-bar)

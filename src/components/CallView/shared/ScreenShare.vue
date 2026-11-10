@@ -47,7 +47,7 @@
 		</NcEmptyContent>
 		<!-- ket4tec: k4draw -->
 		<DrawLayer
-			v-if="isBig && k4Presenter && (isLocalScreen || isRemoteScreen)"
+			v-if="isBig && k4Presenter && (isLocalScreen || isRemoteScreen) && !(k4state.board && !k4state.boardHidden)"
 			:presenter="k4Presenter"
 			:video="screen"
 			:transform="instanceTransform" />
@@ -235,6 +235,7 @@ export default {
 			guestNameStore,
 			screen,
 			k4Presenter,
+			k4state,
 			instanceTransform,
 			screenClass,
 			onDoubleClick,

@@ -52,7 +52,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	/**
 	 * Сохранить снимок показа с пометками (multipart, поле `image`).
 	 *
-	 * @return DataResponse<Http::STATUS_OK, array{file: string, chat: bool}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_INTERNAL_SERVER_ERROR, array{error: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, array{file: string, id: int, chat: bool}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_INTERNAL_SERVER_ERROR, array{error: string}, array{}>
 	 */
 	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 	#[PublicPage]
@@ -107,7 +107,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		}
 		$path = 'Talk/Recording/' . $this->room->getToken() . '/Снимки/' . $name;
 
-		return new DataResponse(['file' => $path, 'chat' => $this->shareToChat($owner, $file, $author)]);
+		return new DataResponse(['file' => $path, 'id' => $file->getId(), 'chat' => $this->shareToChat($owner, $file, $author)]);
 	}
 
 	private function shareToChat(string $owner, \OCP\Files\File $file, string $author): bool {

@@ -22,6 +22,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+	canDraw,
 	cursor,
 	eraseMarks,
 	hash,
@@ -49,6 +50,8 @@ const props = defineProps({
 	video: { type: Object, default: null },
 	/** transform panzoom ({x, y, scale}) */
 	transform: { type: Object, default: () => ({ x: 0, y: 0, scale: 1 }) },
+	/** доска: кадра нет, соотношение сторон из показа (`h.ar`) */
+	board: { type: Boolean, default: false },
 })
 
 const NS = 'http://www.w3.org/2000/svg'
@@ -85,6 +88,8 @@ let multi = false
 let t0 = 0
 let tap = 0 // время последнего короткого тапа (двойной тап по своему тексту = правка)
 let edit = null // открытое поле ввода текста
+let ptrPen = false // текущий штрих пером
+let penAt = -1e9 // когда перо последний раз было у экрана (пальцы в это время — ладонь)
 
 const f1 = (v) => Math.round(v * 10) / 10
 const pt = (p) => f1(p[0]) + ' ' + f1(p[1])
@@ -104,12 +109,22 @@ function mk(tag, a) {
 /** Область кадра внутри <video>: считается при каждой отрисовке. */
 function sync() {
 	const v = props.video
-	if (!v || !v.videoWidth || !v.clientWidth) {
-		return false
+	let cw, ch, ar
+	if (props.board) {
+		ar = showOf(props.presenter)?.ar
+		cw = root.value?.clientWidth
+		ch = root.value?.clientHeight
+		if (!ar || !cw || !ch) {
+			return false
+		}
+	} else {
+		if (!v || !v.videoWidth || !v.clientWidth) {
+			return false
+		}
+		cw = v.clientWidth
+		ch = v.clientHeight
+		ar = v.videoWidth / v.videoHeight
 	}
-	const cw = v.clientWidth
-	const ch = v.clientHeight
-	const ar = v.videoWidth / v.videoHeight
 	let w = cw
 	let h = cw / ar
 	if (h > ch) {
@@ -205,6 +220,34 @@ function smooth(P) {
 }
 
 /**
+ * Линия переменной толщины (нажим пера): контур с круглыми концами.
+ *
+ * @param P точки px
+ * @param D толщина в каждой точке
+ */
+function inkPath(P, D) {
+	const n = P.length
+	if (n < 2) {
+		const r = f1((D[0] || 4) / 2)
+		return P.length ? `M${pt([P[0][0] - r, P[0][1]])}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z` : ''
+	}
+	const L = []
+	const Rr = []
+	for (let i = 0; i < n; i++) {
+		const a = P[Math.max(0, i - 1)]
+		const b = P[Math.min(n - 1, i + 1)]
+		const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+		const nx = -(b[1] - a[1]) / l * D[i] / 2
+		const ny = (b[0] - a[0]) / l * D[i] / 2
+		L.push([P[i][0] + nx, P[i][1] + ny])
+		Rr.push([P[i][0] - nx, P[i][1] - ny])
+	}
+	const r0 = f1(D[0] / 2)
+	const r1 = f1(D[n - 1] / 2)
+	return 'M' + L.map(pt).join('L') + `A${r1} ${r1} 0 0 0 ${pt(Rr[n - 1])}L` + Rr.reverse().map(pt).join('L') + `A${r0} ${r0} 0 0 0 ${pt(L[0])}Z`
+}
+
+/**
  *
  * @param P
  * @param w
@@ -274,9 +317,26 @@ function draw(v) {
 			v.r.setAttribute(k, f1(P[0][i]))
 		}
 	} else {
-		let d = smooth(P)
-		if (m.tool === 'arrow' && P.length > 1) {
-			d += head(P, WID.arrow)
+		// предсказанные точки пера (getPredictedEvents) — только на экране, до следующего события
+		m.pred?.length && !m.done && P.push(...m.pred.map((q) => [q[0] * W, q[1] * H]))
+		let d
+		if (m.pr && m.pr.length === m.pts.length) {
+			const D = m.pr.map((q) => WID[m.tool] * (0.3 + 1.4 * q))
+			while (D.length < P.length) {
+				D.push(D[D.length - 1] || WID[m.tool])
+			}
+			d = inkPath(P, D)
+			if (!v.pen) {
+				v.pen = 1
+				v.p.style.fill = v.c
+				v.p.style.stroke = 'none'
+				v.sh.setAttribute('stroke-width', 3)
+			}
+		} else {
+			d = smooth(P)
+			if (m.tool === 'arrow' && P.length > 1) {
+				d += head(P, WID.arrow)
+			}
 		}
 		v.p.setAttribute('d', d)
 		v.sh.setAttribute('d', d)
@@ -710,16 +770,29 @@ function cancelCur() {
  * @param e
  */
 function onDown(e) {
-	if (!state.mode || !W || !show()) {
+	if (!state.mode || !W || !show() || !canDraw()) {
 		return
+	}
+	const pen = e.pointerType === 'pen'
+	if (pen) {
+		penAt = performance.now()
+	} else if (e.pointerType === 'touch' && (ptrPen || performance.now() - penAt < 1000)) {
+		return // ладонь, пока рисуют пером
 	}
 	if (ptr !== null) {
-		// второй палец отменяет текущий штрих
-		cancelCur()
-		multi = true
-		return
+		if (pen && !ptrPen) {
+			// перо важнее пальца: палец (ладонь) отменяется, рисует перо
+			cancelCur()
+			ptr = null
+		} else {
+			// второй палец отменяет текущий штрих
+			cancelCur()
+			multi = true
+			return
+		}
 	}
 	ptr = e.pointerId
+	ptrPen = pen
 	multi = false
 	try {
 		ink.value.setPointerCapture(e.pointerId)
@@ -749,7 +822,16 @@ function onDown(e) {
 		cur = { mv: g.m, P: g.m.pts.map((q) => [...q]), corner: g.corner, o: p }
 		return
 	}
-	cur = { m: strokeStart(show(), state.tool, p), last: p }
+	cur = { m: strokeStart(show(), state.tool, p, force(e)), last: p }
+}
+
+/**
+ * Нажим пера для маркеров (у пальца и мыши толщина постоянная).
+ *
+ * @param e PointerEvent
+ */
+function force(e) {
+	return e.pointerType === 'pen' && (state.tool === 'marker' || state.tool === 'fade') ? (e.pressure > 0 ? e.pressure : 0.5) : undefined
 }
 
 /**
@@ -805,6 +887,9 @@ function dragFrame(c, p) {
  * @param e
  */
 function onMove(e) {
+	if (e.pointerType === 'pen') {
+		penAt = performance.now()
+	}
 	if (!state.mode || !W || !show()) {
 		return
 	}
@@ -837,9 +922,13 @@ function onMove(e) {
 		if (m.tool === 'arrow' || m.tool === 'frame') {
 			cur.last = p
 		} else if (m.tool === 'laser' || Math.hypot((p[0] - cur.last[0]) * W, (p[1] - cur.last[1]) * H) >= 2) {
-			strokePoint(show(), m, p)
+			strokePoint(show(), m, p, m.pr ? force(ev) : undefined)
 			cur.last = p
 		}
+	}
+	if (cur.m && ptrPen && (cur.m.tool === 'marker' || cur.m.tool === 'fade') && e.getPredictedEvents) {
+		cur.m.pred = e.getPredictedEvents().map(nrm)
+		cur.m.pred.length && draw(view(cur.m))
 	}
 	if (cur.m) {
 		(cur.m.tool === 'arrow' || cur.m.tool === 'frame') && strokePoint(show(), cur.m, cur.last)
@@ -856,11 +945,13 @@ function onUp(e) {
 		return
 	}
 	ptr = null
+	ptrPen = false
 	const c = cur
 	cur = null
 	if (!c) {
 		return
 	}
+	c.m && (c.m.pred = null)
 	if (c.txt) {
 		if (e.type !== 'pointercancel' && !multi) {
 			openEdit(c.p, c.own)
@@ -1153,6 +1244,9 @@ onBeforeUnmount(() => {
 	overflow: visible;
 	pointer-events: none;
 	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 	z-index: 3;
 	path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 	.sh { stroke: #000; stroke-opacity: .28; }

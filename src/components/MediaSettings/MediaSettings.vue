@@ -234,6 +234,18 @@
 						{{ t('spreed', 'Notify all participants about this call') }}
 					</NcCheckboxRadioSwitch>
 
+					<!-- ket4tec: k4draw. Доска в звонке: на телефоне главный путь -->
+					<NcButton
+						v-if="isInCall && k4BoardBtn()"
+						class="k4-board-open"
+						variant="secondary"
+						wide
+						@click="k4Toggle">
+						<template #icon>
+							<IconDraw :size="20" />
+						</template>
+						{{ k4BoardLabel() }}
+					</NcButton>
 					<NcButton
 						v-if="showUpdateChangesButton"
 						class="action-button"
@@ -271,6 +283,7 @@ import NcModal from '@nextcloud/vue/components/NcModal'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcPopover from '@nextcloud/vue/components/NcPopover'
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue'
+import IconDraw from 'vue-material-design-icons/Draw.vue' // ket4tec: k4draw
 import IconReflectHorizontal from 'vue-material-design-icons/ReflectHorizontal.vue'
 import IconTune from 'vue-material-design-icons/Tune.vue'
 import IconVideo from 'vue-material-design-icons/Video.vue' // Filled for better indication
@@ -302,6 +315,7 @@ import { useGuestNameStore } from '../../stores/guestName.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localMediaModel } from '../../utils/webrtc/index.js'
+import { boardBtn, boardLabel, toggleBoard } from '../CallView/k4draw/useDrawing.js' // ket4tec: k4draw
 
 const supportStartWithoutMedia = getTalkConfig('local', 'call', 'start-without-media') !== undefined
 const supportDefaultBlurVirtualBackground = getTalkConfig('local', 'call', 'blur-virtual-background') !== undefined
@@ -312,6 +326,7 @@ export default {
 	name: 'MediaSettings',
 
 	components: {
+		IconDraw, // ket4tec: k4draw
 		AvatarWrapper,
 		CallButton,
 		MediaDevicesSelector,
@@ -395,6 +410,8 @@ export default {
 		const tabs = computed(() => isVirtualBackgroundAvailable.value ? [devicesTab, backgroundsTab] : [devicesTab])
 
 		return {
+			k4BoardBtn: boardBtn, // ket4tec: k4draw
+			k4BoardLabel: boardLabel,
 			AVATAR,
 			isInCall,
 			guestNameStore,
@@ -786,6 +803,12 @@ export default {
 	},
 
 	methods: {
+		// ket4tec: k4draw. Доска открывается у всех, шторка закрывается
+		k4Toggle() {
+			toggleBoard()
+			this.closeModalAndApplySettings()
+		},
+
 		t,
 		handleDialogClose() {
 			if (this.isBeforeJoinCall && this.isVoiceRoom && !this.isGuest) {

@@ -135,6 +135,9 @@
 					@selectVideo="handleSelectVideo"
 					@clickLocalVideo="handleClickLocalVideo" />
 
+				<!-- ket4tec: k4draw. Доска на месте главной плитки -->
+				<DrawBoard v-if="!isSidebar && k4.board && !k4.boardHidden" />
+
 				<ReactionToaster
 					v-if="supportedReactions?.length"
 					:token="token"
@@ -176,6 +179,7 @@ import { computed, provide, ref } from 'vue'
 import BottomBar from './BottomBar.vue'
 import SpeakersGrid from './Grid/SpeakersGrid.vue'
 import VideosGrid from './Grid/VideosGrid.vue'
+import DrawBoard from './k4draw/DrawBoard.vue' // ket4tec: k4draw
 import EmptyCallView from './shared/EmptyCallView.vue'
 import LiveTranscriptionRenderer from './shared/LiveTranscriptionRenderer.vue'
 import LocalVideo from './shared/LocalVideo.vue'
@@ -196,6 +200,7 @@ import { callParticipantCollection, localCallParticipantModel, localMediaModel }
 import RemoteVideoBlocker from '../../utils/webrtc/RemoteVideoBlocker.js'
 import { placeholderImage, placeholderModel, placeholderName, placeholderSharedData } from './Grid/gridPlaceholders.ts'
 import { animateTilePromotion } from './Grid/tilePromotionTransition.ts'
+import { state as k4, watchCall } from './k4draw/useDrawing.js' // ket4tec: k4draw
 import { setUpSpeakerSimulation, tearDownSpeakerSimulation } from './speakerSimulation.ts'
 import { useActiveSpeakers } from './useActiveSpeakers.ts'
 import { useWakeLock } from './useWakeLock.ts'
@@ -207,6 +212,7 @@ export default {
 
 	components: {
 		BottomBar,
+		DrawBoard, // ket4tec: k4draw
 		EmptyCallView,
 		VideosGrid,
 		LiveTranscriptionRenderer,
@@ -289,6 +295,7 @@ export default {
 
 	data() {
 		return {
+			k4, // ket4tec: k4draw
 			screens: [],
 			sharedDatas: {},
 			raisedHandUnwatchers: {},
@@ -679,12 +686,14 @@ export default {
 		if (OC.debug) {
 			setUpSpeakerSimulation(this.token)
 		}
+		this.k4unwatch = watchCall() // ket4tec: k4draw — о доске узнаём без показа экрана
 	},
 
 	beforeUnmount() {
 		if (OC.debug) {
 			tearDownSpeakerSimulation()
 		}
+		this.k4unwatch?.() // ket4tec: k4draw
 
 		this.debounceFetchPeers.clear?.()
 		this.debounceHandleMovement.clear?.()
@@ -1144,5 +1153,6 @@ export default {
 }
 
 </style>
+
 <!-- ket4tec: «Стол» v7, вид звонка (глобальный, не scoped: звонок, панель, плитки, вход) -->
 <style lang="scss" src="./k7call.scss"></style>

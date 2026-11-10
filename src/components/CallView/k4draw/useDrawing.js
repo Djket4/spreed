@@ -3,7 +3,9 @@
  * Один модуль на всех: слой, док и кнопка в панели звонка работают с одним `state` и одним набором показов.
  */
 import { reactive } from 'vue'
+import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
+import { useTokenStore } from '../../../stores/token.ts'
 import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 
 export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff', '#a6e36b', '#ff6b6b']
@@ -39,7 +41,40 @@ export const state = reactive({
 	big: null, // sessionId показывающего, чей показ сейчас крупно
 	keys: {}, // sessionId показывающего -> ключ показа (известен, когда пришёл `h`)
 	undo: 0, // сколько своих пометок можно отменить в крупном показе
+	board: null, // sessionId того, кто открыл доску (одна на звонок)
+	boardHidden: false, // доска скрыта только у себя
+	ask: false, // «Сохранить рисунок?» перед закрытием своей доски
+	gd: true, // гости рисуют (переключает модератор)
 })
+
+// ── доска и права ──
+// Доска — тот же показ, только без экрана: ключ `sid:b<время>`, соотношение сторон задаёт открывший (`h.ar`).
+export const isBoard = (k) => /:b\d+$/.test(k || '')
+const MODS = [1, 2, 6] // владелец, модератор, гость-модератор
+/**
+ *
+ * @param sid
+ */
+function attendee(sid) {
+	const nc = callParticipantCollection.get(sid)?.attributes.nextcloudSessionId
+	return nc ? store.getters.findParticipant(useTokenStore().token, { sessionId: nc }) : null
+}
+export const amMod = () => !!store.getters.isModerator
+export const amGuest = () => useActorStore().actorType !== 'users'
+// ponytail: гость не грузит список участников, у него «модератор» = участник с учёткой; точнее — только с сервера
+const isMod = (sid) => (sid === me() ? amMod() : (attendee(sid) ? MODS.includes(attendee(sid).participantType) : !!callParticipantCollection.get(sid)?.attributes.userId))
+const isGuestSid = (sid) => (sid === me() ? amGuest() : (attendee(sid) ? ['guests', 'emails'].includes(attendee(sid).actorType) : !callParticipantCollection.get(sid)?.attributes.userId))
+/** Можно ли мне рисовать сейчас. */
+export const canDraw = () => state.gd || !amGuest()
+/**
+ *
+ * @param k
+ * @param cols
+ */
+function hOf(k, cols) {
+	const s = shows.get(k)
+	return { op: 'h', k, ...(cols ? { cols } : {}), ...(s?.ar ? { ar: s.ar } : {}), gd: state.gd ? 1 : 0 }
+}
 
 /**
  * FNV-1a, как в прототипе.
@@ -194,7 +229,7 @@ function assignCol(show, sid) {
 	clearTimeout(colsTimer)
 	colsTimer = setTimeout(() => {
 		colsTimer = 0
-		myK && show.k === myK && enqueue({ op: 'h', k: myK, cols: colsOut(show) })
+		myK && show.k === myK && enqueue(hOf(myK, colsOut(show)))
 	}, 300)
 }
 
@@ -267,12 +302,14 @@ function enqueue(data) {
 			if (data.op === 'p') {
 				const room = MAX_PTS_STROKE * 2 - queue[i].pts.length
 				let pts = room > 0 ? queue[i].pts.concat(data.pts.slice(0, room)) : queue[i].pts
+				const pr = queue[i].pr && data.pr && room > 0 ? queue[i].pr.concat(data.pr.slice(0, room / 2)) : undefined
 				// при переполнении у arrow/frame важен конец: последняя пара заменяется актуальной (marker: хвост отбрасывается)
 				const tool = shows.get(data.k)?.marks.get(me() + '/' + data.id)?.tool
 				if ((tool === 'arrow' || tool === 'frame') && data.pts.length > Math.max(room, 0) && data.pts.length >= 2) {
 					pts = pts.slice(0, -2).concat(data.pts.slice(-2))
 				}
-				queue[i] = { ...queue[i], pts }
+				queue[i] = { ...queue[i], pts, pr: pts.length === queue[i].pts.length ? queue[i].pr : pr }
+				queue[i].pr || delete queue[i].pr
 			} else {
 				queue[i] = data
 			}
@@ -304,7 +341,7 @@ function rekey() {
 	state.keys[sid] = myK
 	queue = queue.map((q) => (q.k === old ? { ...q, k: myK } : q))
 	snap = null
-	wire({ op: 'h', k: myK })
+	wire(hOf(myK))
 }
 
 /**
@@ -319,8 +356,8 @@ function flush() {
 		const d = queue[0]
 		if (d.op === 'p' && d.pts.length > MAX_PTS_MSG * 2) {
 			// лишнее остаётся в очереди для следующей пачки
-			queue.unshift({ ...d, pts: d.pts.slice(0, MAX_PTS_MSG * 2) })
-			queue[1] = { ...d, pts: d.pts.slice(MAX_PTS_MSG * 2) }
+			queue.unshift({ ...d, pts: d.pts.slice(0, MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(0, MAX_PTS_MSG) } : {}) })
+			queue[1] = { ...d, pts: d.pts.slice(MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(MAX_PTS_MSG) } : {}) }
 		}
 		wire(queue.shift())
 		tokens--
@@ -545,7 +582,19 @@ function idle(show, m, from) {
  */
 function apply(d, from) {
 	const op = d.op
+	if (op === 'G') {
+		if (isMod(from)) {
+			state.gd = !!d.on
+			!canDraw() && (state.mode = false)
+		}
+		return
+	}
 	if (op === 'q') {
+		// модератор напоминает новичку, что гости не рисуют
+		if (!state.gd && amMod() && performance.now() - (apply.g || 0) > Q_GAP) {
+			apply.g = performance.now()
+			enqueue({ op: 'G', on: 0 })
+		}
 		if (myK && !qTimer) {
 			// несколько `q` в окне — один ответ, не чаще раза в Q_GAP
 			qTimer = setTimeout(() => {
@@ -566,7 +615,20 @@ function apply(d, from) {
 	if (op === 'h') {
 		if (d.k.startsWith(from + ':')) {
 			state.keys[from] !== d.k && setShow(from, d.k)
-			applyCols(shows.get(d.k), d.cols) // повторный `h` того же ключа состояние не сбрасывает
+			const s = shows.get(d.k)
+			applyCols(s, d.cols) // повторный `h` того же ключа состояние не сбрасывает
+			if (isBoard(d.k)) {
+				const ar = Math.min(3, Math.max(0.33, Number(d.ar) || 1))
+				if (s.ar !== ar) {
+					s.ar = ar
+					emit({ t: 'show', show: s })
+				}
+				if (state.board !== from) {
+					state.board = from
+					state.boardHidden = false
+				}
+			}
+			'gd' in d && isMod(from) && (state.gd = !!d.gd)
 		}
 		return
 	}
@@ -575,6 +637,9 @@ function apply(d, from) {
 		return
 	}
 	identity(from) // запомнить имя автора, пока он в звонке
+	if (!state.gd && (op === 's' || op === 't' || op === 'g' || op === 'm') && isGuestSid(from)) {
+		return // гости сейчас не рисуют
+	}
 	switch (op) {
 		case 's': {
 			if (!idOk(d.id) || !TOOLS.includes(d.tool)) {
@@ -599,9 +664,13 @@ function apply(d, from) {
 				P = [m.pts[0] || P[0], P[P.length - 1]]
 				m.pts = P
 			} else if (m.pts.length + P.length <= MAX_PTS_STROKE) {
-				P.forEach((p) => {
+				// нажим пера (необязательный `pr`, 0..1 на точку): толщина линии
+				const pr = Array.isArray(d.pr) && d.pr.length === P.length && (m.tool === 'marker' || m.tool === 'fade') ? d.pr.map((v) => num(v) ?? 0.5) : null
+				pr && !m.pr && !m.pts.length && (m.pr = [])
+				P.forEach((p, i) => {
 					m.pts.push(p)
 					m.ts.push(now)
+					m.pr?.push(pr ? pr[i] : 0.5)
 				})
 				if (m.tool === 'laser') {
 					while (m.ts.length && now - m.ts[0] > LASER_LIFE) {
@@ -698,9 +767,13 @@ function apply(d, from) {
 			show.marks.forEach((m) => m.by === from && drop(show, m, true))
 			break
 		case 'Z':
-			if (from === show.presenter) {
+			// «Очистить всё»: модератор; показывающий экран — на своём показе
+			if ((from === show.presenter && !isBoard(show.k)) || isMod(from)) {
 				show.marks.forEach((m) => drop(show, m, true))
 			}
+			break
+		case 'H': // доску закрыл тот, кто открыл
+			from === show.presenter && isBoard(show.k) && boardGone(from)
 			break
 		case 'S': // снимок сохранён: только для счётчика и тоста
 			emit({ t: 'snap', show, by: from, n: Math.min(999, Math.max(1, Number(d.n) || 1)), name: identity(from).name })
@@ -732,6 +805,7 @@ function apply(d, from) {
 						const g = (r.tool === 'frame' || r.tool === 'arrow') && pendG.get(m.key)
 						m.pts = g || pairs(r.pts)
 						pendG.delete(m.key)
+						Array.isArray(r.pr) && r.pr.length === m.pts.length && r.tool === 'marker' && (m.pr = r.pr.map((v) => num(v) ?? 0.5))
 					}
 					if (typeof r.name === 'string' && !show.authors[r.author]) {
 						show.authors[r.author] = { name: r.name.slice(0, 60), key: String(r.uid || r.name).slice(0, 60) }
@@ -753,7 +827,7 @@ function startSnap() {
 	if (!myK) {
 		return
 	}
-	enqueue({ op: 'h', k: myK, cols: colsOut(shows.get(myK)) })
+	enqueue(hOf(myK, colsOut(shows.get(myK))))
 	snap = { k: myK, parts: buildState(shows.get(myK)), i: 0, again: false }
 }
 
@@ -770,7 +844,7 @@ function ser(show, m) {
 	const a = show.authors[m.by] || {}
 	return m.tool === 'text'
 		? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key }
-		: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key }
+		: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), ...(m.pr ? { pr: m.pr.map((v) => +v.toFixed(2)) } : {}), name: a.name, uid: a.key }
 }
 
 /**
@@ -823,6 +897,7 @@ function buildState(show) {
 
 /** Показывающий начал показ: объявить ключ. */
 export function startShow() {
+	isBoard(myK) && closeBoard() // показ экрана закрывает свою доску
 	if (myK) {
 		return
 	}
@@ -839,7 +914,7 @@ export function startShow() {
  *
  */
 export function endShow() {
-	if (!myK) {
+	if (!myK || isBoard(myK)) {
 		return
 	}
 	dropShow(me())
@@ -965,12 +1040,13 @@ function local(show, data) {
  * @param show
  * @param tool
  * @param p
+ * @param pr
  */
-export function strokeStart(show, tool, p) {
+export function strokeStart(show, tool, p, pr) {
 	const id = rid()
 	local(show, { op: 's', id, tool, ttl: tool === 'fade' ? state.ft : 0 })
 	const m = show.marks.get(me() + '/' + id)
-	strokePoint(show, m, p)
+	strokePoint(show, m, p, pr)
 	return m
 }
 
@@ -979,9 +1055,10 @@ export function strokeStart(show, tool, p) {
  * @param show
  * @param m
  * @param p
+ * @param pr
  */
-export function strokePoint(show, m, p) {
-	m && !m.done && local(show, { op: 'p', id: m.id, pts: [r4(p[0]), r4(p[1])] })
+export function strokePoint(show, m, p, pr) {
+	m && !m.done && local(show, { op: 'p', id: m.id, pts: [r4(p[0]), r4(p[1])], ...(pr === undefined ? {} : { pr: [+Math.min(1, Math.max(0, pr)).toFixed(2)] }) })
 }
 
 /**
@@ -1103,7 +1180,141 @@ export function clearMine() {
  * @param show
  */
 export function clearAll(show = showOf(state.big)) {
-	show && show.k === myK && local(show, { op: 'Z' }) // по ключу: id сессии мог смениться посреди показа
+	show && canClearAll(show) && local(show, { op: 'Z' })
+}
+
+/**
+ * «Очистить всё» доступно: модератору; показывающему экран — на своём показе (по ключу: id сессии мог смениться).
+ *
+ * @param show
+ */
+export function canClearAll(show = showOf(state.big)) {
+	return !!show && (amMod() || (show.k === myK && !isBoard(show.k)))
+}
+
+/**
+ * Модератор: гости рисуют или нет.
+ *
+ * @param {boolean} on
+ */
+export function setGuestsDraw(on) {
+	state.gd = !!on
+	hpb() && enqueue({ op: 'G', on: on ? 1 : 0 })
+}
+
+/**
+ * Открыть доску у всех.
+ *
+ * @param {number} ar соотношение сторон доски (ширина / высота) у открывшего
+ */
+export function openBoard(ar) {
+	if (myK || state.board === me()) {
+		return
+	}
+	if (!acquire()) {
+		release()
+		return
+	}
+	myK = me() + ':b' + Date.now()
+	setShow(me(), myK)
+	shows.get(myK).ar = Math.min(3, Math.max(0.33, +ar.toFixed(3)))
+	state.board = me()
+	state.boardHidden = false
+	wire(hOf(myK))
+	state.mode = canDraw()
+}
+
+/** Своя доска с рисунком: перед закрытием спросить «Сохранить рисунок?». */
+export function requestCloseBoard() {
+	const s = myShow()
+	if (s && isBoard(s.k) && s.perm > 0) {
+		state.ask = true
+	} else {
+		closeBoard()
+	}
+}
+
+/** Закрыть свою доску у всех. */
+export function closeBoard() {
+	if (!isBoard(myK)) {
+		return
+	}
+	wire({ op: 'H', k: myK })
+	queue = queue.filter((q) => q.k !== myK)
+	snap = null
+	clearTimeout(qTimer)
+	qTimer = 0
+	clearTimeout(colsTimer)
+	colsTimer = 0
+	myK = null
+	boardGone(me())
+	release()
+}
+
+/**
+ * Доска ушла (закрыли или открывший ушёл из звонка).
+ *
+ * @param sid кто открывал
+ */
+export function boardGone(sid) {
+	dropShow(sid)
+	if (state.board === sid) {
+		state.board = null
+		state.boardHidden = false
+		state.ask = false
+	}
+	if (state.big === sid) {
+		state.big = null
+		state.mode = false
+		state.undo = 0
+	}
+}
+
+/** Кнопка «Доска»: открыть у всех / показать скрытую / закрыть свою / скрыть чужую у себя. */
+export function toggleBoard() {
+	if (!state.board) {
+		// соотношение сторон — от области видео открывшего за вычетом полей доски (DrawBoard.vue)
+		const el = document.getElementById('videos')
+		openBoard(((el?.clientWidth || 800) - 24) / Math.max(100, (el?.clientHeight || 600) - 160))
+	} else if (state.boardHidden) {
+		state.boardHidden = false
+	} else if (state.board === me()) {
+		requestCloseBoard()
+	} else {
+		state.boardHidden = true
+		state.mode = false
+	}
+}
+export const boardLabel = () => (!state.board ? 'Доска' : state.boardHidden ? 'Показать доску' : state.board === me() ? 'Закрыть доску' : 'Скрыть доску')
+/** Кнопку «Доска» показываем: есть HPB, и мне можно рисовать (или доска уже открыта). */
+export const boardBtn = () => hasHpb() && (!!state.board || canDraw())
+
+let views = 0 // смонтированные виды звонка
+/**
+ * Пока идёт звонок: слушать сигналинг (о доске узнаём без экрана), новичком спросить `q`.
+ *
+ * @return {Function} отписка
+ */
+export function watchCall() {
+	let held = false
+	let n = 0
+	views++
+	const t = setInterval(() => {
+		if (!held) {
+			held = acquire()
+			held || release()
+			return
+		}
+		me() && n < 3 && wire({ op: 'q' })
+		++n >= 3 && clearInterval(t)
+	}, 2000)
+	return () => {
+		clearInterval(t)
+		views--
+		held && release()
+		// звонок ушёл (а не перерисовка вида звонка): своя доска закрывается у всех
+		setTimeout(() => views || closeBoard(), 1500)
+	}
 }
 
 /**

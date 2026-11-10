@@ -39,11 +39,20 @@
 
 			<header class="k4-dh">
 				<div class="k4-ttl">
-					<b><i />Пометки видят все</b>
+					<b><i />{{ board ? 'Доска' : 'Пометки видят все' }}</b>
 					<span>{{ sub }}</span>
 				</div>
 				<button
-					v-if="presenter"
+					v-if="mod"
+					class="k4-pill k4-pill--ghost"
+					type="button"
+					:aria-pressed="state.gd"
+					title="Модератор: могут ли гости рисовать"
+					@click="setGuestsDraw(!state.gd)">
+					Гости: {{ state.gd ? 'рисуют' : 'нет' }}
+				</button>
+				<button
+					v-if="canClear"
 					class="k4-pill k4-pill--ghost"
 					type="button"
 					aria-label="Очистить всё"
@@ -51,22 +60,14 @@
 					Очистить всё
 				</button>
 				<!-- ket4tec: k4draw. Приложение для Мака: пометки поверх всего экрана показывающего -->
-				<span v-if="presenter && isMac() && mac.st === 'noapp'">Нет приложения для Мака</span>
+				<span v-if="presenter && !board && isMac() && mac.st === 'noapp'">Нет приложения для Мака</span>
 				<button
-					v-if="presenter && isMac()"
+					v-if="presenter && !board && isMac()"
 					class="k4-pill k4-pill--ghost"
 					type="button"
 					:title="mac.st === 'noapp' ? 'Страница скачивания и короткая инструкция по установке' : mac.st === 'launch' ? 'Приложение не отвечает: нажмите ещё раз, чтобы запустить его' : mac.st === 'start' ? 'Когда приложение откроется, нажмите, чтобы подключить его' : 'Пометки поверх всего экрана в приложении для Мака'"
 					@click="openMac()">
 					{{ mac.st === 'noapp' ? 'Скачать' : macLabel[mac.st] }}
-				</button>
-				<button
-					ref="snapBtn"
-					class="k4-pill k4-pill--ghost"
-					type="button"
-					:disabled="snap.busy"
-					@click="takeSnapshot(token, snapBtn)">
-					В выжимку<sup v-if="snap.n"> {{ snap.n }}</sup>
 				</button>
 				<button
 					class="k4-cb"
@@ -146,21 +147,23 @@
 						<svg class="k4-ico"><use href="#k4i-undo" /></svg>
 					</button>
 					<button
+						ref="snapBtn"
 						class="k4-tb k4-tb--snap"
 						type="button"
 						aria-label="Снимок"
-						title="Снимок: кадр показа с пометками в PNG"
+						:title="board ? 'Снимок доски в Файлы, к записи звонка' : 'Снимок: кадр показа с пометками в Файлы, к записи звонка'"
 						:disabled="snap.busy"
-						@click="downloadSnapshot">
+						@click="shoot(token, snapBtn)">
 						<svg class="k4-ico"><use href="#k4i-camera" /></svg>
+						<sup v-if="snap.n">{{ snap.n }}</sup>
 					</button>
 					<hr>
 					<button
 						class="k4-tb k4-tb--close"
 						type="button"
-						aria-label="Закрыть рисование"
-						title="Закрыть рисование (Esc)"
-						@click="close">
+						:aria-label="board ? 'Закрыть доску' : 'Закрыть рисование'"
+						:title="board ? 'Закрыть доску' : 'Закрыть рисование (Esc)'"
+						@click="board ? closeBoardBtn() : close()">
 						<svg class="k4-ico"><use href="#k4i-close" /></svg>
 					</button>
 				</div>
@@ -173,8 +176,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { isMac, mac, macLabel, openMac } from './macBridge.js'
-import { downloadSnapshot, snap, takeSnapshot, watchSnaps } from './snapshot.js'
-import { clearAll, clearMine, isPresenter, reducedMotion, SP, state, TSIZE, undo } from './useDrawing.js'
+import { shoot, snap, watchSnaps } from './snapshot.js'
+import { amMod, canClearAll, clearAll, clearMine, isBoard, isPresenter, reducedMotion, requestCloseBoard, setGuestsDraw, SP, state, TSIZE, undo } from './useDrawing.js'
 
 const TOOLS = [
 	{ id: 'laser', label: 'Лазерная указка', sub: 'лазер · след гаснет сам' },
@@ -195,6 +198,20 @@ const dock = ref(null)
 const btns = reactive({})
 const px = ref(0)
 const presenter = computed(() => isPresenter())
+const board = computed(() => !!state.big && state.big === state.board && isBoard(state.keys[state.big]))
+const mod = computed(() => amMod())
+const canClear = computed(() => (state.undo, state.big, canClearAll()))
+
+/** «Закрыть доску»: своя — у всех (с вопросом о снимке), чужая — только у себя. */
+function closeBoardBtn() {
+	if (presenter.value) {
+		state.mode = false
+		requestCloseBoard()
+	} else {
+		state.mode = false
+		state.boardHidden = true
+	}
+}
 const sub = computed(() => {
 	const t = TOOLS.find((x) => x.id === state.tool)
 	return t.sub + (state.tool === 'fade' ? state.ft + ' с' : '') + (state.tool === 'text' ? ' · ' + state.tsz.toUpperCase() + ' · ' + (state.tl ? 'гаснет ' + state.tl + ' с' : 'остаётся') : '')
@@ -202,6 +219,9 @@ const sub = computed(() => {
 const vars = { '--sp-in': SP.in, '--sp-menu': SP.menu }
 // шапка-капсула живёт в пределах сцены звонка: под шапкой Стола и шапкой беседы, шапка Стола остаётся кликабельной
 const scene = reactive({})
+/**
+ *
+ */
 function placeScene() {
 	const cc = document.getElementById('call-container')?.getBoundingClientRect()
 	if (!cc) {
@@ -335,7 +355,7 @@ onMounted(() => {
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
 	animation: k4-up .42s var(--sp-in) both;
 }
-/* телефон: док во всю ширину, кнопки 36, «Снимок» скрыт — крестик закрытия всегда в доке */
+/* телефон: док во всю ширину, кнопки 34; «Снимок» в доке — на телефоне это главный путь */
 @media (max-width: 500px) {
 	.k4-dh { padding-left: 12px; gap: 6px; }
 	.k4-ttl { min-width: 0; }
@@ -345,9 +365,8 @@ onMounted(() => {
 	.k4-dockwrap .k4-pill--ghost { padding: 0 12px; font-size: 13px; }
 	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
 	.k4-dockwrap .k4-dock .k4-tools { padding: 0 8px; }
-	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 36px; height: 36px; }
-	.k4-dockwrap .k4-dock .k4-sp { top: 18px; }
-	.k4-dockwrap .k4-dock .k4-tb--snap { display: none; }
+	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 34px; height: 34px; }
+	.k4-dockwrap .k4-dock .k4-sp { top: 19px; }
 }
 /* custom.css темы красит глобальный .k4-ico плиткой приложения: в доке это значок */
 body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !important; border-radius: 0; position: static; }
