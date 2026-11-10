@@ -121,6 +121,8 @@ onBeforeUnmount(() => ro?.disconnect())
 	overflow: hidden;
 	border-radius: var(--k7-r-tile, 24px);
 	container-type: size;
+	// плитка без камеры: тот же фон, что у обычной (k7call.scss), под стикером
+	background: linear-gradient(135deg, var(--k7-tile-a, #3b2f3f), var(--k7-tile-b, #1d1620));
 	pointer-events: none;
 	animation: k4stk-in .32s cubic-bezier(.2, 1.1, .3, 1) both;
 
