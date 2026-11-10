@@ -962,7 +962,6 @@ function buildState(show) {
 
 /** Показывающий начал показ: объявить ключ. */
 export function startShow() {
-	console.debug('k4snap startShow ' + myK + ' ' + (bound?.attributes.localScreen ? 'screen' : 'noscreen'))
 	isBoard(myK) && closeBoard() // показ экрана закрывает свою доску
 	if (myK) {
 		return
@@ -1310,7 +1309,6 @@ export function requestCloseBoard() {
  * @param {boolean} pass не закрывать, а передать доску следующему в звонке (я ухожу из звонка)
  */
 export function closeBoard(pass = false) {
-	console.debug('k4snap closeBoard ' + myK + ' pass=' + pass + ' ' + new Error().stack.split('\n').slice(2, 5).join('|'))
 	if (!isBoard(myK)) {
 		return
 	}
@@ -1371,7 +1369,6 @@ function moveBoard(show, next) {
 export function passBoard(old) {
 	const show = shows.get(state.keys[old])
 	const next = show && isBoard(show.k) && pickOwner(old)
-	console.debug('k4snap passBoard ' + old + ' next=' + next + ' me=' + me())
 	next ? moveBoard(show, next) : boardGone(old)
 }
 
@@ -1388,7 +1385,6 @@ let snapped = false // автоснимок уже сделан при выхо�
 // До выхода из звонка (список участников и холст ещё целы): последний на доске с рисунком снимает её в Файлы, ждём до 4 с
 beforeLeaveCall.fn = async () => {
 	const s = myShow()
-	console.debug('k4snap hook ' + JSON.stringify({ k: s?.k, myK, perm: s?.perm, snapped, others: callParticipantCollection.callParticipantModels.length, big: state.big, board: state.board }))
 	if (!s || !isBoard(s.k) || s.perm <= 0 || snapped || callParticipantCollection.callParticipantModels.length) {
 		return
 	}
