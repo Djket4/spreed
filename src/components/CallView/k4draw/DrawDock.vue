@@ -362,7 +362,8 @@ onMounted(() => {
 	.k4-ttl b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
 	.k4-ttl b i { display: inline-block; margin-right: 8px; vertical-align: middle; }
 	.k4-ttl span { display: none; }
-	.k4-dockwrap .k4-pill--ghost { padding: 0 12px; font-size: 13px; }
+	.k4-dockwrap .k4-pill--ghost { padding: 0 10px; font-size: 12.5px; }
+	.k4-dockwrap .k4-pill:not(.k4-pill--ghost) { padding: 0 14px; }
 	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
 	.k4-dockwrap .k4-dock .k4-tools { padding: 0 8px; }
 	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 34px; height: 34px; }

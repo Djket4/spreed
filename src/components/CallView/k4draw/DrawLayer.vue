@@ -330,7 +330,7 @@ function draw(v) {
 				v.pen = 1
 				v.p.style.fill = v.c
 				v.p.style.stroke = 'none'
-				v.sh.setAttribute('stroke-width', 3)
+				v.sh.setAttribute('stroke-width', 1.5)
 			}
 		} else {
 			d = smooth(P)

@@ -75,7 +75,7 @@ onBeforeUnmount(() => clearInterval(timer))
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
 	> .k4-layer {
-		inset: 64px 12px 96px;
+		inset: 76px 12px 96px;
 		transform: none !important;
 	}
 	.k4-surf {

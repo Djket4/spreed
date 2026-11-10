@@ -541,7 +541,7 @@ function setCallLayout(layout: CallLayout) {
 			</NcButton>
 			<NcButton
 				v-if="k4Board"
-				class="k4-pencil k4-board-btn"
+				class="k4-board-btn"
 				:title="k4BoardLabel"
 				:aria-label="k4BoardLabel"
 				:variant="k4draw.board && !k4draw.boardHidden ? 'secondary' : 'tertiary'"
@@ -763,7 +763,8 @@ function setCallLayout(layout: CallLayout) {
 }
 
 // ket4tec: k4draw. Карандаш — квадрат 56 как соседние кнопки звонка (их размер задаёт тема облака по .buttons-bar)
-.bottom-bar .k4-pencil.button-vue {
+.bottom-bar .k4-pencil.button-vue,
+.bottom-bar .k4-board-btn.button-vue {
 	flex: none;
 	width: 56px !important;
 	height: 56px;
