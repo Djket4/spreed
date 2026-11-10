@@ -293,12 +293,12 @@ $glass: blur(24px) saturate(180%);
 	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
 	// предел высоты — у самой прокрутки, не у контейнера: Safari не сжимает flex-ребёнка под max-height родителя, и листалась маска со всей шторкой
 	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: calc(var(--k7-vh, 100dvh) - 110px - var(--k7-sheet-bottom, 0px)) !important; }
-	// компактно, чтобы на 874 всё влезало без прокрутки: превью ниже, аватар меньше, списки 48
-	:root body .media-settings__preview { width: 100% !important; height: 148px !important; aspect-ratio: auto !important; }
+	// превью камеры — нормальной формы 16:10 (148 px сплющивало лицо, Андрей 10.11); шторка всё равно ниже шапки Стола
+	:root body .media-settings__preview { width: 100% !important; height: auto !important; aspect-ratio: 16 / 10 !important; }
 	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
 	:root:root body .media-settings .button-vue.join-call:disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
-	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.5); }
+	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
 	:root body .media-settings__toggles { bottom: 10px; }
 	:root:root body .media-settings__toggles .button-vue { width: 48px; min-width: 48px; height: 48px; }
 	:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 48px !important; min-height: 48px !important; }
@@ -306,7 +306,7 @@ $glass: blur(24px) saturate(180%);
 	:root body .media-settings { padding: 20px 16px max(20px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
 	:root body .media-settings__title { font-size: 24px; margin-bottom: 12px; }
 	:root body .media-settings__content--mobile { gap: 12px !important; }
-	:root body .media-settings__preview { margin-inline-end: 0 !important; aspect-ratio: 16 / 11 !important; }
+	:root body .media-settings__preview { margin-inline-end: 0 !important; }
 	:root body .media-settings .media-settings__settings { max-width: none; }
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
 	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 4px 0; }
