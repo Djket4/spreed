@@ -135,6 +135,8 @@ async function show(it) {
 	border: 0;
 	border-radius: 12px;
 	background: var(--color-background-dark);
+	outline: 1px solid var(--color-border); // белый снимок на белой панели
+	outline-offset: -1px;
 	cursor: pointer;
 	img { width: 100%; height: 100%; object-fit: cover; display: block; }
 	span {
@@ -148,7 +150,7 @@ async function show(it) {
 		font-weight: 600;
 		text-align: center;
 	}
-	&--on { box-shadow: 0 0 0 2px var(--color-primary-element); }
+	&--on { outline: 2px solid var(--color-primary-element); }
 	&:disabled { opacity: .6; }
 }
 .k4-snaps__empty {
