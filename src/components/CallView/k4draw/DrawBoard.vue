@@ -4,8 +4,35 @@
 -->
 
 <template>
-	<div class="k4-board" :class="{ 'k4-board--draw': state.mode }" @pointerdown="enter">
+	<div class="k4-board" :class="{ 'k4-board--draw': state.mode, 'k4-board--strip': people.length }">
 		<DrawLayer :key="state.board" :presenter="state.board" board />
+		<!-- ket4tec (NAS_CLOUD#103 п.42, 53): камеры участников полосой рядом с доской (iPad — сбоку, iPhone — сверху);
+			звук идёт отдельно (CallParticipantsAudioPlayer), здесь видео без звука -->
+		<div v-if="people.length" class="k4-strip">
+			<div
+				v-for="p in people"
+				:key="p.id"
+				class="k4-strip__t"
+				:class="{ 'k4-strip__t--talk': p.speaking }">
+				<video
+					v-if="p.stream"
+					:srcObject="p.stream"
+					autoplay
+					muted
+					playsinline
+					:class="{ mirror: p.me }" />
+				<span v-else class="k4-strip__ini">{{ p.name.slice(0, 1).toUpperCase() }}</span>
+				<b>{{ p.name }}</b>
+			</div>
+		</div>
+		<button
+			type="button"
+			class="k4-board__min"
+			title="Свернуть доску у себя — вернуться к камерам"
+			@click="collapse">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" /></svg>
+			<span>К камерам</span>
+		</button>
 		<div v-if="state.ask" class="k4-board__ask" @pointerdown.stop>
 			<b>Сохранить рисунок?</b>
 			<span>Снимок доски уйдёт в Файлы, к записи звонка</span>
@@ -26,18 +53,33 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
+import { useStore } from 'vuex'
 import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
-import { callParticipantCollection } from '../../../utils/webrtc/index.js'
+import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 import { shoot, snap } from './snapshot.js'
-import { canDraw, closeBoard, myId, passBoard, state } from './useDrawing.js'
+import { closeBoard, myId, passBoard, state } from './useDrawing.js'
 
 const token = useGetToken()
 
-/** Тап по доске включает рисование. */
-function enter() {
-	!state.mode && !state.ask && canDraw() && (state.mode = true)
+const store = useStore()
+/** Участники звонка для полосы камер: я первым, дальше остальные. */
+const people = computed(() => {
+	const me = localMediaModel.attributes
+	const out = [{ id: 'me', me: true, name: 'Вы', stream: me.videoEnabled && me.localStream, speaking: me.speaking }]
+	callParticipantCollection.callParticipantModels.forEach((m) => {
+		const a = m.attributes
+		const name = a.name || store.getters.findParticipant(token.value, { sessionId: a.nextcloudSessionId })?.displayName || 'Участник'
+		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, speaking: a.speaking })
+	})
+	return out.length > 1 ? out : []
+})
+
+/** «К камерам»: доска сворачивается только у меня, у остальных остаётся; вернуть — «Рисовать» или «Вид → Доска». */
+function collapse() {
+	state.mode = false
+	state.boardHidden = true
 }
 
 /**
@@ -77,16 +119,101 @@ onBeforeUnmount(() => clearInterval(timer))
 	user-select: none;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
+	// поле доски: сверху без пустой полосы (п.7); снизу место под док инструментов, пока рисую
+	--k4-st: 0px;
+	--k4-sr: 0px;
 	> .k4-layer {
-		inset: 76px 12px 96px;
+		inset: calc(12px + var(--k4-st)) calc(12px + var(--k4-sr)) 12px 12px;
 		transform: none !important;
 	}
+	&.k4-board--draw > .k4-layer { bottom: 76px; }
+	// iPad и компьютер: камеры столбиком справа
+	&.k4-board--strip { --k4-sr: 172px; }
 	.k4-surf {
 		background: var(--k4-board-bg);
 		border-radius: 16px;
 		box-shadow: 0 0 0 1px #0000000f, 0 6px 24px #00000014;
 	}
 }
+.k4-strip {
+	position: absolute;
+	z-index: 6;
+	top: 12px;
+	right: 12px;
+	bottom: 12px;
+	width: 160px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	overflow: auto;
+	scrollbar-width: none;
+}
+.k4-strip__t {
+	position: relative;
+	flex: none;
+	aspect-ratio: 4 / 3;
+	overflow: hidden;
+	border-radius: 16px;
+	background: linear-gradient(135deg, var(--k7-tile-a, #3b2f3f), var(--k7-tile-b, #1d1620));
+	video { width: 100%; height: 100%; object-fit: cover; display: block; }
+	video.mirror { transform: scaleX(-1); }
+	b {
+		position: absolute;
+		left: 6px;
+		bottom: 6px;
+		max-width: calc(100% - 12px);
+		padding: 2px 8px;
+		overflow: hidden;
+		border-radius: 999px;
+		background: #1a171899;
+		color: #f3eee9;
+		font-size: 12px;
+		font-weight: 600;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	&--talk { box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
+}
+.k4-strip__ini {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	color: #f3eee9;
+	font-size: 28px;
+	font-weight: 700;
+}
+.k4-board__min {
+	position: absolute;
+	z-index: 7;
+	top: calc(20px + var(--k4-st));
+	right: calc(20px + var(--k4-sr));
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 36px;
+	padding: 0 14px 0 10px;
+	border: 0;
+	border-radius: 999px;
+	background: #2a2426d9;
+	color: #f3eee9;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 600;
+	box-shadow: 0 4px 14px #0004, inset 0 0 0 1px #ffffff1a;
+	touch-action: manipulation;
+	cursor: pointer;
+	svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+}
+// iPhone и узкие окна (портрет): камеры строкой сверху
+@media (max-aspect-ratio: 1/1) {
+	.k4-board.k4-board--strip { --k4-sr: 0px; --k4-st: 84px; }
+	.k4-strip { left: 12px; bottom: auto; width: auto; height: 76px; flex-direction: row; }
+	.k4-strip__t { height: 100%; }
+	.k4-board__min span { display: none; }
+	.k4-board__min { padding: 0 9px; }
+}
+
 // тёмная тема: доска тёмная
 @media (prefers-color-scheme: dark) {
 	body:not([data-themes*='light']) .k4-board { --k4-board-bg: #1f1b1d; }
