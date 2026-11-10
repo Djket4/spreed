@@ -40,7 +40,8 @@
 					<IconShieldOutline v-else :size="16" />
 				</span>
 				<span v-if="isBridgeBotUser" class="participant__user-badge">({{ t('spreed', 'bot') }})</span>
-				<span v-if="isGuestActor || isEmailActor" class="participant__user-badge">({{ t('spreed', 'guest') }})</span>
+				<!-- ket4tec 9Б п.31: без «Гость (гость)» -->
+				<span v-if="(isGuestActor || isEmailActor) && computedName.toLowerCase() !== t('spreed', 'guest').toLowerCase()" class="participant__user-badge">({{ t('spreed', 'guest') }})</span>
 				<span v-if="!isSelf && isLobbyEnabled && !canSkipLobby" class="participant__user-badge">({{ t('spreed', 'in the lobby') }})</span>
 			</span>
 		</template>
