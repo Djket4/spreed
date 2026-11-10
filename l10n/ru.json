@@ -1,4 +1,7 @@
 { "translations": {
+    "Regular" : "Обычное",
+    "Chat and calls for invited people" : "Переписка и звонки для приглашённых",
+    "Lobby, only hosts speak, guests join via link" : "Зал ожидания, говорят только ведущие, гости по ссылке",
     "Private conversation" : "Частное обсуждение",
     "a conversation" : "обсуждение",
     "(Duration %s)" : "(Продолжительность %s)",

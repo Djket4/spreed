@@ -1,0 +1,288 @@
+// ket4tec: «Стол» v7 — беседа, диалоги выбора, выпадающие списки (10.11.2026).
+// Токены темы облака --tk-* с запасными значениями Стола (тёмная по умолчанию).
+// Звонок и проверка устройств — в CallView/k7call.scss и MediaSettings, здесь не трогаем.
+body {
+	--k7u-bg: var(--tk-bg, #1a1718);
+	--k7u-bg2: var(--tk-bg2, #242021);
+	--k7u-bg3: var(--tk-bg3, #2c2627);
+	--k7u-fg: var(--tk-fg, #f3eee9);
+	--k7u-fg2: var(--tk-fg2, #bdb3ad);
+	--k7u-line: var(--tk-line, #ffffff12);
+	--k7u-line2: var(--tk-line2, #ffffff1f);
+	--k7u-pill: var(--tk-pill, #ffffff1f);
+	--k7u-acc: var(--tk-acc, #a86bff);
+	--k7u-acc2: var(--tk-acc2, #5b2a86);
+	--k7u-grad: linear-gradient(135deg, var(--k7u-acc2), var(--k7u-acc));
+	--k7u-dng: var(--tk-dng, #e5453d);
+	--k7u-ok: #2fb36a;
+}
+
+$phone: 700px;
+
+// ---------- 1. Беседа: верхняя полоса ----------
+.top-bar:not(.top-bar--in-call):not(.top-bar--sidebar) {
+	background: var(--k7u-bg);
+	border-bottom-color: var(--k7u-line);
+
+	// назад, поиск, «…», ссылка — одинаковые круглые капсулы 40px
+	.top-bar__icon-wrapper--with-action {
+		width: 40px;
+		height: 40px;
+		padding: 0;
+		border-radius: 20px;
+		background: var(--k7u-pill);
+		overflow: hidden;
+
+		.top-bar__icon-back { width: 40px; display: flex; align-items: center; justify-content: center; }
+		.avatardiv, .conversation-icon { display: none; }
+	}
+
+	.top-bar__controls {
+		gap: 8px;
+
+		.button-vue:not(.join-call),
+		.action-item__menutoggle {
+			--button-size: 40px;
+			width: 40px;
+			min-width: 40px;
+			height: 40px;
+			min-height: 40px;
+			padding: 0;
+			border-radius: 20px;
+			background: var(--k7u-pill);
+			color: var(--k7u-fg);
+			border: none;
+		}
+
+		// звонок — зелёная капсула той же высоты
+		.join-call {
+			--button-size: 40px;
+			min-height: 40px;
+			height: 40px;
+			border-radius: 20px;
+			padding-inline: 14px;
+			background: var(--k7u-ok) !important;
+			border: none !important;
+			color: #fff !important;
+			font-weight: 600;
+		}
+	}
+
+	.conversation-header {
+		min-width: 0;
+
+		&__text { align-items: stretch; }
+		.title {
+			font-weight: 600;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
+
+	@media (max-width: $phone) {
+		.conversation-header {
+			flex: 1 1 0;
+			min-width: 0;
+		}
+		.conversation-header__text { text-align: center; }
+		.top-bar__icon-wrapper { margin-inline-start: 0 !important; }
+	}
+}
+
+// ---------- 1. Беседа: системные сообщения, карточка удаления, разделитель, поле ввода ----------
+.message-body .system-message,
+.system-message {
+	display: block;
+	width: fit-content;
+	max-width: 90%;
+	margin: 4px auto;
+	padding: 4px 12px !important;
+	border-radius: 999px;
+	background: var(--k7u-bg2);
+	color: var(--k7u-fg2) !important;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.conversation-actions {
+	margin: 12px 16px;
+	padding: 16px !important;
+	border-radius: 20px;
+	background: var(--k7u-bg2);
+	border: 1px solid var(--k7u-line);
+	text-align: center;
+
+	p { color: var(--k7u-fg2); font-size: 14px; }
+
+	&__buttons {
+		display: flex;
+		gap: 8px;
+		margin-top: 12px;
+
+		.button-vue {
+			flex: 1 1 0;
+			min-height: 44px;
+			border-radius: 22px;
+			font-weight: 600;
+			background: transparent;
+			border: 1px solid var(--k7u-line2);
+			color: var(--k7u-fg);
+		}
+		// «Удалить» — красный контур, «Оставить» — нейтральная
+		.button-vue--error {
+			border-color: var(--k7u-dng);
+			color: var(--k7u-dng);
+		}
+		.button-vue--secondary { background: var(--k7u-pill); border-color: transparent; }
+	}
+}
+
+.message-unread-marker {
+	&::before { border-top: 1px solid var(--k7u-acc) !important; opacity: .5; }
+	&__wrapper { background: var(--k7u-bg) !important; }
+	&__text { color: var(--k7u-acc) !important; font-size: 12px; font-weight: 600; }
+}
+
+.wrapper .new-message-form {
+	align-items: center;
+	gap: 8px;
+
+	.rich-contenteditable__input {
+		min-height: 48px;
+		border-radius: 24px !important;
+		background: var(--k7u-bg2);
+		border-color: var(--k7u-line2);
+		color: var(--k7u-fg);
+	}
+	.new-message-form__emoji-picker { bottom: auto; top: 50%; transform: translateY(-50%); }
+	.button-vue { --button-size: 48px; }
+}
+
+// ---------- 2–3. Шторки: создание обсуждения, открытые обсуждения ----------
+@media (max-width: $phone) {
+	.new-group-conversation .modal-wrapper .modal-container,
+	.k7-sheet .modal-wrapper .modal-container {
+		position: fixed !important;
+		inset: 0 !important;
+		width: 100% !important;
+		max-width: none !important;
+		height: 100% !important;
+		max-height: none !important;
+		border-radius: 0 !important;
+		padding-top: 110px; // шапка Стола
+		background: var(--k7u-bg) !important;
+	}
+}
+
+.new-group-conversation {
+	.modal-container { background: var(--k7u-bg); color: var(--k7u-fg); border-radius: 24px; }
+	.modal-container__content { overflow-x: hidden; }
+
+	h2.nc-dialog-alike-header {
+		text-align: start;
+		font-size: 24px;
+		font-weight: 700;
+		padding-inline: 20px calc(40px + 20px);
+	}
+
+	.modal-container .modal-wrapper .modal-close,
+	.modal-close {
+		border-radius: 20px;
+		background: var(--k7u-pill);
+	}
+
+	.new-group-conversation__footer {
+		box-shadow: none;
+		border-top: 1px solid var(--k7u-line);
+		gap: 8px;
+		.button-vue { min-height: 52px; border-radius: 26px; }
+		.button-vue--primary {
+			background: var(--k7u-grad) !important;
+			color: #fff !important;
+			border: none;
+			font-weight: 600;
+			padding-inline: 24px;
+		}
+	}
+}
+
+.conversation-type-selector {
+	grid-template-columns: 1fr !important;
+	gap: 8px;
+
+	@media (max-width: $phone) {
+		grid-template-columns: 1fr !important;
+	}
+
+	&__option {
+		min-width: 0;
+		border: 1px solid var(--k7u-line2) !important;
+		border-radius: 20px !important;
+		background: var(--k7u-bg2) !important;
+		color: var(--k7u-fg);
+
+		&--active { border: 2px solid var(--k7u-acc) !important; }
+	}
+	&__description { color: var(--k7u-fg2) !important; }
+}
+
+.k7-sheet {
+	.selector__search :is(input, .input-field__input) {
+		min-height: 48px;
+		border-radius: 24px;
+		background: var(--k7u-bg2);
+	}
+	.empty-content__name { font-size: 16px !important; font-weight: 600; margin-top: 8px; }
+	.empty-content__icon { display: none; }
+	.empty-content__description { font-size: 13px; color: var(--k7u-fg2); }
+}
+
+// ---------- 4. NcSelect / NcActions / NcModal ----------
+.v-popper__popper .v-popper__inner,
+.vs__dropdown-menu {
+	background: var(--k7u-bg2) !important;
+	color: var(--k7u-fg) !important;
+	border: 1px solid var(--k7u-line2) !important;
+	border-radius: 18px !important;
+	box-shadow: 0 12px 40px #00000066;
+	overflow: hidden;
+}
+
+.vs__dropdown-menu {
+	padding: 6px;
+
+	.vs__dropdown-option {
+		min-height: 48px;
+		display: flex;
+		align-items: center;
+		border-radius: 14px;
+		color: var(--k7u-fg);
+	}
+	.vs__dropdown-option--highlight { background: var(--k7u-pill) !important; color: var(--k7u-fg) !important; }
+}
+
+.vs__open-indicator { fill: var(--k7u-fg) !important; }
+.vs__open-indicator path, .vs__clear svg path { fill: currentColor; }
+
+.v-popper__popper .action-item,
+.v-popper__popper .action-button { min-height: 48px; }
+.v-popper__popper .action-button,
+.v-popper__popper .action-link {
+	border-radius: 14px;
+	color: var(--k7u-fg);
+}
+.v-popper__popper .action-button:hover,
+.v-popper__popper .action-link:hover { background: var(--k7u-pill); }
+.v-popper__popper .action-button__icon,
+.v-popper__popper .action-button .material-design-icon { color: var(--k7u-fg2); }
+.v-popper__popper .action-button--active, .v-popper__popper [aria-current] { color: var(--k7u-fg); }
+
+.modal-mask .modal-container {
+	background: var(--k7u-bg) !important;
+	color: var(--k7u-fg);
+	border-radius: 24px !important;
+	border: 1px solid var(--k7u-line);
+}
+.modal-mask .modal-header .modal-name,
+.modal-mask .dialog__name { color: var(--k7u-fg); }

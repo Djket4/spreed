@@ -6,6 +6,7 @@
 <template>
 	<RoomSelector
 		v-if="modal"
+		class="k7-sheet"
 		listOpenConversations
 		showPostableOnly
 		:dialogTitle="dialogTitle"

@@ -174,6 +174,17 @@ function formatHiddenParameter(key, value) {
 			return null
 	}
 }
+const k7Presets = {
+	[CONVERSATION.PRESET.DEFAULT]: {
+		label: () => t('spreed', 'Regular'),
+		description: () => t('spreed', 'Chat and calls for invited people'),
+	},
+	[CONVERSATION.PRESET.WEBINAR]: {
+		label: () => t('spreed', 'Webinar'),
+		description: () => t('spreed', 'Lobby, only hosts speak, guests join via link'),
+	},
+}
+
 export default {
 
 	name: 'NewConversationSetupPage',
@@ -271,11 +282,13 @@ export default {
 		},
 
 		conversationTypeOptions() {
+			// ket4tec: владелец оставил только два вида обсуждений
 			return this.settingsStore.visiblePresets
+				.filter((preset) => k7Presets[preset.identifier])
 				.map((preset) => ({
 					value: preset.identifier,
-					label: preset.name,
-					description: preset.description,
+					label: k7Presets[preset.identifier].label(),
+					description: k7Presets[preset.identifier].description(),
 					...(presetIcons[preset.identifier] ?? presetIcons[CONVERSATION.PRESET.DEFAULT]),
 				}))
 		},
