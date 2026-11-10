@@ -215,6 +215,8 @@ html.k7f .new-message-form {
 		color: var(--k7u-fg);
 		line-height: 20px !important;
 	}
+	// подсказка «Напишите сообщение…» — штатная высота считается от других отступов и резала строку снизу
+	.rich-contenteditable__input--empty::before { height: auto !important; line-height: 20px; }
 	.new-message-form__emoji-picker { bottom: auto !important; top: 50% !important; transform: translateY(-50%); inset-inline-start: 2px; }
 }
 
@@ -481,7 +483,13 @@ html.k7-ava-letter .conversation-icon .k7-ava {
 // ---------- Шторки над нижней панелью Safari (блок 4) ----------
 // --k7-vv-gap и html.k7-ios-bar ставит main.js. В iOS 26 панель Safari плавает поверх страницы — шторка поднимается над ней
 :root { --k7-sheet-bottom: var(--k7-vv-gap, 0px); --k7-sheet-radius-b: 0px; }
-html.k7-ios-bar { --k7-sheet-bottom: max(72px, var(--k7-vv-gap, 0px)); --k7-sheet-radius-b: 28px; }
+html.k7-ios-bar { --k7-sheet-bottom: max(var(--k7-ios-pill, 0px), var(--k7-vv-gap, 0px)); --k7-sheet-radius-b: 28px; }
+// поле ввода чата — над свёрнутой пилюлей Safari
+html.k7f.k7-ios-bar .new-message-form { margin-bottom: var(--k7-ios-pill, 0px); }
+// пока открыта шторка, страница под ней не листается и не тянется резинкой (iOS уводил шторку вместе с вьюпортом)
+html.k7f:has(.modal-mask), html.k7f:has(.modal-mask) body { overflow: hidden !important; overscroll-behavior: none; }
+html.k7f .modal-mask, html.k7f .modal-mask .modal-wrapper { overflow: hidden !important; overscroll-behavior: contain; }
+html.k7f .modal-mask .modal-container__content { overscroll-behavior: contain; }
 
 // ---------- Поля ввода — общее правило облака (блок 4) ----------
 // Капсула 56, подпись внутри капсулы: пустое поле — по центру, при фокусе или вводе — вверху внутри капсулы, мельче.
@@ -501,6 +509,7 @@ html.k7f body {
 			line-height: 24px;
 		}
 		.input-field__input:focus { box-shadow: inset 0 0 0 2px var(--k7u-acc) !important; }
+		.input-field__input::placeholder { color: transparent !important; } // подпись внутри капсулы и есть подсказка — плейсхолдер поверх неё не нужен
 		.input-field__label {
 			inset-block-start: 50% !important;
 			transform: translateY(-50%);
@@ -539,6 +548,7 @@ html.k7f body {
 			resize: none;
 		}
 		.textarea__input:focus { box-shadow: inset 0 0 0 2px var(--k7u-acc) !important; }
+		.textarea__input::placeholder { color: transparent !important; }
 		.textarea__label {
 			inset-block-start: 18px !important;
 			margin-inline-start: 20px !important;
@@ -609,3 +619,37 @@ html.k7f body .toastify.dialogs {
 
 html.k7f .new-group-conversation .input-field + :is(.textarea, .new-group-conversation__error),
 html.k7f .new-group-conversation .input-field ~ .textarea { margin-top: 10px !important; }
+
+// ---------- Блок 5: пузыри сообщений — мягкие капсулы без рамки, хвостик — меньший угол у края отправителя ----------
+html.k7f .message--sided > .message-body {
+	padding: 8px 14px !important;
+	border: 0 !important;
+	border-radius: 22px !important;
+}
+html.k7f .message--sided.incoming > .message-body { border-start-start-radius: 8px !important; background: var(--k7u-bg3) !important; }
+html.k7f .message--sided.outgoing > .message-body { border-start-end-radius: 8px !important; background: color-mix(in srgb, var(--k7u-acc) 16%, var(--k7u-bg2)) !important; }
+
+// ---------- Блок 5: меню (NcActions) на телефоне — шторка снизу над панелью Safari ----------
+@media (max-width: $phone) {
+	html.k7f body .v-popper__popper.action-item__popper {
+		position: fixed !important;
+		inset: auto 0 var(--k7-sheet-bottom, 0px) 0 !important;
+		transform: none !important;
+		box-shadow: 0 0 0 100vmax #0006;
+		.v-popper__arrow-container { display: none !important; }
+		.v-popper__wrapper { width: 100%; }
+		.v-popper__inner {
+			width: 100%;
+			max-width: none !important;
+			max-height: calc(100dvh - 110px - var(--k7-sheet-bottom, 0px)) !important;
+			overflow-y: auto !important;
+			overscroll-behavior: contain;
+			padding: 10px 8px max(10px, env(safe-area-inset-bottom, 0px)) !important;
+			border: 0 !important;
+			border-radius: 28px 28px var(--k7-sheet-radius-b, 0px) var(--k7-sheet-radius-b, 0px) !important;
+			box-shadow: 0 -12px 60px #0006, inset 0 0 0 1px var(--k7u-line2) !important;
+		}
+		:is(.action-button, .action-link, .action-router) { min-height: 52px; font-size: 16px; }
+		.action-button__longtext-wrapper, .action-button__text { white-space: normal; }
+	}
+}

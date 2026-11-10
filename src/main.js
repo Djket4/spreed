@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import './utils/k7NoKeyHints.js'
 import { getCSPNonce } from '@nextcloud/auth'
 import { emit, subscribe } from '@nextcloud/event-bus'
 import { generateFilePath } from '@nextcloud/router'
@@ -20,17 +21,22 @@ initializeTalkOnce()
 // ket4tec: метка форка v7 — тема облака (custom.css) не применяет к нему правила штатного Talk (html:not(.k7f))
 document.documentElement.classList.add('k7f')
 // ket4tec: шторки не уходят под нижнюю панель Safari. --k7-vv-gap — сколько низа страницы закрыто (visualViewport),
-// html.k7-ios-bar — iPhone в Safari (не на экране «Домой»): в iOS 26 панель плавает поверх страницы, отступ задаёт CSS
+// html.k7-ios-bar — iPhone в Safari (не на экране «Домой»). Развёрнутая панель iOS 26 стоит под страницей (вьюпорт кончается над ней),
+// свёрнутая плавает пилюлей поверх низа — тогда вьюпорт почти во весь экран и нужен отступ --k7-ios-pill.
+// ponytail: эвристика по screen.height - innerHeight (порог 120), заменить, если Safari даст env() для своей панели
 {
 	const root = document.documentElement
 	const vv = window.visualViewport
-	const setGap = () => root.style.setProperty('--k7-vv-gap', `${Math.max(0, Math.round(window.innerHeight - (vv ? vv.height + vv.offsetTop : window.innerHeight)))}px`)
+	const ios = /iP(hone|od)/.test(navigator.userAgent) && !navigator.standalone && !window.matchMedia('(display-mode: standalone)').matches
+	const setGap = () => {
+		root.style.setProperty('--k7-vv-gap', `${Math.max(0, Math.round(window.innerHeight - (vv ? vv.height + vv.offsetTop : window.innerHeight)))}px`)
+		if (ios) root.style.setProperty('--k7-ios-pill', screen.height - window.innerHeight < 120 ? '64px' : '0px')
+	}
 	setGap()
 	vv?.addEventListener('resize', setGap)
 	vv?.addEventListener('scroll', setGap)
-	if (/iP(hone|od)/.test(navigator.userAgent) && !navigator.standalone && !window.matchMedia('(display-mode: standalone)').matches) {
-		root.classList.add('k7-ios-bar')
-	}
+	window.addEventListener('resize', setGap)
+	if (ios) root.classList.add('k7-ios-bar')
 }
 
 if (!IS_DESKTOP) {

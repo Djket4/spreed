@@ -7,7 +7,6 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import IconFaceRecognition from 'vue-material-design-icons/FaceRecognition.vue'
-import { isIOS } from '../../utils/browserCheck.ts'
 import {
 	getFaceFrameLevel,
 	LEVEL_LABELS,
@@ -48,9 +47,6 @@ const selected = computed({
 				:searchable="false"
 				placeholder="Кадр по лицу" />
 		</div>
-		<p v-if="isIOS" class="face-frame__hint">
-			Если включён «Центр внимания» в Пункте управления, авто-кадр можно выключить
-		</p>
 	</div>
 </template>
 
@@ -67,11 +63,6 @@ const selected = computed({
 		align-items: center;
 		flex-shrink: 0;
 		margin-inline-end: var(--default-grid-baseline);
-	}
-
-	&__hint {
-		color: var(--color-text-maxcontrast);
-		font-size: 0.9em;
 	}
 
 	:deep(.v-select.select) {

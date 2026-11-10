@@ -8,8 +8,8 @@
 		<NcTextField
 			ref="conversationName"
 			v-model="conversationName"
-			:placeholder="t('spreed', 'Enter a name for this conversation')"
-			:label="t('spreed', 'Name')"
+			placeholder=" "
+			:label="t('spreed', 'Conversation name')"
 			:error="!!nameErrorLabel"
 			labelVisible
 			@keydown.enter="$emit('handleEnter')" />
@@ -18,7 +18,7 @@
 		</span>
 		<NcTextArea
 			v-model="conversationDescription"
-			:placeholder="t('spreed', 'Enter a description for this conversation')"
+			placeholder=" "
 			:label="t('spreed', 'Description')"
 			:error="!!descriptionErrorLabel"
 			resize="vertical"

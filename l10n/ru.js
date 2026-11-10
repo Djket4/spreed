@@ -2483,6 +2483,7 @@ OC.L10N.register(
     "Calling …" : "Вызов …",
     "Waiting for others to join the call …" : "Ждём, пока остальные подключатся к вызову…",
     "Waiting for others" : "Ждём остальных",
+    "Conversation name" : "Название",
     "Send link" : "Отправить ссылку",
     "Select a microphone" : "Выбрать микрофон",
     "Select a speaker" : "Выбрать динамик",

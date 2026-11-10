@@ -182,6 +182,7 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 				:key="index"
 				:aria-label="t('spreed', 'React with {reaction}', { reaction })"
 				class="reaction__button"
+				closeAfterClick
 				@click="throttledSendReaction(reaction)">
 				<template #icon>
 					{{ reaction }}
@@ -195,6 +196,7 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 			:title="raiseHandButtonLabel"
 			:aria-label="raiseHandButtonLabel"
 			class="raise-hand__button"
+			closeAfterClick
 			:variant="isHandRaised ? 'secondary' : 'tertiary'"
 			@click="toggleHandRaised">
 			<!-- The following icon is much bigger than all the others

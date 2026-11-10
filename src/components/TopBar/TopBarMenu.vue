@@ -130,9 +130,9 @@
 			{{ t('spreed', 'Search messages') }}
 		</NcActionButton>
 
-		<!-- Fullscreen -->
+		<!-- Fullscreen (ket4tec: на iPhone Safari полноэкранного режима нет — пункт не показываем) -->
 		<NcActionButton
-			v-if="!isInCall"
+			v-if="!isInCall && canFullscreen"
 			:aria-label="t('spreed', 'Toggle full screen')"
 			closeAfterClick
 			@click="toggleFullscreen">
@@ -246,6 +246,7 @@ export default {
 			IconMicrophoneOffOutline,
 			IconScreenRecordOutline,
 			isFullscreen: useDocumentFullscreen(),
+			canFullscreen: !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
 			isInCall: useIsInCall(),
 			toggleFullscreen,
 			actorStore,

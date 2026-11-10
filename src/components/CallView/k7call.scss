@@ -83,7 +83,7 @@ $glass: blur(24px) saturate(180%);
 // мик / камера — круглые 56 px стекло поверх превью
 :root body .media-settings__toggles { bottom: 14px; gap: 12px; padding: 0; background: none; box-shadow: none; }
 :root:root body .media-settings__toggles .button-vue { width: 56px; min-width: 56px; height: 56px; padding: 0; border-radius: 999px !important; border: 0 !important; background: var(--k7-glass) !important; color: var(--k7-fg) !important; -webkit-backdrop-filter: $glass; backdrop-filter: $glass; box-shadow: inset 0 0 0 1px var(--k7-line2); }
-:root:root body .media-settings__toggles .button-vue:is(:has(.microphone-off-icon, .video-off-icon, .video-off-outline-icon), [aria-label^="Включить"]) { background: var(--k7-fg) !important; color: var(--k7-bg) !important; }
+:root:root body .media-settings__toggles .button-vue:is(:has(.microphone-off-icon, .video-off-icon, .video-off-outline-icon), [aria-label^="Включить"]) { background: color-mix(in srgb, var(--k7-dng) 16%, var(--k7-glass)) !important; color: var(--k7-dng) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k7-dng) 40%, transparent) !important; }
 :root:root body .media-settings__toggles .button-vue--vue-error { background: var(--k7-dng) !important; color: #fff !important; }
 // выпадающие списки: одинаковые капсулы 52 px, иконка слева, шеврон справа; справа резерв 62 px под круглую кнопку теста
 :root body .media-settings :is(.media-devices-selector, .face-frame) { position: relative; display: block; margin: 10px 0; }
@@ -107,7 +107,6 @@ $glass: blur(24px) saturate(180%);
 :root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected-options { flex: 1 1 0 !important; }
 :root body .media-settings :is(.media-devices-selector, .face-frame) .vs__actions { flex: 0 0 auto; color: var(--k7-fg2) !important; }
 :root body .media-settings :is(.media-devices-selector, .face-frame) :is(.vs__open-indicator, .vs__open-indicator-button, .vs__actions svg) { color: var(--k7-fg2) !important; fill: currentColor !important; }
-:root body .media-settings .face-frame__hint { margin: 2px 6px 8px; font-size: 13px; color: var(--k7-fg2); }
 :root body .media-settings :is(.media-devices-selector, .face-frame) .media-devices-speaker-test-button .button-vue__text { display: none; }
 :root body .media-settings :is(.media-devices-selector, .face-frame) .media-devices-speaker-test-button .equalizer__bar { background: currentColor; }
 // одна вкладка (фоны запрещены темой) — полоса вкладок не нужна; запись без сервера записи — неактивная строка, прячем
@@ -172,10 +171,11 @@ $glass: blur(24px) saturate(180%);
 }
 #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .action-item__menutoggle):hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; }
 #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .local-audio-control-wrapper button, .local-video-control-wrapper button):active:not(:disabled) { transform: scale(.92); }
-// «выключено» (микрофон, камера) — не ошибка: заливка цветом текста, значок с зачёркиванием
+// «выключено» (микрофон, камера) — стекло с красноватым оттенком и зачёркнутым значком (сплошная заливка выглядела тяжело, Андрей)
 #content-vue #call-container > .bottom-bar :is(.local-audio-control-wrapper, .local-video-control-wrapper) button:is(:has(.microphone-off-icon, .video-off-icon, .video-off-outline-icon), [aria-label^="Включить микрофон"], [aria-label^="Включить видео"], [aria-label^="Unmute audio"], [aria-label^="Enable video"]) {
-	--k7-bbg: var(--k7-fg);
-	--k7-bfg: var(--k7-bg);
+	--k7-bbg: color-mix(in srgb, var(--k7-dng) 16%, var(--k7-glass));
+	--k7-bfg: var(--k7-dng);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k7-dng) 40%, transparent) !important;
 }
 // показ экрана включён — Слива; карандаш рисования — Слива
 #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue.screensharing-enabled, .k4-pencil.button-vue) {
@@ -253,7 +253,7 @@ $glass: blur(24px) saturate(180%);
 #content-vue .top-bar--in-call .conversation-header .title { font-weight: 700; letter-spacing: -.012em; }
 #content-vue .top-bar--in-call .top-bar__controls .button-vue--tertiary { border-radius: 999px; background: var(--k7-pill); }
 #content-vue .top-bar--in-call .top-bar__controls .button-vue--tertiary:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent); }
-#content-vue .top-bar--in-call .top-bar__controls { gap: 6px; }
+#content-vue .top-bar--in-call .top-bar__controls { gap: 6px; margin-inline-end: 4px; } // +4 — тот же зазор 6 до кнопки чата (она стоит отдельно, абсолютно)
 // «Открыть чат» справа в шапке звонка — та же капсула (штатная прозрачная иконка на светлой теме не видна)
 #content-vue.in-call .app-sidebar__toggle.button-vue { border-radius: 999px !important; background: var(--k7-pill) !important; color: var(--k7-fg) !important; }
 // шапка звонка: таймер, «…» и чат — одна высота 40; слева нет гамбургера — заголовок без отступа под него
@@ -277,15 +277,23 @@ $glass: blur(24px) saturate(180%);
 /* телефон: окно проверки устройств — шторка снизу, под шапкой Стола (~110 px); всё внутри шторки, листается сама шторка */
 @media (max-width: 500px) {
 	:root:root body .modal-wrapper:has(.media-settings) { display: flex !important; flex-direction: column; justify-content: flex-end !important; align-items: stretch !important; padding: 0 0 var(--k7-sheet-bottom, 0px) !important; }
-	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: calc(100dvh - 110px - var(--k7-sheet-bottom, 0px)) !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
-	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; max-height: none; }
+	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
+	// предел высоты — у самой прокрутки, не у контейнера: Safari не сжимает flex-ребёнка под max-height родителя, и листалась маска со всей шторкой
+	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: calc(100dvh - 110px - var(--k7-sheet-bottom, 0px)) !important; }
+	// компактно, чтобы на 874 всё влезало без прокрутки: превью ниже, аватар меньше, списки 48
+	:root body .media-settings__preview { height: 168px !important; aspect-ratio: auto !important; }
+	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.5); }
+	:root body .media-settings__toggles { bottom: 10px; }
+	:root:root body .media-settings__toggles .button-vue { width: 48px; min-width: 48px; height: 48px; }
+	:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 48px !important; min-height: 48px !important; }
+	:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { top: 6px; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
 	:root body .media-settings { padding: 20px 16px max(20px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
 	:root body .media-settings__title { font-size: 24px; margin-bottom: 12px; }
 	:root body .media-settings__content--mobile { gap: 12px !important; }
 	:root body .media-settings__preview { margin-inline-end: 0 !important; aspect-ratio: 16 / 11 !important; }
 	:root body .media-settings .media-settings__settings { max-width: none; }
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
-	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 6px 0; }
+	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 4px 0; }
 	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: sticky !important; inset: auto 0 0 0 !important; z-index: 2; width: 100% !important; min-width: 0 !important; margin: 10px 0 0 !important; box-shadow: 0 0 0 10px var(--k7-bg2), 0 14px 0 10px var(--k7-bg2) !important; }
 }
 
