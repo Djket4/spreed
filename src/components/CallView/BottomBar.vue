@@ -615,6 +615,7 @@ function setCallLayout(layout: CallLayout) {
 			<NcActions
 				v-if="showViewMenu"
 				class="k7-view"
+				:class="{ 'k7-on': viewValue === 'board' }"
 				variant="tertiary"
 				aria-label="Вид"
 				title="Вид">

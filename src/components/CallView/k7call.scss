@@ -170,7 +170,8 @@ $glass: blur(24px) saturate(180%);
 	box-shadow: none !important;
 	transition: transform .12s ease-out, background .2s;
 }
-#content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .k4stk-btn.button-vue, .action-item__menutoggle):hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; }
+// наведение только там, где есть мышь: на айфоне серый фон «залипал» на последней нажатой кнопке
+@media (hover: hover) { #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .k4stk-btn.button-vue, .action-item__menutoggle):hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; } }
 #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .k4stk-btn.button-vue, .local-audio-control-wrapper button, .local-video-control-wrapper button):active:not(:disabled) { transform: scale(.92); }
 // «выключено» (микрофон, камера) — стекло с красноватым оттенком и зачёркнутым значком (сплошная заливка выглядела тяжело, Андрей)
 #content-vue #call-container > .bottom-bar :is(.local-audio-control-wrapper, .local-video-control-wrapper) button:is(:has(.microphone-off-icon, .video-off-icon, .video-off-outline-icon), [aria-label^="Включить микрофон"], [aria-label^="Включить видео"], [aria-label^="Unmute audio"], [aria-label^="Enable video"]) {
@@ -183,6 +184,10 @@ $glass: blur(24px) saturate(180%);
 	background: var(--k7-grad) !important;
 	color: #fff !important;
 }
+// «Вид»: доска на экране — Слива с белым значком, иначе стекло; без фиолетового фона темы облака при открытом меню
+#content-vue #call-container > .bottom-bar :is(.k7-view .action-item__menutoggle, .k7-view.action-item--single).button-vue { background: var(--k7-pill) !important; color: var(--k7-fg) !important; box-shadow: none !important; outline: none !important; }
+#content-vue #call-container > .bottom-bar :is(.k7-view.k7-on .action-item__menutoggle, .k7-view.k7-on.action-item--single).button-vue { background: var(--k7-grad) !important; color: #fff !important; }
+#content-vue #call-container > .bottom-bar :is(.k7-view .action-item__menutoggle, .k7-view.action-item--single) .material-design-icon { color: inherit !important; }
 #content-vue #call-container > .bottom-bar .k4stk-btn.button-vue.k4stk-on { background: var(--k7-grad) !important; color: #fff !important; }
 #content-vue #call-container > .bottom-bar .k4-pencil.k4-on.button-vue:hover:not(:disabled) { filter: brightness(1.12); background: var(--k7-grad) !important; }
 // стрелки выбора устройства — маленькие бейджи у угла
@@ -256,7 +261,7 @@ $glass: blur(24px) saturate(180%);
 #content-vue .top-bar--in-call :is(.title, .button-vue, .call-time__text) { color: var(--k7-fg); }
 #content-vue .top-bar--in-call .conversation-header .title { font-weight: 700; letter-spacing: -.012em; }
 #content-vue .top-bar--in-call .top-bar__controls .button-vue--tertiary { border-radius: 999px; background: var(--k7-pill); }
-#content-vue .top-bar--in-call .top-bar__controls .button-vue--tertiary:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent); }
+@media (hover: hover) { #content-vue .top-bar--in-call .top-bar__controls .button-vue--tertiary:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent); } }
 #content-vue .top-bar--in-call .top-bar__controls { gap: 6px; margin-inline-end: 4px; } // +4 — тот же зазор 6 до кнопки чата (она стоит отдельно, абсолютно)
 // «Открыть чат» справа в шапке звонка — та же капсула (штатная прозрачная иконка на светлой теме не видна)
 #content-vue.in-call .app-sidebar__toggle.button-vue { border-radius: 999px !important; background: var(--k7-pill) !important; color: var(--k7-fg) !important; }
@@ -342,7 +347,7 @@ $glass: blur(24px) saturate(180%);
 // ---------- Блок 4: звонок на телефоне ----------
 // выбор устройств — шестерёнкой «Настройки» (шторка устройств), стрелки-меню у микрофона и камеры не нужны
 #content-vue #call-container > .bottom-bar :is(.local-audio-control-wrapper, .local-video-control-wrapper) div.action-item { display: none !important; }
-#content-vue #call-container > .bottom-bar .k7-call-settings.button-vue:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; }
+@media (hover: hover) { #content-vue #call-container > .bottom-bar .k7-call-settings.button-vue:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; } }
 #content-vue #call-container > .bottom-bar .k7-call-settings.button-vue:active:not(:disabled) { transform: scale(.92); }
 
 // экран ожидания: коротко, крупная капсула «Отправить ссылку», выше своего превью
@@ -371,5 +376,5 @@ $glass: blur(24px) saturate(180%);
 :root body .k7-view-item :is(.action-button, button) { min-height: 48px; border-radius: 14px !important; color: var(--k7-fg) !important; background: transparent !important; }
 :root body .k7-view-item :is(.action-button, button):hover { background: var(--k7-pill) !important; }
 :root body .k7-view-item :is(.action-button__text, .action-button__longtext) { color: var(--k7-fg) !important; font-weight: 600; }
-:root body .k7-view-item .material-design-icon { color: var(--k7-fg2); }
+:root body .v-popper__popper .k7-view-item .material-design-icon { color: var(--k7-fg2); }
 :root body .k7-view-item .checkbox-radio-switch__icon, :root body .k7-view-item .action-button__pressed-icon { color: var(--k7-acc) !important; }
