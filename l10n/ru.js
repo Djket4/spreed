@@ -1159,6 +1159,7 @@ OC.L10N.register(
     "You can invite others in the participant tab of the sidebar or share this link to invite others!" : "Пригласите других на вкладке «Участники» боковой панели или отправьте им эту ссылку!",
     "Share this link to invite others!" : "Отправьте эту ссылку, чтобы пригласить других!",
     "Copy link" : "Копировать ссылку",
+    "Link" : "Ссылка",
     "You are not allowed to enable audio" : "Вам не разрешено включать микрофон",
     "No audio. Click to select device" : "Нет аудио. Нажмите, чтобы выбрать устройство",
     "Mute audio" : "Выключить микрофон",

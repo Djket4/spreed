@@ -208,6 +208,7 @@
 					<NcCheckboxRadioSwitch
 						v-if="showStartRecordingOption"
 						v-model="isRecordingFromStart"
+						type="switch"
 						class="checkbox">
 						{{ t('spreed', 'Start recording immediately with the call') }}
 					</NcCheckboxRadioSwitch>
@@ -222,6 +223,7 @@
 					<NcCheckboxRadioSwitch
 						v-if="showNotifyCallOption"
 						v-model="notifyCall"
+						type="switch"
 						class="checkbox"
 						@update:modelValue="setNotifyCall">
 						{{ t('spreed', 'Notify all participants about this call') }}

@@ -20,8 +20,14 @@
 			<NcButton
 				v-if="showLink"
 				variant="primary"
+				class="empty-call-view__link"
+				:title="t('spreed', 'Copy link')"
+				:aria-label="t('spreed', 'Copy link')"
 				@click.stop="handleCopyLink">
-				{{ t('spreed', 'Copy link') }}
+				<template #icon>
+					<IconLink :size="20" />
+				</template>
+				{{ t('spreed', 'Link') }}
 			</NcButton>
 		</template>
 	</div>

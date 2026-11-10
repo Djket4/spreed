@@ -84,6 +84,8 @@ async function leaveCall(endMeetingForAll = false) {
 		return
 	}
 
+	const isInstantMeeting = conversation.value.objectType === CONVERSATION.OBJECT_TYPE.INSTANT_MEETING
+
 	// Remove selected participant
 	callViewStore.setSelectedVideoPeerId(null)
 	loading.value = true
@@ -100,6 +102,11 @@ async function leaveCall(endMeetingForAll = false) {
 		all: endMeetingForAll,
 	})
 	loading.value = false
+
+	// ket4tec: после встречи — на главную Talk, а не в чат встречи
+	if (isInstantMeeting) {
+		router.push({ name: 'root' })
+	}
 }
 
 /**
