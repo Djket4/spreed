@@ -39,6 +39,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { SHARED_ITEM } from '../../../constants.ts'
 import { useSharedItemsStore } from '../../../stores/sharedItems.ts'
+import { useSidebarStore } from '../../../stores/sidebar.ts'
 import { bgUrl, onDraw, showImage, state } from './useDrawing.js'
 
 const props = defineProps({
@@ -47,6 +48,7 @@ const props = defineProps({
 
 const token = useGetToken()
 const sharedItemsStore = useSharedItemsStore()
+const sidebarStore = useSidebarStore()
 const snaps = ref([])
 const busy = ref(false)
 
@@ -97,7 +99,8 @@ async function show(it) {
 		// картинку из беседы сервер отдаёт гостям (у них нет чата) только после такой отметки
 		it.t === 'm' && await axios.post(generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/image/{id}', { token: token.value, id: it.id }))
 		const err = await showImage({ t: it.t, id: it.id })
-		err && showError(err)
+		// показано — панель закрываем: картинка во весь экран доски
+		err ? showError(err) : sidebarStore.hideSidebar()
 	} catch (e) {
 		console.error('k4draw show image', e)
 		showError('Не получилось показать картинку')
