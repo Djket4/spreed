@@ -6,6 +6,7 @@
 # Перед выкладкой: нет активных звонков, копия js/css/lib/appinfo рядом. Откат — вернуть копию и поднять cachebuster.
 # После выкладки пишет custom_apps/spreed/.ket4tec-build (sha256 talk-main.js) — по нему talk-guard (NAS_CLOUD s18/talk-guard)
 # узнаёт, что магазин приложений затёр сборку.
+# Медиа гифок и стикеров (img/k4stk, ~14 МБ, вне git): нет локально — тянется с NAS (pnr-base/.../talk-media-k7m2x), потом rsync на сервер.
 set -euo pipefail
 cd "$(dirname "$0")"
 case "${TARGET:-}" in
@@ -22,10 +23,12 @@ mine=$(grep -m1 -o '<version>[^<]*' appinfo/info.xml | cut -d'>' -f2)
 calls=$(n "docker exec $DB sh -c 'psql -U \$POSTGRES_USER -d \$POSTGRES_DB -At -c \"select count(*) from oc_talk_rooms where active_since is not null\"'")
 [ "$calls" = 0 ] || [ "${FORCE:-}" = 1 ] || { echo "идёт звонков: $calls; FORCE=1 чтобы выложить всё равно"; exit 1; }
 
+[ -d img/k4stk ] || { mkdir -p img/k4stk && rsync -rt nas:/Volume1/homes/ANNANAS/pnr-base/docs/site/_gdoc/talk-media-k7m2x/ img/k4stk/; }
 [ "${NOBUILD:-}" = 1 ] || npm run build
 d=$(date +%F-%H%M)
 n "sudo -n cp -a $R/js $BASE/spreed-js.bak-$d && sudo -n cp -a $R/css $BASE/spreed-css.bak-$d && sudo -n cp -a $R/lib $BASE/spreed-lib.bak-$d && sudo -n cp -a $R/appinfo $BASE/spreed-appinfo.bak-$d && sudo -n cp -a $R/l10n $BASE/spreed-l10n.bak-$d"
 rsync -rtz --chmod=F644 --chown=33:33 --rsync-path="sudo -n rsync" js css "$H:$R/"
+rsync -rt --chmod=F644,D755 --chown=33:33 --rsync-path="sudo -n rsync" img/k4stk/ "$H:$R/img/k4stk/"   # k4stk: медиа гифок/стикеров
 # PHP форка (k4draw, снимок): lib/ и appinfo/; атрибутные маршруты кэшируются — сбросить кэш opcache graceful-ом apache
 rsync -rtz --chmod=F644,D755 --chown=33:33 --rsync-path="sudo -n rsync" lib appinfo l10n "$H:$R/"   # l10n: русские строки форка (без неё новые подписи по-английски)
 n "docker exec $APP sh -c 'kill -USR1 1'"
