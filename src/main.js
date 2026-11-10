@@ -20,6 +20,16 @@ initializeTalkOnce()
 
 // ket4tec: метка форка v7 — тема облака (custom.css) не применяет к нему правила штатного Talk (html:not(.k7f))
 document.documentElement.classList.add('k7f')
+// ket4tec: тост в звонке стоит под верхней панелью звонка — при появлении тоста замеряем её низ (k7ui.scss, --k7-toast-top)
+new MutationObserver((muts) => {
+	if (!muts.some((m) => [...m.addedNodes].some((n) => n.classList?.contains('toastify')))) {
+		return
+	}
+	const bar = document.querySelector('.top-bar--in-call')
+	if (bar) {
+		document.documentElement.style.setProperty('--k7-toast-top', Math.round(bar.getBoundingClientRect().bottom + 8) + 'px')
+	}
+}).observe(document.body, { childList: true })
 // ket4tec: шторки не уходят под нижнюю панель Safari. --k7-vv-gap — сколько низа страницы закрыто (visualViewport),
 // html.k7-ios-bar — iPhone в Safari (не на экране «Домой»). Развёрнутая панель iOS 26 стоит под страницей (вьюпорт кончается над ней),
 // свёрнутая плавает пилюлей поверх низа — тогда вьюпорт почти во весь экран и нужен отступ --k7-ios-pill.

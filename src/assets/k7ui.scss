@@ -92,6 +92,13 @@ $phone: 700px;
 		}
 	}
 
+	// узкая колонка беседы (планшет при открытой боковой панели): аватар и календарь прячем, иначе название сжимается в ноль
+	container-type: inline-size;
+	@container (max-width: 460px) {
+		.top-bar__icon-wrapper:not(.top-bar__icon-wrapper--with-action), .top-bar__calendar-events { display: none !important; }
+		.conversation-header { flex: 1 1 0; min-width: 60px; }
+	}
+
 	@media (max-width: $phone) {
 		padding-block: 6px !important;
 		// аватар беседы прячем: слева только «назад» (штатный переключатель панели), дальше название
@@ -636,9 +643,10 @@ html.k7f body .toastify.dialogs {
 html.k7f body:has(#content-vue:not(.in-call) .new-message-form) .toastify.dialogs {
 	inset-block-end: calc(96px + env(safe-area-inset-bottom, 0px) + var(--k7-sheet-bottom, 0px)) !important;
 }
-// в звонке снизу панель управления — тосты уходят наверх, под верхнюю панель
+// в звонке снизу панель управления — тосты уходят наверх, под верхнюю панель звонка (не перекрывая название и таймер)
 html.k7f body:has(#content-vue.in-call) .toastify.dialogs {
-	inset: calc(64px + env(safe-area-inset-top, 0px)) auto auto 50% !important;
+	// верх = низ панели звонка, его замеряет main.js (--k7-toast-top); запас — на случай, пока замера нет
+	inset: var(--k7-toast-top, calc(128px + env(safe-area-inset-top, 0px))) auto auto 50% !important;
 }
 
 // пока открыта доска/рисование, наверху лежит панель рисования, внизу по центру — инструменты: тосты («Сохранено в Файлы · открыть») уходят в левый нижний угол
