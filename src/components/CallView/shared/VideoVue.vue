@@ -9,7 +9,7 @@
 		:id="(placeholderForPromoted ? 'placeholder-' : '') + 'container_' + peerId + '_video_incoming'"
 		ref="videoContainer"
 		class="video-container"
-		:class="containerClass"
+		:class="[containerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
 		@click="$emit('clickVideo')">
@@ -73,6 +73,8 @@
 			class="connection-message">
 			{{ connectionMessage }}
 		</div>
+		<!-- ket4tec: k4stk -->
+		<TileSticker v-if="k4stkOn" :sid="peerId" />
 		<slot v-if="!hideBottomBar" name="bottomBar">
 			<VideoBottomBar
 				:hasShadow="hasVideo"
@@ -92,6 +94,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountCircleOutline from 'vue-material-design-icons/AccountCircleOutline.vue'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
+import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import ScreenShare from './ScreenShare.vue'
 import VideoBackground from './VideoBackground.vue'
 import VideoBottomBar from './VideoBottomBar.vue'
@@ -103,6 +106,7 @@ import attachMediaStream from '../../../utils/attachmediastream.js'
 import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
+import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
 
 export default {
 
@@ -110,6 +114,7 @@ export default {
 
 	components: {
 		AvatarWrapper,
+		TileSticker,
 		VideoBackground,
 		ScreenShare,
 		VideoBottomBar,
@@ -537,6 +542,11 @@ export default {
 
 		peerId() {
 			return this.model.attributes.peerId
+		},
+
+		// ket4tec: k4stk. Гифка/стикер этого участника (не на плитке показа экрана и не в заглушке «закреплённого»)
+		k4stkOn() {
+			return !!k4stk.peers[this.peerId] && !this.showSharedScreen && !this.placeholderForPromoted
 		},
 
 		nextcloudSessionId() {

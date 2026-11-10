@@ -33,6 +33,7 @@ import ReactionMenu from '../TopBar/ReactionMenu.vue'
 import TopBarMediaControls from '../TopBar/TopBarMediaControls.vue'
 import CallEndLeaveButton from './CallEndLeaveButton.vue'
 import DrawDock from './k4draw/DrawDock.vue' // ket4tec: k4draw
+import StickerSheet from './k4stk/StickerSheet.vue' // ket4tec: k4stk
 import {
 	toggleFullscreen,
 	useDocumentFullscreen,
@@ -50,6 +51,8 @@ import { useSettingsStore } from '../../stores/settings.ts'
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
 import { boardBtn, boardLabel, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
+import { ITEMS } from './k4stk/catalog.js' // ket4tec: k4stk
+import { state as k4stk, canUse as k4stkCan } from './k4stk/useStickers.js' // ket4tec: k4stk
 
 const { isSidebar = false } = defineProps<{
 	isSidebar: boolean
@@ -74,6 +77,9 @@ const conversation = computed(() => {
 const k4Pencil = computed(() => !isSidebar && !!k4draw.big && !!k4draw.keys[k4draw.big] && canDraw())
 // ket4tec: k4draw. «Доска» в панели — на компьютере; на телефоне она в шторке настроек (MediaSettings)
 const k4Board = computed(() => !isSidebar && (k4draw.board, k4draw.gd, k4draw.boardHidden, boardBtn()))
+// ket4tec: k4stk. Кнопка «Гифки и стикеры»: только с HPB и по правилу рисования (гости — как в k4draw)
+const k4stkBtn = computed(() => !isSidebar && (k4draw.gd, k4stkCan()))
+const k4stkItem = computed(() => (k4stk.mine ? ITEMS[k4stk.mine.id] : null))
 const k4BoardLabel = computed(() => (k4draw.board, k4draw.boardHidden, boardLabel()))
 const isGuestActor = computed(() => actorStore.actorType === ATTENDEE.ACTOR_TYPE.GUESTS)
 const isVoiceRoom = computed(() => Boolean(conversation.value.attributes & CONVERSATION.ATTRIBUTE.VOICE_ROOM))
@@ -478,6 +484,8 @@ function setCallLayout(layout: CallLayout) {
 		class="bottom-bar"
 		:class="{ 'k4-hidden': k4draw.mode }"
 		data-theme-dark>
+		<!-- ket4tec: k4stk -->
+		<StickerSheet v-if="!isSidebar" />
 		<!-- ket4tec: k4draw -->
 		<DrawDock v-if="!isSidebar && k4draw.mode" />
 		<div v-if="!isSidebar" class="bottom-bar-call-controls">
@@ -527,6 +535,47 @@ function setCallLayout(layout: CallLayout) {
 				:hideVirtualBackgroundShortcut="hidingList.virtualBackground"
 				:localCallParticipantModel="localCallParticipantModel" />
 
+			<!-- ket4tec: k4stk -->
+			<NcButton
+				v-if="k4stkBtn"
+				class="k4stk-btn"
+				:class="{ 'k4stk-on': k4stk.mine }"
+				title="Гифки и стикеры"
+				aria-label="Гифки и стикеры"
+				variant="tertiary"
+				:style="{ '--p': k4stk.p }"
+				@click="k4stk.open = !k4stk.open">
+				<template #icon>
+					<span v-if="k4stkItem" class="k4stk-th">
+						<img :src="k4stkItem.pos || k4stkItem.th" alt="" :class="{ s: k4stkItem.k === 's' }">
+					</span>
+					<span v-if="k4stk.mine && k4stk.mine.until" class="k4stk-ring" />
+					<svg
+						v-if="!k4stkItem"
+						viewBox="0 0 24 24"
+						width="24"
+						height="24"
+						aria-hidden="true"><path
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linejoin="round"
+							d="M20 12.5V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h5.5z" /><path
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linejoin="round"
+								d="M20 12.5L12.5 20v-4.5a3 3 0 0 1 3-3z" /><circle
+									cx="9"
+									cy="10"
+									r="1.2"
+									fill="currentColor" /><circle
+										cx="15"
+										cy="10"
+										r="1.2"
+										fill="currentColor" /></svg>
+				</template>
+			</NcButton>
 			<!-- ket4tec: k4draw -->
 			<NcButton
 				v-if="k4Pencil"
@@ -756,6 +805,27 @@ function setCallLayout(layout: CallLayout) {
 <style lang="scss" scoped>
 .k4-hidden {
 	visibility: hidden;
+}
+
+// ket4tec: k4stk. Миниатюра моего элемента на кнопке и кольцо таймера
+.bottom-bar .k4stk-btn.button-vue { position: relative; }
+.bottom-bar .k4stk-btn.button-vue :deep(.button-vue__icon) { position: static; }
+.k4stk-th {
+	position: absolute;
+	inset: 6px;
+	overflow: hidden;
+	border-radius: 50%;
+	background: #241f20;
+	img { display: block; width: 100%; height: 100%; object-fit: cover; }
+	img.s { object-fit: contain; padding: 3px; box-sizing: border-box; }
+}
+.k4stk-ring {
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	background: conic-gradient(#fff calc(var(--p, 0) * 1turn), #ffffff2e 0);
+	-webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+	mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
 }
 
 @media (max-width: 600px) {

@@ -201,6 +201,7 @@ import RemoteVideoBlocker from '../../utils/webrtc/RemoteVideoBlocker.js'
 import { placeholderImage, placeholderModel, placeholderName, placeholderSharedData } from './Grid/gridPlaceholders.ts'
 import { animateTilePromotion } from './Grid/tilePromotionTransition.ts'
 import { state as k4, watchCall } from './k4draw/useDrawing.js' // ket4tec: k4draw
+import { watchStickers } from './k4stk/useStickers.js' // ket4tec: k4stk
 import { setUpSpeakerSimulation, tearDownSpeakerSimulation } from './speakerSimulation.ts'
 import { useActiveSpeakers } from './useActiveSpeakers.ts'
 import { useWakeLock } from './useWakeLock.ts'
@@ -687,6 +688,7 @@ export default {
 			setUpSpeakerSimulation(this.token)
 		}
 		this.k4unwatch = watchCall() // ket4tec: k4draw — о доске узнаём без показа экрана
+		this.k4stkUnwatch = watchStickers() // ket4tec: k4stk
 	},
 
 	beforeUnmount() {
@@ -694,6 +696,7 @@ export default {
 			tearDownSpeakerSimulation()
 		}
 		this.k4unwatch?.() // ket4tec: k4draw
+		this.k4stkUnwatch?.() // ket4tec: k4stk
 
 		this.debounceFetchPeers.clear?.()
 		this.debounceHandleMovement.clear?.()

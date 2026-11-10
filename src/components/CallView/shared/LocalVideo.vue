@@ -7,7 +7,7 @@
 	<div
 		ref="videoContainer"
 		class="localVideoContainer"
-		:class="videoContainerClass"
+		:class="[videoContainerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
 		@click="$emit('clickVideo')">
@@ -53,6 +53,9 @@
 				disableTooltip />
 		</div>
 
+		<!-- ket4tec: k4stk -->
+		<TileSticker v-if="k4stkOn" own />
+
 		<div class="bottom-bar">
 			<NcButton
 				v-if="isBig"
@@ -73,6 +76,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
+import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import VideoBackground from './VideoBackground.vue'
 import { AVATAR } from '../../../constants.ts'
 import { useActorStore } from '../../../stores/actor.ts'
@@ -80,6 +84,7 @@ import { useCallViewStore } from '../../../stores/callView.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
+import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
 
 export default {
 
@@ -91,6 +96,7 @@ export default {
 		NcButton,
 		VideoBackground,
 		NcLoadingIcon,
+		TileSticker,
 	},
 
 	props: {
@@ -175,6 +181,11 @@ export default {
 	},
 
 	computed: {
+		// ket4tec: k4stk. Моя гифка/стикер вместо камеры (не в боковой панели)
+		k4stkOn() {
+			return !!k4stk.mine && !this.isSidebar
+		},
+
 		stopFollowingLabel() {
 			return t('spreed', 'Back')
 		},
