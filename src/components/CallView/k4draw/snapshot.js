@@ -197,6 +197,7 @@ function fileName() {
  */
 export async function shoot(token, btn = null, quiet = false) {
 	if (snap.busy || !state.big) {
+		console.warn('k4draw shoot skip', { busy: snap.busy, big: !!state.big })
 		return false
 	}
 	snap.busy = true

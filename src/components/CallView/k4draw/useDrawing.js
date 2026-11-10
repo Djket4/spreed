@@ -1296,6 +1296,8 @@ export function openBoard(ar, bg = null) {
 	state.bg = bg
 	state.board = me()
 	state.boardHidden = false
+	// закрыть-и-открыть в одном такте (смена фона) слой не пересоздаёт, join() не зовётся, а boardGone() обнулил big
+	state.big = me()
 	wire(hOf(myK))
 	state.mode = canDraw()
 }
