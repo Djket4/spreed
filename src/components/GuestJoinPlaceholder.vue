@@ -64,7 +64,7 @@ const roomName = computed<string>(() => store.getters.conversation(token.value)?
 		min-height: 56px;
 		font-size: 18px;
 		font-weight: 600;
-		border-radius: 999px;
+		border-radius: 999px !important; // тема облака ставит кнопкам 8px !important (гость видел прямоугольник)
 		// ket4tec v7: одна кнопка «Слива» во всех состояниях (идёт звонок → success было зелёным)
 		border: 0 !important;
 		background: var(--k7-grad, linear-gradient(135deg, #5b2a86, #a86bff)) !important;

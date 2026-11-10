@@ -65,6 +65,9 @@ export const isFullySupported = (isFirefox && majorVersion >= 52)
 	|| isEdge
 	|| isBrave
 	|| isYandex
+	// ket4tec: ссылки открывают во встроенных браузерах Telegram/VK — на iOS это тот же WebKit, на Android — Chrome WebView; без красного тоста
+	|| (isIOS && supportsWebRTC)
+	|| (browser.name === 'Chrome WebView' && supportsWebRTC)
 
 /**
  * Are calls should be blocked due to browser incompatibility
