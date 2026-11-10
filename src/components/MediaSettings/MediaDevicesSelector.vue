@@ -34,7 +34,8 @@ const deviceOptions = computed<NcSelectOption[]>(() => {
 	const kindDevices = props.devices.filter((device) => device.kind === props.kind)
 		.map((device) => ({
 			id: device.deviceId,
-			label: device.label || device.fallbackLabel,
+			// ket4tec 9Б п.4: «По умолчанию - Динамик» — дефис в тире
+			label: (device.label || device.fallbackLabel).replace(/ - /g, ' – '),
 		}))
 	if (props.kind === 'audiooutput') {
 		return kindDevices

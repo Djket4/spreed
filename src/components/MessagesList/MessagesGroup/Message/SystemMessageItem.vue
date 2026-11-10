@@ -129,6 +129,13 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+// ket4tec 9Б п.33: аватарка в «Тест: звонок начат» была с точку (4em/3 от мелкого шрифта)
+.message-body.system :deep(.mention-chip) {
+	--chip-size: 24px !important;
+	vertical-align: middle !important;
+	margin-block-end: 0 !important;
+}
+
 .message {
 	position: relative;
 

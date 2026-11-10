@@ -546,8 +546,8 @@ function setCallLayout(layout: CallLayout) {
 				v-if="k4stkBtn"
 				class="k4stk-btn"
 				:class="{ 'k4stk-on': k4stk.mine }"
-				title="Гифки и стикеры"
-				aria-label="Гифки и стикеры"
+				:title="k4stk.mine ? 'Гифки и стикеры: ваша сейчас на плитке' : 'Гифки и стикеры'"
+				:aria-label="k4stk.mine ? 'Гифки и стикеры: ваша сейчас на плитке' : 'Гифки и стикеры'"
 				variant="tertiary"
 				:style="{ '--p': k4stk.p }"
 				@click="k4stk.open = !k4stk.open">
@@ -556,8 +556,8 @@ function setCallLayout(layout: CallLayout) {
 						<img :src="k4stkItem.pos || k4stkItem.th" alt="" :class="{ s: k4stkItem.k === 's' }">
 					</span>
 					<span v-if="k4stk.mine && k4stk.mine.until" class="k4stk-ring" />
+					<!-- ket4tec 9Б п.44: значок «Гифки» всегда, моя гифка — маленькая метка в углу -->
 					<svg
-						v-if="!k4stkItem"
 						viewBox="0 0 24 24"
 						width="24"
 						height="24"
@@ -832,10 +832,13 @@ function setCallLayout(layout: CallLayout) {
 .bottom-bar .k4stk-btn.button-vue :deep(.button-vue__icon) { position: static; }
 .k4stk-th {
 	position: absolute;
-	inset: 6px;
+	inset: auto -2px -2px auto;
+	width: 22px;
+	height: 22px;
 	overflow: hidden;
 	border-radius: 50%;
 	background: #241f20;
+	box-shadow: 0 0 0 2px var(--k7-bg2, #242021);
 	img { display: block; width: 100%; height: 100%; object-fit: cover; }
 	img.s { object-fit: contain; padding: 3px; box-sizing: border-box; }
 }

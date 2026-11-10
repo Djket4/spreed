@@ -14,6 +14,18 @@ import { t } from '@nextcloud/l10n'
 import { ATTENDEE } from '../constants.ts'
 
 /**
+ * ket4tec 9Б п.32: автостатус звонка (busy + 💬 «В вызове») на аватарке — красная точка, похожа на ошибку.
+ * Показываем спокойно: зелёная точка и «📞 В звонке».
+ *
+ * @param status статус пользователя
+ */
+function calmCallStatus(status: ParticipantStatus): ParticipantStatus {
+	return status.status === 'busy' && status.icon === '💬'
+		? { ...status, status: 'online', message: 'В звонке', icon: '📞' }
+		: status
+}
+
+/**
  * Generate user status object to use as preloaded status with NcAvatar
  *
  * @param userData user data (from conversation, participant, search result)
@@ -25,20 +37,20 @@ export function getPreloadedUserStatus(userData?: Conversation | Participant | P
 
 	if ('statusMessage' in userData) {
 		// We preloaded the status when via participants API
-		return {
+		return calmCallStatus({
 			status: userData.status || null,
 			message: userData.statusMessage || null,
 			icon: userData.statusIcon || null,
-		}
+		})
 	}
 	if ('status' in userData) {
 		// We preloaded the status when via search API
 		if (typeof userData.status === 'object') {
-			return {
+			return calmCallStatus({
 				status: userData.status.status || null,
 				message: userData.status.message || null,
 				icon: userData.status.icon || null,
-			}
+			})
 		} else if (typeof userData.status === 'string' && userData.status === '') {
 			// No status is set, provide empty status object to not make a request
 			return {

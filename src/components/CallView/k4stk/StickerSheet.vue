@@ -5,11 +5,25 @@
 
 <template>
 	<Teleport to="body">
-		<div v-if="state.open" class="k4stk-wrap" @click.self="close">
+		<!-- ket4tec 9Б: подложка и шторка кончаются над панелью звонка (п.20) — панель видна и нажимается -->
+		<div
+			v-if="state.open"
+			class="k4stk-wrap"
+			:style="barStyle"
+			@click.self="close">
 			<section
 				class="k4stk-sheet"
 				role="dialog"
-				aria-label="Гифки и стикеры">
+				aria-label="Гифки и стикеры"
+				:style="dragY ? { translate: '0 ' + dragY + 'px' } : null">
+				<!-- п.18: ручка — свайп вниз закрывает -->
+				<div
+					class="k4stk-grip"
+					aria-hidden="true"
+					@pointerdown="dragStart"
+					@pointermove="dragMove"
+					@pointerup="dragEnd"
+					@pointercancel="dragEnd" />
 				<header class="k4stk-head">
 					<div class="k4stk-tabs" role="tablist">
 						<button
@@ -27,8 +41,17 @@
 						v-if="state.mine"
 						type="button"
 						class="k4stk-clear"
+						title="Убрать мою гифку или стикер с плитки"
 						@click="clear(); close()">
 						Убрать
+					</button>
+					<button
+						type="button"
+						class="k4stk-x"
+						aria-label="Закрыть"
+						title="Закрыть"
+						@click="close">
+						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
 					</button>
 				</header>
 
@@ -139,7 +162,8 @@
 				</div>
 
 				<footer class="k4stk-foot">
-					<span class="k4stk-cap">Держать</span>
+					<!-- п.20: «Держать» без контекста непонятно -->
+					<span class="k4stk-cap">Сколько показывать на плитке</span>
 					<div class="k4stk-ttl">
 						<button
 							v-for="t in TTL"
@@ -216,7 +240,55 @@ function choose(k, id) {
 const onKey = (e) => e.key === 'Escape' && state.open && close()
 onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
-watch(() => state.open, (o) => o && (q.value = ''))
+watch(() => state.open, (o) => {
+	if (o) {
+		q.value = ''
+		measureBar()
+	}
+})
+
+// п.20: шторка телепортирована в body, --bottom-bar-height звонка сюда не наследуется — меряем панель сами
+const barStyle = ref(null)
+/**
+ *
+ */
+function measureBar() {
+	// у плиток тоже есть .bottom-bar (VideoBottomBar, LocalVideo): берём панель звонка по её кнопкам
+	const bar = document.querySelector('#call-container .bottom-bar-call-controls')?.closest('.bottom-bar')
+	const top = bar?.getBoundingClientRect().top
+	barStyle.value = top > 0 && top < window.innerHeight
+		? { '--k4s-bar': Math.round(window.innerHeight - top) + 'px', '--k4s-safe': '0px' }
+		: null
+}
+
+// п.18: свайп вниз по ручке
+const dragY = ref(0)
+let y0 = null
+/**
+ * @param {PointerEvent} e
+ */
+function dragStart(e) {
+	y0 = e.clientY
+	e.target.setPointerCapture?.(e.pointerId)
+}
+/**
+ * @param {PointerEvent} e
+ */
+function dragMove(e) {
+	if (y0 !== null) {
+		dragY.value = Math.max(0, e.clientY - y0)
+	}
+}
+/**
+ *
+ */
+function dragEnd() {
+	if (dragY.value > 80) {
+		close()
+	}
+	y0 = null
+	dragY.value = 0
+}
 
 // Превью играют, только пока видны
 let io = null
@@ -245,7 +317,7 @@ const vK4vis = vVisible
 <style lang="scss">
 .k4stk-wrap {
 	position: fixed;
-	inset: 0;
+	inset: 0 0 var(--k4s-bar, 0px);
 	z-index: 10000;
 	background: transparent;
 }
@@ -253,19 +325,18 @@ const vK4vis = vVisible
 	--k4s-pill: var(--k7-pill, #ffffff1f);
 	position: fixed;
 	left: 50%;
-	bottom: calc(var(--bottom-bar-height, 96px) + 8px);
+	bottom: calc(var(--k4s-bar, 96px) + 8px);
 	transform: translateX(-50%);
 	box-sizing: border-box;
 	width: min(420px, calc(100vw - 16px));
-	max-height: min(560px, calc(100dvh - var(--bottom-bar-height, 96px) - 24px));
+	max-height: min(560px, calc(100dvh - var(--k4s-bar, 96px) - 24px));
 	display: flex;
 	flex-direction: column;
-	padding: 12px 12px 10px;
+	padding: 0 12px 10px;
 	border-radius: 28px;
-	background: var(--k7-glass, #242021c4);
-	-webkit-backdrop-filter: blur(24px) saturate(180%);
-	backdrop-filter: blur(24px) saturate(180%);
-	box-shadow: inset 0 1px 0 #ffffff1a, inset 0 0 0 1px var(--k7-line2, #ffffff1f), 0 12px 32px #0006;
+	// п.19: чистый фон темы вместо мутного стекла над видео
+	background: var(--k7-bg2, #242021);
+	box-shadow: inset 0 0 0 1px var(--k7-line2, #ffffff1f), 0 12px 32px #0005;
 	color: var(--k7-fg, #f3eee9);
 	font-family: var(--k7-font, 'Medeo Sans', system-ui, sans-serif);
 	overflow: hidden;
@@ -277,6 +348,25 @@ const vK4vis = vVisible
 		border: 0;
 		cursor: pointer;
 		-webkit-tap-highlight-color: transparent;
+	}
+	.k4stk-grip {
+		flex: none;
+		height: 22px;
+		margin: 0 -12px;
+		touch-action: none;
+		cursor: grab;
+		&::before { content: ''; display: block; width: 40px; height: 5px; margin: 8px auto 0; border-radius: 3px; background: color-mix(in srgb, var(--k7-fg, #f3eee9) 28%, transparent); }
+	}
+	.k4stk-x {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
+		border-radius: 999px;
+		background: var(--k4s-pill);
+		color: var(--k7-fg, #f3eee9);
 	}
 	.k4stk-head {
 		display: flex;
@@ -327,8 +417,11 @@ const vK4vis = vVisible
 		margin-bottom: 8px;
 		padding: 0 18px;
 		border-radius: 999px;
-		background: var(--k4s-pill);
+		// п.19: поле поиска видно на фоне шторки
+		background: var(--k7-bg, #1a1718);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k7-fg, #f3eee9) 22%, transparent);
 		color: var(--k7-fg2, #bdb3ad);
+		&:focus-within { box-shadow: inset 0 0 0 2px var(--k7-acc, #a86bff); }
 		input {
 			flex: 1;
 			min-width: 0;
@@ -394,13 +487,14 @@ const vK4vis = vVisible
 		padding: 0;
 		border-radius: 16px;
 		overflow: hidden;
-		background: #ffffff0d;
+		background: var(--k7-bg3, #2c2627);
 		img, video {
 			position: absolute;
 			inset: 0;
 			width: 100%;
 			height: 100%;
-			object-fit: cover;
+			// п.21: гифка целиком, без обрезки
+			object-fit: contain;
 		}
 		video { opacity: 0; transition: opacity .25s; &.pl { opacity: 1; } }
 	}
@@ -427,10 +521,12 @@ const vK4vis = vVisible
 		display: flex;
 		flex: none;
 		align-items: center;
-		gap: 10px;
 		margin: 8px -12px -10px;
-		padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-		background: color-mix(in srgb, var(--k7-bg2, #242021) 94%, transparent);
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 8px 12px calc(10px + var(--k4s-safe, env(safe-area-inset-bottom, 0px)));
+		background: var(--k7-bg2, #242021);
+		> .k4stk-cap { flex: 1 0 100%; padding-inline-start: 4px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; }
 		box-shadow: 0 -1px 0 var(--k7-line, #ffffff12);
 		.k4stk-ttl { height: 40px; button { font-size: 13px; } }
 	}
@@ -443,9 +539,9 @@ const vK4vis = vVisible
 	.k4stk-sheet {
 		left: 0;
 		right: 0;
-		bottom: 0;
+		bottom: var(--k4s-bar, 0px);
 		width: auto;
-		max-height: 70dvh;
+		max-height: calc(100dvh - var(--k4s-bar, 0px) - 64px);
 		transform: none;
 		border-radius: 28px 28px 0 0;
 		height: min(70dvh, 640px);

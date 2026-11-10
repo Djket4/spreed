@@ -22,7 +22,8 @@ const off = onFaceFrameLevelChange(() => {
 onBeforeUnmount(off)
 
 const labels = LEVEL_LABELS as Record<string, string>
-const options = LEVELS.map((id: string) => ({ id, label: labels[id] }))
+// ket4tec 9Б п.3: «Авто» без контекста непонятно — это кадрирование по лицу, не фон
+const options = LEVELS.map((id: string) => ({ id, label: 'Кадр по лицу: ' + labels[id].toLowerCase() }))
 const selected = computed({
 	get: () => options.find((option) => option.id === level.value) ?? null,
 	set: (value) => {
