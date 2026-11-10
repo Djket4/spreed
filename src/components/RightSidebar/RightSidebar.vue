@@ -12,7 +12,7 @@
 		:name="conversation.displayName"
 		:title="conversation.displayName"
 		:class="'active-tab-' + activeTab"
-		:toggleClasses="{ 'chat-button-sidebar-toggle': isInCall }"
+		:toggleClasses="{ 'chat-button-sidebar-toggle': isInCall, 'k7-guest-nochat': isInCall && isChatHidden }"
 		:toggleAttrs="isInCall ? inCallToggleAttrs : undefined"
 		@update:open="handleUpdateOpen"
 		@update:active="handleUpdateActive"
@@ -382,7 +382,7 @@ export default {
 		},
 
 		isChatHidden() {
-			return isChatHiddenForActor(this.actorStore.actorType, this.conversation?.permissions)
+			return isChatHiddenForActor(this.actorStore.actorType)
 		},
 
 		showSharedItemsTab() {
@@ -683,6 +683,11 @@ export default {
  * NcAppSidebar toggle it rendered on the page outside the sidebar element, so we need global styles here.
  * It is _quite_ safe, as chat-button-sidebar-toggle class is defined here manually, not an internal class.
  */
+/* ket4tec #55: у гостя в звонке кнопки чата нет */
+.chat-button-sidebar-toggle.k7-guest-nochat {
+	display: none !important;
+}
+
 .chat-button-sidebar-toggle {
 	position: relative;
 	// Allow unread counter to overflow rounded button

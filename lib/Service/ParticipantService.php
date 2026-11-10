@@ -1904,27 +1904,17 @@ class ParticipantService {
 	}
 
 	/**
-	 * ket4tec #55: is there any (email) guest without moderator rights, who has no chat permission?
+	 * ket4tec #55: is there any (email) guest in the room? Guests never see chat.
 	 */
 	public function hasGuestWithoutChat(Room $room): bool {
 		$query = $this->connection->getQueryBuilder();
-		$query->selectDistinct('permissions')
+		$query->select('id')
 			->from('talk_attendees')
 			->where($query->expr()->eq('room_id', $query->createNamedParameter($room->getId())))
 			->andWhere($query->expr()->in('actor_type', $query->createNamedParameter([Attendee::ACTOR_GUESTS, Attendee::ACTOR_EMAILS], IQueryBuilder::PARAM_STR_ARRAY)))
-			->andWhere($query->expr()->notIn('participant_type', $query->createNamedParameter([Participant::OWNER, Participant::MODERATOR, Participant::GUEST_MODERATOR], IQueryBuilder::PARAM_INT_ARRAY)));
+			->setMaxResults(1);
 		$result = $query->executeQuery();
-		$default = $room->getDefaultPermissions() !== Attendee::PERMISSIONS_DEFAULT
-			? $room->getDefaultPermissions()
-			: Server::get(Config::class)->getDefaultPermissions();
-		$found = false;
-		while (($permissions = $result->fetchOne()) !== false) {
-			$permissions = (int)$permissions;
-			if (!(($permissions === Attendee::PERMISSIONS_DEFAULT ? $default : $permissions) & Attendee::PERMISSIONS_CHAT)) {
-				$found = true;
-				break;
-			}
-		}
+		$found = $result->fetchOne() !== false;
 		$result->closeCursor();
 		return $found;
 	}

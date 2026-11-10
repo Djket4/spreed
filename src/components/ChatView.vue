@@ -143,7 +143,7 @@ export default {
 
 	computed: {
 		isChatHidden() {
-			return isChatHiddenForActor(this.actorStore.actorType, this.conversation?.permissions)
+			return isChatHiddenForActor(this.actorStore.actorType)
 		},
 
 		isGuest() {
