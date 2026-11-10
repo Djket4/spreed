@@ -256,6 +256,8 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		}
 		try {
 			// ponytail: список на комнату в app config (последние 20), без чистки; в таблицу — если комнат с показами станут тысячи
+			// кеш AppConfig загружен до блокировки — перечитываем, иначе параллельный показ затрёт чужую отметку
+			\OCP\Server::get(\OCP\IAppConfig::class)->clearCache(true);
 			$ids = array_values(array_unique([$key, ...$this->shown()]));
 			$this->appConfig->setAppValueString('k4draw_shown_' . $this->room->getToken(), json_encode(array_slice($ids, 0, 20)));
 		} finally {

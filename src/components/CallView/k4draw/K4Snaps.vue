@@ -102,9 +102,8 @@ async function show(it) {
 			showError(denied)
 			return
 		}
-		// сервер отдаёт гостям (у них нет чата) только отмеченное: картинку беседы и снимок
-		await axios.post(generateOcsUrl(it.t === 'm' ? 'apps/spreed/api/v1/k4draw/{token}/image/{id}' : 'apps/spreed/api/v1/k4draw/{token}/snapshot/{id}', { token: token.value, id: it.id }))
-		const err = await showImage({ t: it.t, id: it.id })
+		// сервер отдаёт гостям (у них нет чата) только отмеченное: картинку беседы и снимок; отмечаем после снимка старой доски
+		const err = await showImage({ t: it.t, id: it.id }, () => axios.post(generateOcsUrl(it.t === 'm' ? 'apps/spreed/api/v1/k4draw/{token}/image/{id}' : 'apps/spreed/api/v1/k4draw/{token}/snapshot/{id}', { token: token.value, id: it.id })))
 		// показано — панель закрываем: картинка во весь экран доски
 		err ? showError(err) : sidebarStore.hideSidebar()
 	} catch (e) {

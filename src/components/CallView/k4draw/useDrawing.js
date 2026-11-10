@@ -1456,9 +1456,10 @@ export function bgUrl(bg, size = 1600) {
  * Доска чужая — не перехватываем; своя — рисунок поверх прежней картинки уходит в Снимки, доска открывается заново.
  *
  * @param {{ t: string, id: number }} bg снимок (`s`) или картинка из беседы (`m`)
+ * @param {() => Promise<unknown>} [beforeOpen] открыть картинку гостям; вызывается после снимка старой доски
  * @return {Promise<string>} '' — показано, иначе причина
  */
-export async function showImage(bg) {
+export async function showImage(bg, beforeOpen) {
 	const err = canShow(bg)
 	if (err) {
 		return err
@@ -1484,6 +1485,18 @@ export async function showImage(bg) {
 			return busy
 		}
 		closeBoard()
+	}
+	// beforeOpen — открыть картинку гостям: только после снимка старой доски, иначе при сбое снимка картинка уже доступна
+	if (beforeOpen) {
+		try {
+			await beforeOpen()
+		} catch (e) {
+			console.error('k4draw show image', e)
+			return 'Не получилось показать картинку'
+		}
+		if (state.board && state.board !== me()) {
+			return busy
+		}
 	}
 	openBoard(boardAr(), bg)
 	return state.board === me() ? '' : 'Доска не открылась'
