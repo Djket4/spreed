@@ -7,7 +7,8 @@ import { showError, showSuccess } from '@nextcloud/dialogs'
 import { generateOcsUrl, generateUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
 import { useActorStore } from '../../../stores/actor.ts'
-import { amGuest, localScreen, myId, onDraw, sendSnap, SP, state } from './useDrawing.js'
+import { useTokenStore } from '../../../stores/token.ts'
+import { amGuest, localScreen, myId, onDraw, sendSnap, setAutoSnap, SP, state } from './useDrawing.js'
 
 export const snap = reactive({ n: 0, k: '', busy: false })
 const PERM = ['marker', 'arrow', 'frame', 'text']
@@ -185,9 +186,10 @@ function fileName() {
  *
  * @param {string} token комнаты
  * @param {HTMLElement|null} btn кнопка (цель анимации)
+ * @param {boolean} quiet автоснимок при выходе: без «Поделиться», скачивания и тоста об ошибке
  * @return {Promise<boolean>} сохранён ли на сервере
  */
-export async function shoot(token, btn = null) {
+export async function shoot(token, btn = null, quiet = false) {
 	if (snap.busy || !state.big) {
 		return false
 	}
@@ -197,7 +199,9 @@ export async function shoot(token, btn = null) {
 		fly(blob, btn)
 		const file = new File([blob], fileName(), { type: 'image/png' })
 		// «Поделиться» — до запроса к серверу, пока жест пользователя ещё действует
-		if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+		if (quiet) {
+			// без системных окон
+		} else if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
 			navigator.share({ files: [file] }).catch(() => {})
 		} else if (amGuest()) {
 			save(blob)
@@ -212,7 +216,7 @@ export async function shoot(token, btn = null) {
 		return true
 	} catch (e) {
 		console.error('k4draw shoot', e)
-		showError('Снимок не сохранился')
+		quiet || showError('Снимок не сохранился')
 		return false
 	} finally {
 		snap.busy = false
@@ -309,3 +313,6 @@ export async function screenSnapshot(png) {
 		snap.busy = false
 	}
 }
+
+// ket4tec: k4draw. Последний уходит из звонка с рисунком на доске: снимок в Файлы без вопросов
+setAutoSnap(() => shoot(useTokenStore().token, null, true))

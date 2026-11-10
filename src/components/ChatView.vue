@@ -4,8 +4,10 @@
 -->
 
 <template>
+	<!-- ket4tec v7: гостю чат скрыт — вместо пустоты название, имя и «Войти в звонок» -->
+	<GuestJoinPlaceholder v-if="isChatHidden && !isSidebar" />
 	<div
-		v-if="!isChatHidden"
+		v-else-if="!isChatHidden"
 		class="chatView"
 		@dragover.prevent="handleDragOver"
 		@dragleave.prevent="handleDragLeave"
@@ -69,6 +71,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import IconAccountOutline from 'vue-material-design-icons/AccountOutline.vue'
 import IconAlertOctagonOutline from 'vue-material-design-icons/AlertOctagonOutline.vue'
 import IconChevronDoubleDown from 'vue-material-design-icons/ChevronDoubleDown.vue'
+import GuestJoinPlaceholder from './GuestJoinPlaceholder.vue'
 import GuestWelcomeWindow from './GuestWelcomeWindow.vue'
 import MessagesList from './MessagesList/MessagesList.vue'
 import NewMessage from './NewMessage/NewMessage.vue'
@@ -98,6 +101,7 @@ export default {
 		MessagesList,
 		NewMessage,
 		TransitionWrapper,
+		GuestJoinPlaceholder,
 		GuestWelcomeWindow,
 		// icons
 		IconAccountOutline,

@@ -72,6 +72,9 @@ describe('talkHashStore', () => {
 			talkHashStore.updateTalkVersionHash({
 				headers: { 'x-nextcloud-talk-hash': 'hash-1' },
 			})
+			talkHashStore.updateTalkVersionHash({
+				headers: { 'x-nextcloud-talk-hash': 'hash-1' },
+			})
 
 			expect(talkHashStore.isNextcloudTalkHashDirty).toEqual(false)
 
@@ -81,6 +84,15 @@ describe('talkHashStore', () => {
 
 			expect(talkHashStore.isNextcloudTalkHashDirty).toEqual(true)
 		})
+	})
+
+	test('ket4tec v7: differing second response of a fresh session is not dirty', () => {
+		talkHashStore.updateTalkVersionHash({ headers: { 'x-nextcloud-talk-hash': 'hash-0' } })
+		talkHashStore.updateTalkVersionHash({ headers: { 'x-nextcloud-talk-hash': 'hash-1' } })
+		expect(talkHashStore.isNextcloudTalkHashDirty).toEqual(false)
+		talkHashStore.updateTalkVersionHash({ headers: { 'x-nextcloud-talk-hash': 'hash-1' } })
+		talkHashStore.updateTalkVersionHash({ headers: { 'x-nextcloud-talk-hash': 'hash-2' } })
+		expect(talkHashStore.isNextcloudTalkHashDirty).toEqual(true)
 	})
 
 	describe('maintenance mode warning', () => {

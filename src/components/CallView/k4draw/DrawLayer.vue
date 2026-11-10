@@ -22,6 +22,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+	amMod,
 	canDraw,
 	cursor,
 	eraseMarks,
@@ -30,6 +31,7 @@ import {
 	join,
 	LIFE,
 	moveMark,
+	myColor,
 	myId,
 	onDraw,
 	ping,
@@ -56,6 +58,7 @@ const props = defineProps({
 
 const NS = 'http://www.w3.org/2000/svg'
 const WID = { laser: 6, fade: 5, marker: 5, arrow: 5, frame: 5 }
+const wid = (m) => WID[m.tool] * (m.wm || 1) // ket4tec: k4draw. толщина, выбранная автором (1/2/4)
 const PING_MS = 2400
 const SZ = { s: [16, 5], m: [21, 6], l: [28, 7] } // [кегль, вертикальный отступ] как в прототипе
 
@@ -267,7 +270,7 @@ function head(P, w) {
 function view(m) {
 	let v = views.get(m.key)
 	if (!v) {
-		v = { m, c: identity(m.by).color }
+		v = { m, c: m.col || identity(m.by).color }
 		const g = v.g = mk('g', { class: m.tool, 'data-id': m.id, 'data-by': m.by, 'data-ttl': m.ttl || 0 })
 		if (m.tool === 'text') {
 			g.append(v.bg = mk('rect', { fill: '#141112', 'fill-opacity': 0.66 }), v.tx = mk('text', { fill: v.c, 'dominant-baseline': 'central', 'font-weight': 700 }))
@@ -281,7 +284,7 @@ function view(m) {
 				v.tp = mk('circle', { class: 'tip', r: 5.5, stroke: v.c, 'stroke-width': 3 }),
 			)
 		} else {
-			g.append(v.sh = mk('path', { class: 'sh', 'stroke-width': WID[m.tool] + 3 }), v.p = mk('path', { class: 'p', stroke: v.c, 'stroke-width': WID[m.tool] }))
+			g.append(v.sh = mk('path', { class: 'sh', 'stroke-width': wid(m) + 3 }), v.p = mk('path', { class: 'p', stroke: v.c, 'stroke-width': wid(m) }))
 		}
 		ink.value.append(g)
 		views.set(m.key, v)
@@ -321,9 +324,9 @@ function draw(v) {
 		m.pred?.length && !m.done && P.push(...m.pred.map((q) => [q[0] * W, q[1] * H]))
 		let d
 		if (m.pr && m.pr.length === m.pts.length) {
-			const D = m.pr.map((q) => WID[m.tool] * (0.3 + 1.4 * q))
+			const D = m.pr.map((q) => wid(m) * (0.3 + 1.4 * q))
 			while (D.length < P.length) {
-				D.push(D[D.length - 1] || WID[m.tool])
+				D.push(D[D.length - 1] || wid(m))
 			}
 			d = inkPath(P, D)
 			if (!v.pen) {
@@ -335,7 +338,7 @@ function draw(v) {
 		} else {
 			d = smooth(P)
 			if (m.tool === 'arrow' && P.length > 1) {
-				d += head(P, WID.arrow)
+				d += head(P, wid(m))
 			}
 		}
 		v.p.setAttribute('d', d)
@@ -729,7 +732,7 @@ function eraseAt(p) {
 	const hit = []
 	views.forEach((v) => {
 		const m = v.m
-		if (m.by !== myId() || m.tool === 'laser' || m.tool === 'ping' || v.gone) {
+		if ((m.by !== myId() && !amMod()) || m.tool === 'laser' || m.tool === 'ping' || v.gone) {
 			return
 		}
 		if (m.tool === 'text') {
@@ -737,7 +740,7 @@ function eraseAt(p) {
 			return
 		}
 		const P = samples(m)
-		const r = 20 + WID[m.tool] / 2
+		const r = 20 + wid(m) / 2
 		for (let i = 0; i < P.length; i++) {
 			const a = P[i]
 			const b = P[i + 1] || a
@@ -1016,7 +1019,7 @@ function ownText(x, y) {
  * @param v view правимого текста или null
  */
 function openEdit(p, v) {
-	const c = v ? v.c : identity(myId()).color
+	const c = v ? v.c : myColor()
 	const box = document.createElement('div')
 	box.className = 'k4-tedit'
 	box.style.setProperty('--c', c)

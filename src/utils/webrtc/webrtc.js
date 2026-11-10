@@ -214,6 +214,10 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 
 		// TODO(fancycode): Adjust property name of internal PHP backend to be all lowercase.
 		const sessionId = user.sessionId || user.sessionid
+		// ket4tec: k4draw — роль участника из сигналинга: гость не грузит список участников, а модератор = тип 1/2/6
+		if (user.participantType !== undefined) {
+			callParticipantCollection.get(sessionId)?.set('participantType', user.participantType)
+		}
 		if (!sessionId || sessionId === currentSessionId || previousUsersInRoom.includes(sessionId)) {
 			if (sessionId === currentSessionId && previousUsersInRoom.includes(sessionId)) {
 				Sounds.playJoin(true, newUsers.length === 1)
@@ -244,6 +248,9 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 		callParticipantModel.setActor(user.actorType, user.actorId)
 		callParticipantModel.setUserId(userId)
 		callParticipantModel.setNextcloudSessionId(nextcloudSessionId)
+		if (user.participantType !== undefined) {
+			callParticipantModel.set('participantType', user.participantType)
+		}
 		if (user.internal) {
 			callParticipantModel.set('internal', true)
 		}

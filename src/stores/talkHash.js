@@ -26,6 +26,8 @@ import { messagePleaseReload } from '../utils/talkDesktopUtils.ts'
 export const useTalkHashStore = defineStore('talkHash', {
 	state: () => ({
 		initialNextcloudTalkHash: '',
+		// ket4tec v7: подтверждён ли начальный хеш повторным ответом
+		initialNextcloudTalkHashConfirmed: false,
 		isNextcloudTalkHashDirty: false,
 		isNextcloudTalkProxyHashDirty: {},
 		maintenanceWarningToast: null,
@@ -42,7 +44,13 @@ export const useTalkHashStore = defineStore('talkHash', {
 			if (!this.initialNextcloudTalkHash) {
 				console.debug('X-Nextcloud-Talk-Hash initialised: ', hash)
 				this.initialNextcloudTalkHash = hash
-			} else if (this.initialNextcloudTalkHash !== hash && !this.isNextcloudTalkHashDirty) {
+			} else if (this.initialNextcloudTalkHash === hash) {
+				this.initialNextcloudTalkHashConfirmed = true
+			} else if (!this.initialNextcloudTalkHashConfirmed) {
+				// ket4tec v7: у свежего гостя первый ответ может отличаться от следующих
+				// (ложный тост «Сервер обновлён»); пока начальный хеш не подтверждён, берём новый за начальный
+				this.initialNextcloudTalkHash = hash
+			} else if (!this.isNextcloudTalkHashDirty) {
 				console.debug('X-Nextcloud-Talk-Hash marked dirty: ', hash)
 				this.isNextcloudTalkHashDirty = true
 			}

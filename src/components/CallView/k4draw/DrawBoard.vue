@@ -31,7 +31,7 @@ import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { callParticipantCollection } from '../../../utils/webrtc/index.js'
 import { shoot, snap } from './snapshot.js'
-import { boardGone, canDraw, closeBoard, myId, state } from './useDrawing.js'
+import { canDraw, closeBoard, myId, passBoard, state } from './useDrawing.js'
 
 const token = useGetToken()
 
@@ -53,12 +53,15 @@ async function answer(yes) {
 	closeBoard()
 }
 
-// открывший ушёл из звонка, не закрыв доску: через ~9 с её больше нет и у остальных
+// открывший ушёл из звонка, не закрыв доску (обрыв): через ~9 с доска переходит к следующему в звонке
 let miss = 0
 const timer = setInterval(() => {
 	const sid = state.board
 	miss = sid && sid !== myId() && !callParticipantCollection.get(sid) ? miss + 1 : 0
-	miss >= 3 && boardGone(sid)
+	if (miss >= 3) {
+		miss = 0
+		passBoard(sid)
+	}
 }, 3000)
 onBeforeUnmount(() => clearInterval(timer))
 </script>

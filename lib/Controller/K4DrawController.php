@@ -2,19 +2,17 @@
 
 declare(strict_types=1);
 /**
- * ket4tec: k4draw. Снимок «экран + пометки» из режима рисования: файл в записи владельца + сообщение в чат.
+ * ket4tec: k4draw. Снимок «экран + пометки» из режима рисования: файл в записи владельца (Снимки/).
+ * В чат не дублируем: снимки уходят в выжимку через autorec (блок 7).
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OCA\Talk\Controller;
 
-use OCA\Talk\Chat\ChatManager;
-use OCA\Talk\Exceptions\ParticipantNotFoundException;
 use OCA\Talk\Middleware\Attribute\RequireModeratorOrNoLobby;
 use OCA\Talk\Middleware\Attribute\RequireParticipant;
 use OCA\Talk\Middleware\Attribute\RequirePermission;
 use OCA\Talk\Middleware\Attribute\RequireReadWriteConversation;
-use OCA\Talk\Service\ParticipantService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -26,9 +24,6 @@ use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Files\IRootFolder;
 use OCP\IRequest;
-use OCP\Constants;
-use OCP\Share\IManager as ShareManager;
-use OCP\Share\IShare;
 use Psr\Log\LoggerInterface;
 
 class K4DrawController extends AEnvironmentAwareOCSController {
@@ -40,9 +35,6 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		IRequest $request,
 		private readonly IAppConfig $appConfig,
 		private readonly IRootFolder $rootFolder,
-		private readonly ShareManager $shareManager,
-		private readonly ChatManager $chatManager,
-		private readonly ParticipantService $participantService,
 		private readonly ITimeFactory $timeFactory,
 		private readonly LoggerInterface $logger,
 	) {
@@ -52,7 +44,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	/**
 	 * Сохранить снимок показа с пометками (multipart, поле `image`).
 	 *
-	 * @return DataResponse<Http::STATUS_OK, array{file: string, id: int, chat: bool}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_INTERNAL_SERVER_ERROR, array{error: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, array{file: string, id: int}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_INTERNAL_SERVER_ERROR, array{error: string}, array{}>
 	 */
 	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 	#[PublicPage]
@@ -107,48 +99,6 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		}
 		$path = 'Talk/Recording/' . $this->room->getToken() . '/Снимки/' . $name;
 
-		return new DataResponse(['file' => $path, 'id' => $file->getId(), 'chat' => $this->shareToChat($owner, $file, $author)]);
-	}
-
-	private function shareToChat(string $owner, \OCP\Files\File $file, string $author): bool {
-		try {
-			$ownerParticipant = $this->participantService->getParticipant($this->room, $owner, false);
-		} catch (ParticipantNotFoundException) {
-			return false;
-		}
-		try {
-			$now = $this->timeFactory->getDateTime();
-			$share = $this->shareManager->newShare();
-			$share->setNodeId($file->getId())
-				->setShareTime($now)
-				->setSharedBy($owner)
-				->setNode($file)
-				->setShareType(IShare::TYPE_ROOM)
-				->setSharedWith($this->room->getToken())
-				->setPermissions(Constants::PERMISSION_READ);
-			$share = $this->shareManager->createShare($share);
-			$this->chatManager->addSystemMessage(
-				$this->room,
-				$ownerParticipant,
-				$ownerParticipant->getAttendee()->getActorType(),
-				$owner,
-				json_encode([
-					'message' => 'file_shared',
-					'parameters' => [
-						'share' => $share->getId(),
-						'metaData' => [
-							'mimeType' => 'image/png',
-							'caption' => 'Снимок с пометками — ' . $author,
-						],
-					],
-				], JSON_THROW_ON_ERROR),
-				$now,
-				true,
-			);
-			return true;
-		} catch (\Throwable $e) {
-			$this->logger->warning('k4draw snapshot share: ' . $e->getMessage(), ['exception' => $e]);
-			return false;
-		}
+		return new DataResponse(['file' => $path, 'id' => $file->getId()]);
 	}
 }

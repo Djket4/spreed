@@ -10,6 +10,7 @@
 		:size="isDialog ? 'large' : undefined"
 		:labelId="isDialog ? dialogHeaderId : undefined"
 		:noClose="hideCloseButton"
+		:closeOnClickOutside="isDialog && !hideCloseButton"
 		@close="handleDialogClose">
 		<div class="media-settings">
 			<h2
@@ -790,6 +791,12 @@ export default {
 	mounted() {
 		if (!this.isDialog) {
 			this.showMediaSettings()
+		} else {
+			// ket4tec v7: на iOS с живым потоком крестик не получал click, а тап по подложке оставлял пустую страницу
+			// (затухание NcModal поверх живого видео со стеклянными кнопками, поток гасился до того, как шторка ушла).
+			// Тап по крестику или подложке ловим сами по координатам и убираем шторку сразу, поток гасим следом.
+			document.addEventListener('touchstart', this.k7TouchStart, { capture: true, passive: true })
+			document.addEventListener('touchend', this.k7TouchEnd, { capture: true, passive: false })
 		}
 	},
 
@@ -800,6 +807,8 @@ export default {
 		if (!this.isDialog) {
 			this.close()
 		}
+		document.removeEventListener('touchstart', this.k7TouchStart, { capture: true })
+		document.removeEventListener('touchend', this.k7TouchEnd, { capture: true })
 	},
 
 	methods: {
@@ -832,13 +841,46 @@ export default {
 			}
 		},
 
-		close() {
-			if (this.show) {
-				// Disable virtual background and release devices when closing
-				this.clearVirtualBackground()
-				this.unsubscribeFromDevices(PARTICIPANT.PERMISSIONS.MAX_DEFAULT)
+		k7TouchStart(e) {
+			const p = e.touches[0]
+			this.k7Touch = p ? { x: p.clientX, y: p.clientY } : null
+		},
+
+		k7TouchEnd(e) {
+			const p = e.changedTouches[0]
+			const s = this.k7Touch
+			this.k7Touch = null
+			if (!this.show || this.hideCloseButton || !p || !s || Math.hypot(p.clientX - s.x, p.clientY - s.y) > 12) {
+				return
 			}
+			const box = [...document.querySelectorAll('.modal-mask')].find((m) => m.querySelector('.media-settings'))
+			const cont = box?.querySelector('.modal-container')
+			if (!cont || getComputedStyle(box).display === 'none') {
+				return
+			}
+			const inside = (el) => {
+				const r = el?.getBoundingClientRect()
+				return !!r && p.clientX >= r.left && p.clientX <= r.right && p.clientY >= r.top && p.clientY <= r.bottom
+			}
+			const onX = inside(box.querySelector('.modal-container__close'))
+			if (!onX && (inside(cont) || !inside(box))) {
+				return
+			}
+			e.preventDefault() // без click-призрака по списку под шторкой
+			this.handleDialogClose()
+		},
+
+		close() {
+			// ket4tec v7: сначала убрать шторку, поток и фон гасить уже без неё (iOS: пустая страница после закрытия)
+			const wasShown = this.show
 			this.show = false
+			if (wasShown) {
+				this.$nextTick(() => {
+					// Disable virtual background and release devices when closing
+					this.clearVirtualBackground()
+					this.unsubscribeFromDevices(PARTICIPANT.PERMISSIONS.MAX_DEFAULT)
+				})
+			}
 			this.updatedBackground = undefined
 			this.audioDeviceStateChanged = false
 			this.videoDeviceStateChanged = false

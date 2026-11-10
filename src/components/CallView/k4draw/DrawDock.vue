@@ -122,6 +122,41 @@
 				</div>
 			</div>
 
+			<!-- ket4tec: k4draw. Свой цвет и толщина: на компьютере строка над доком, на телефоне поповер по точке в доке -->
+			<div
+				class="k4-style"
+				:class="{ up: state.tool === 'fade' || state.tool === 'text', open: pal }"
+				@mousedown.prevent>
+				<button
+					type="button"
+					class="k4-sw k4-sw--auto"
+					aria-label="Цвет автоматически"
+					:aria-pressed="!state.col"
+					:style="{ '--c': meColor() }"
+					@click="setColor('')" />
+				<button
+					v-for="c in PALETTE"
+					:key="c"
+					type="button"
+					class="k4-sw"
+					:aria-label="'Цвет ' + c"
+					:aria-pressed="state.col === c"
+					:style="{ '--c': c }"
+					@click="setColor(c)" />
+				<div class="k4-seg k4-wsz" :style="{ '--k': 3, '--i': WSZ.indexOf(state.sz) }">
+					<i />
+					<button
+						v-for="w in WSZ"
+						:key="w"
+						type="button"
+						:aria-label="'Толщина ' + w"
+						:aria-pressed="state.sz === w"
+						@click="setSize(w)">
+						<b :style="{ height: w * 1.6 + 1 + 'px' }" />
+					</button>
+				</div>
+			</div>
+
 			<nav ref="dock" class="k4-dock">
 				<div class="k4-tools">
 					<i class="k4-sp" :style="{ '--px': px + 'px' }" />
@@ -136,6 +171,14 @@
 						@click="pick(b.id)">
 						<svg class="k4-ico"><use :href="'#k4i-' + b.id" /></svg>
 						<sup v-if="b.id === 'fade'">{{ state.ft }}</sup>
+					</button>
+					<button
+						class="k4-tb k4-dot"
+						type="button"
+						aria-label="Цвет и толщина"
+						:aria-expanded="pal"
+						@click="pal = !pal">
+						<i :style="{ background: meColor() }" />
 					</button>
 					<hr>
 					<button
@@ -177,7 +220,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { isMac, mac, macLabel, openMac } from './macBridge.js'
 import { shoot, snap, watchSnaps } from './snapshot.js'
-import { amMod, canClearAll, clearAll, clearMine, isBoard, isPresenter, reducedMotion, requestCloseBoard, setGuestsDraw, SP, state, TSIZE, undo } from './useDrawing.js'
+import { amMod, canClearAll, clearAll, clearMine, isBoard, isPresenter, myColor, PALETTE, reducedMotion, requestCloseBoard, setColor, setGuestsDraw, setSize, SP, state, TSIZE, undo, WSZ } from './useDrawing.js'
 
 const TOOLS = [
 	{ id: 'laser', label: 'Лазерная указка', sub: 'лазер · след гаснет сам' },
@@ -190,6 +233,8 @@ const TOOLS = [
 ]
 
 const TL = [0, 3, 10]
+const pal = ref(false) // телефон: поповер цвета и толщины
+const meColor = () => myColor()
 const token = useGetToken()
 const snapBtn = ref(null)
 const unwatch = watchSnaps()
@@ -214,7 +259,7 @@ function closeBoardBtn() {
 }
 const sub = computed(() => {
 	const t = TOOLS.find((x) => x.id === state.tool)
-	return t.sub + (state.tool === 'fade' ? state.ft + ' с' : '') + (state.tool === 'text' ? ' · ' + state.tsz.toUpperCase() + ' · ' + (state.tl ? 'гаснет ' + state.tl + ' с' : 'остаётся') : '')
+	return (state.tool === 'eraser' && amMod() ? 'ластик · любые пометки' : t.sub) + (state.tool === 'fade' ? state.ft + ' с' : '') + (state.tool === 'text' ? ' · ' + state.tsz.toUpperCase() + ' · ' + (state.tl ? 'гаснет ' + state.tl + ' с' : 'остаётся') : '')
 })
 const vars = { '--sp-in': SP.in, '--sp-menu': SP.menu }
 // шапка-капсула живёт в пределах сцены звонка: под шапкой Стола и шапкой беседы, шапка Стола остаётся кликабельной
@@ -249,6 +294,7 @@ function place() {
  * @param id
  */
 function pick(id) {
+	pal.value = false
 	state.tool = id
 	nextTick(place)
 }
@@ -366,8 +412,15 @@ onMounted(() => {
 	.k4-dockwrap .k4-pill:not(.k4-pill--ghost) { padding: 0 14px; }
 	.k4-dock { left: 12px; right: 12px; width: auto; margin-left: 0; }
 	.k4-dockwrap .k4-dock .k4-tools { padding: 0 8px; }
-	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 34px; height: 34px; }
-	.k4-dockwrap .k4-dock .k4-sp { top: 19px; }
+	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 31px; height: 31px; }
+	.k4-dockwrap .k4-dock .k4-sp { top: 20.5px; }
+	.k4-dockwrap .k4-dock .k4-dot { display: grid; }
+	.k4-dockwrap .k4-dock .k4-tools { padding: 0 6px; }
+	/* поповер: 9 цветов в ряд, толщина строкой ниже; закрыт, пока не нажали точку */
+	.k4-style { display: none; width: calc(100% - 24px); max-width: 340px; flex-wrap: wrap; justify-content: center; border-radius: 24px; padding: 8px; gap: 8px 6px; }
+	.k4-style.open { display: flex; }
+	.k4-dockwrap .k4-style .k4-sw { width: 30px; height: 30px; }
+	.k4-style .k4-wsz { flex-basis: 100%; width: 100%; margin-left: 0; }
 }
 /* custom.css темы красит глобальный .k4-ico плиткой приложения: в доке это значок */
 body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !important; border-radius: 0; position: static; }
@@ -402,6 +455,26 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	button { z-index: 1; text-align: center; font-size: 13.5px; font-weight: 600; color: var(--k4-fg2); border-radius: 999px; transition: color .2s; }
 	button[aria-pressed=true] { color: #fff; }
 }
+.k4-style {
+	position: absolute; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 82px); display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 999px;
+	transform: translateX(-50%); pointer-events: auto;
+	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair);
+	&.up { bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 138px); }
+}
+.k4-dockwrap .k4-style .k4-sw {
+	flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--c) !important; box-shadow: inset 0 0 0 1px #0004; transition: transform .12s ease-out;
+	&[aria-pressed=true] { box-shadow: 0 0 0 2px var(--k4-bg), 0 0 0 4px #fff; }
+	&--auto { background: conic-gradient(var(--c) 0 50%, #ffffff30 0) !important; }
+	&:active { transform: scale(.88); }
+}
+.k4-style .k4-wsz {
+	width: 108px; height: 34px; margin-left: 4px;
+	button { display: grid; place-items: center; }
+	b { display: block; width: 18px; border-radius: 3px; background: currentColor; }
+}
+.k4-dock .k4-dot { display: none; }
+.k4-dock .k4-dot i { width: 20px; height: 20px; border-radius: 50%; box-shadow: 0 0 0 2px #fff, inset 0 0 0 1px #0004; }
 @keyframes k4-in { from { opacity: 0; transform: translateY(-8px); } }
 @keyframes k4-up { from { opacity: 0; transform: translateY(24px) scale(.94); } }
 @media (prefers-reduced-motion: reduce) {
