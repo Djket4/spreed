@@ -66,7 +66,7 @@
 </template>
 
 <script>
-import { showError, showInfo, TOAST_PERMANENT_TIMEOUT } from '@nextcloud/dialogs'
+import { showError, showInfo } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { inject, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -276,12 +276,12 @@ export default {
 					} else if (error.name === 'NotReadableError' || error.name === 'AbortError') {
 						// when camera in use, Chrome gives NotReadableError, Firefox gives AbortError
 						this.notificationHandle = showError(t('spreed', 'Error while accessing camera: It is likely in use by another program'), {
-							timeout: TOAST_PERMANENT_TIMEOUT,
+							timeout: 5000,
 						})
 					} else {
 						console.error('Error while accessing camera: ', error.message, error.name)
 						this.notificationHandle = showError(t('spreed', 'Error while accessing camera'), {
-							timeout: TOAST_PERMANENT_TIMEOUT,
+							timeout: 5000,
 						})
 					}
 				}

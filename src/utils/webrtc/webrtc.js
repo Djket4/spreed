@@ -5,7 +5,6 @@
 
 import {
 	showError,
-	TOAST_DEFAULT_TIMEOUT,
 	TOAST_PERMANENT_TIMEOUT,
 } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
@@ -1406,7 +1405,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			// FIXME emit an event and handle it as needed instead of
 			// calling UI code from here.
 			localStreamRequestedTimeoutNotification = showError(t('spreed', 'This is taking longer than expected. Are the media permissions already granted (or rejected)? If yes please restart your browser, as audio and video are failing'), {
-				timeout: TOAST_PERMANENT_TIMEOUT,
+				timeout: 5000,
 			})
 		}, 10000)
 	})
@@ -1520,7 +1519,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 		}
 
 		let message
-		let timeout = TOAST_PERMANENT_TIMEOUT
+		let timeout = 5000
 		if ((error.name === 'NotSupportedError'
 			&& supportsRTCPeerConnection)
 		|| (error.name === 'NotAllowedError'
@@ -1529,7 +1528,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			message += ': ' + t('spreed', 'Please move your setup to HTTPS')
 		} else if (error.name === 'NotAllowedError') {
 			message = t('spreed', 'Access to microphone & camera was denied')
-			timeout = TOAST_DEFAULT_TIMEOUT
+			timeout = 5000
 		} else if (!supportsWebRTC) {
 			console.error('WebRTC not supported')
 

@@ -632,6 +632,10 @@ html.k7f body .toastify.dialogs {
 		filter: invert(1);
 	}
 }
+// в звонке снизу панель управления — тосты уходят наверх, под верхнюю панель
+html.k7f body:has(#content-vue.in-call) .toastify.dialogs {
+	inset: calc(64px + env(safe-area-inset-top, 0px)) auto auto 50% !important;
+}
 
 html.k7f .new-group-conversation .input-field + :is(.textarea, .new-group-conversation__error),
 html.k7f .new-group-conversation .input-field ~ .textarea { margin-top: 10px !important; }

@@ -202,6 +202,8 @@ $glass: blur(24px) saturate(180%);
 	color: #fff !important;
 	box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-dng) 45%, transparent) !important;
 }
+// кнопка — круг фиксированного размера: подпись не помещается («П…»), оставляем иконку (aria-label есть)
+#content-vue #call-container > .bottom-bar .leave-call :is(.button-vue__text, .action-button__text) { display: none !important; }
 // у модератора «Покинуть» составная: красный круг + стрелка меню «Завершить для всех» бейджем у угла, как у микрофона
 #content-vue #call-container > .bottom-bar .leave-call-actions--split { position: relative; display: flex; gap: 0 !important; }
 #content-vue #call-container > .bottom-bar .leave-call-actions--split button.leave-call-button--split.button-vue.action-item {
