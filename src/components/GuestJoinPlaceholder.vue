@@ -43,14 +43,14 @@ const roomName = computed<string>(() => store.getters.conversation(token.value)?
 		margin: 0;
 		max-width: 100%;
 		text-align: center;
-		font-size: clamp(26px, 6vw, 40px);
+		font-size: clamp(22px, 4.5vw, 30px);
 		line-height: 1.15;
 		font-weight: 700;
 		overflow-wrap: anywhere;
 	}
 
 	&__username {
-		width: min(100%, 360px);
+		width: min(100%, 420px);
 	}
 
 	// ket4tec v7: большая кнопка; перебиваем размеры кнопки шапки

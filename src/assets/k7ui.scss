@@ -632,9 +632,22 @@ html.k7f body .toastify.dialogs {
 		filter: invert(1);
 	}
 }
+// в беседе снизу поле сообщения — тосты (в т.ч. постоянное «браузер не поддерживается») поднимаем над ним, а не поверх
+html.k7f body:has(#content-vue:not(.in-call) .new-message-form) .toastify.dialogs {
+	inset-block-end: calc(96px + env(safe-area-inset-bottom, 0px) + var(--k7-sheet-bottom, 0px)) !important;
+}
 // в звонке снизу панель управления — тосты уходят наверх, под верхнюю панель
 html.k7f body:has(#content-vue.in-call) .toastify.dialogs {
 	inset: calc(64px + env(safe-area-inset-top, 0px)) auto auto 50% !important;
+}
+
+// пока открыта доска/рисование, наверху лежит панель рисования, внизу по центру — инструменты: тосты («Сохранено в Файлы · открыть») уходят в левый нижний угол
+@media (min-width: 701px) {
+	html.k7f body:has(.k4-dockwrap):has(#content-vue) .toastify.dialogs {
+		inset: auto auto calc(24px + env(safe-area-inset-bottom, 0px)) 16px !important;
+		transform: none !important;
+		max-width: min(360px, max(200px, calc(50vw - 280px)));
+	}
 }
 
 html.k7f .new-group-conversation .input-field + :is(.textarea, .new-group-conversation__error),
@@ -680,3 +693,18 @@ html.k7f .message--sided.outgoing > .message-body { border-start-end-radius: 8px
 	html.k7f[data-k7-app="spreed"] #k7.k7-phone .k7-fan { width: 60px !important; height: 60px !important; right: 12px !important; }
 	html.k7f[data-k7-app="spreed"] .left-sidebar .scroller { padding-bottom: 88px; box-sizing: border-box; }
 }
+
+// ---------- Правки обхода 10.11 ----------
+// Вторичные кнопки главной Talk (Мой звонок / Новое обсуждение / Проверка устройств): в тёмной теме были тускло-фиолетовые
+html.k7f .talk-dashboard__actions .button-vue--secondary {
+	background: var(--k7u-bg3) !important;
+	color: var(--k7u-fg) !important;
+	box-shadow: inset 0 0 0 1px var(--k7u-line2);
+}
+// аватар-заглушка (буква): светлая буква на тонированном акцентом круге, а не тёмно-фиолетовая на тёмном
+html.k7f .avatardiv--unknown { background: color-mix(in srgb, var(--k7u-acc) 32%, var(--k7u-bg2)) !important; }
+html.k7f .avatardiv--unknown .avatardiv__initials-wrapper, html.k7f .avatardiv--unknown .avatardiv__initials { color: var(--k7u-fg) !important; }
+// «Настройка приложения «Конференции» не завершена» — у нас сигналинг встроенный (без High-performance backend), для пользователя это не ошибка
+.internal-warning { display: none !important; }
+// вкладки правой панели: подпись не обрезаем
+.app-sidebar-tabs__tab-caption { overflow: visible !important; text-overflow: clip !important; white-space: nowrap; }

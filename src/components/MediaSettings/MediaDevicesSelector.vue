@@ -62,7 +62,13 @@ const deviceSelectorPlaceholder = computed(() => {
 
 const deviceSelectedOption = computed<NcSelectOption | null>({
 	get: () => {
-		return deviceOptions.value.find((option) => option.id === props.deviceId) ?? null
+		const found = deviceOptions.value.find((option) => option.id === props.deviceId)
+		if (found || deviceOptionsAvailable.value) {
+			return found ?? null
+		}
+		// ket4tec: списка устройств нет (Safari до разрешения) — отключённое поле не должно быть пустым
+		const label = props.kind === 'audioinput' ? 'Микрофон по умолчанию' : props.kind === 'audiooutput' ? 'Динамик по умолчанию' : 'Камера не найдена'
+		return { id: null, label }
 	},
 	set: (value) => {
 		updateDeviceId(value?.id ?? null)

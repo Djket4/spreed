@@ -253,7 +253,19 @@ export default {
 		},
 	},
 
+	beforeUnmount() {
+		document.removeEventListener('keydown', this.onEsc)
+	},
+
 	watch: {
+		// ket4tec: штатный Esc у NcModal здесь не срабатывает — закрываем сами, если Esc не нужен выпадашке
+		modal(open) {
+			document.removeEventListener('keydown', this.onEsc)
+			if (open) {
+				document.addEventListener('keydown', this.onEsc)
+			}
+		},
+
 		success(value) {
 			if (!value || !this.isPublic) {
 				return
@@ -268,6 +280,12 @@ export default {
 		t,
 		showModal() {
 			this.modal = true
+		},
+
+		onEsc(e) {
+			if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.vs--open, .v-popper__popper--shown')) {
+				this.closeModal()
+			}
 		},
 
 		setIsAvatarEdited(value) {
