@@ -482,11 +482,18 @@ export default {
 				// Set 'chat' tab as active, and switch to it if sidebar is open
 				this.contentState = 'default'
 				this.activeTab = 'chat'
+				// ket4tec v7: при входе в звонок боковая панель закрыта (решение владельца 10.11), после звонка — как была
+				this.k7reopen = this.sidebarStore.show
+				this.sidebarStore.hideSidebar({ cache: false })
 				return
 			}
 
 			// discard notification if the call ends
 			this.notifyUnreadMessages(null)
+			if (this.k7reopen) {
+				this.k7reopen = false
+				this.sidebarStore.showSidebar({ cache: false })
+			}
 
 			// If 'chat' tab wasn't active, leave it as is
 			if (this.activeTab !== 'chat') {

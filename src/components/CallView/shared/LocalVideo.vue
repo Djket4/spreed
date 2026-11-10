@@ -57,6 +57,8 @@
 		<TileSticker v-if="k4stkOn" own />
 
 		<div class="bottom-bar">
+			<!-- ket4tec: подпись своей плитки, видна и поверх стикера/гифки -->
+			<span v-if="!isSidebar && !isBig && !isPresenterOverlay && (isGrid || isStripe)" class="participant-name k7-self">Вы</span>
 			<NcButton
 				v-if="isBig"
 				variant="tertiary"
@@ -473,6 +475,7 @@ export default {
 
 .bottom-bar {
 	position: absolute;
+	z-index: 1; // ket4tec: над TileSticker
 	bottom: 0;
 	width: 100%;
 	padding: 0 calc(var(--default-grid-baseline) * 3);
@@ -483,6 +486,19 @@ export default {
 
 	&--big {
 		justify-content: center;
+	}
+
+	// ket4tec: как .participant-name чужих плиток (k7call.scss)
+	.k7-self {
+		margin-inline: 0 auto;
+		padding: 5px 13px;
+		border-radius: 999px;
+		background: #1a171899;
+		-webkit-backdrop-filter: blur(14px);
+		backdrop-filter: blur(14px);
+		color: #f3eee9;
+		font-size: 14px;
+		font-weight: 600;
 	}
 
 	& &__button {
