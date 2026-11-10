@@ -39,6 +39,14 @@ document.documentElement.classList.add('k7f')
 	vv?.addEventListener('scroll', setGap)
 	window.addEventListener('resize', setGap)
 	if (ios) root.classList.add('k7-ios-bar')
+	// K7DBG-TEMP: замеры в настоящем Safari (симулятор), убрать до финального коммита
+	if (location.search.includes('k7dbg')) {
+		const d = document.createElement('pre')
+		d.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483647;margin:0;padding:4px;font:11px/1.25 monospace;background:#ff0c;color:#000;pointer-events:none;white-space:pre-wrap;max-width:100vw'
+		document.documentElement.appendChild(d)
+		const r = (s) => { const e = document.querySelector(s); if (!e) return '-'; const b = e.getBoundingClientRect(); return `${Math.round(b.top)}-${Math.round(b.bottom)} sh${e.scrollHeight} st${Math.round(e.scrollTop)} ${getComputedStyle(e).maxHeight}` }
+		setInterval(() => { d.textContent = `ih${innerHeight} sh${screen.height} vv${vv && Math.round(vv.height)}/${vv && Math.round(vv.offsetTop)} dvh?${CSS.supports('height','100dvh')} pill${root.style.getPropertyValue('--k7-ios-pill')} se${document.scrollingElement.scrollTop}\nmask ${r('.modal-mask')}\nwrap ${r('.modal-wrapper')}\ncont ${r('.modal-container')}\ncontent ${r('.modal-container__content')}\nbody ${r('body')}` }, 500)
+	}
 }
 
 if (!IS_DESKTOP) {
