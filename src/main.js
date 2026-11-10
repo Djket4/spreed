@@ -19,6 +19,19 @@ initializeTalkOnce()
 
 // ket4tec: метка форка v7 — тема облака (custom.css) не применяет к нему правила штатного Talk (html:not(.k7f))
 document.documentElement.classList.add('k7f')
+// ket4tec: шторки не уходят под нижнюю панель Safari. --k7-vv-gap — сколько низа страницы закрыто (visualViewport),
+// html.k7-ios-bar — iPhone в Safari (не на экране «Домой»): в iOS 26 панель плавает поверх страницы, отступ задаёт CSS
+{
+	const root = document.documentElement
+	const vv = window.visualViewport
+	const setGap = () => root.style.setProperty('--k7-vv-gap', `${Math.max(0, Math.round(window.innerHeight - (vv ? vv.height + vv.offsetTop : window.innerHeight)))}px`)
+	setGap()
+	vv?.addEventListener('resize', setGap)
+	vv?.addEventListener('scroll', setGap)
+	if (/iP(hone|od)/.test(navigator.userAgent) && !navigator.standalone && !window.matchMedia('(display-mode: standalone)').matches) {
+		root.classList.add('k7-ios-bar')
+	}
+}
 
 if (!IS_DESKTOP) {
 	// CSP config for webpack dynamic chunk loading

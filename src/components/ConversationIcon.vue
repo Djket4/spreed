@@ -200,7 +200,8 @@ export default {
 		},
 
 		k7Avatar() {
-			if (this.item.isDummyConversation || this.item.isCustomAvatar !== false
+			// черновик в окне создания (isDummyConversation) — как будет после создания, когда имя уже набрано
+			if ((this.item.isDummyConversation ? !this.item.displayName?.trim() : this.item.isCustomAvatar !== false)
 				|| ![CONVERSATION.TYPE.GROUP, CONVERSATION.TYPE.PUBLIC].includes(this.item.type)
 				|| this.item.remoteServer) {
 				return null

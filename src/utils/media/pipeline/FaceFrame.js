@@ -25,7 +25,7 @@ const LOST_AFTER_MS = 2000
 const AUTO_MAX_ZOOM = 2.5
 const AUTO_FACE_SPAN = 2.6 // ширина окна = ширина рамки лиц * это
 
-let level = 'off'
+let level = 'auto' // ket4tec v7: кадр по лицу включён по умолчанию (Андрей 10.11)
 try {
 	const stored = localStorage.getItem(STORAGE_KEY)
 	if (LEVELS.includes(stored)) {

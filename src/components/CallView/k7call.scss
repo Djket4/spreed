@@ -86,23 +86,30 @@ $glass: blur(24px) saturate(180%);
 :root:root body .media-settings__toggles .button-vue:is(:has(.microphone-off-icon, .video-off-icon, .video-off-outline-icon), [aria-label^="Включить"]) { background: var(--k7-fg) !important; color: var(--k7-bg) !important; }
 :root:root body .media-settings__toggles .button-vue--vue-error { background: var(--k7-dng) !important; color: #fff !important; }
 // выпадающие списки: одинаковые капсулы 52 px, иконка слева, шеврон справа; справа резерв 62 px под круглую кнопку теста
-:root body .media-settings .media-devices-selector { position: relative; display: block; margin: 10px 62px 10px 0; }
-:root body .media-settings .media-devices-selector__icon { position: absolute; z-index: 1; top: 26px; inset-inline-start: 18px; width: 20px; margin: 0; transform: translateY(-50%); color: var(--k7-fg2); pointer-events: none; }
-:root body .media-settings .media-devices-selector .v-select.select { width: 100%; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) { position: relative; display: block; margin: 10px 0; }
+:root body .media-settings :is(.media-devices-selector__icon, .face-frame__icon) { position: absolute; z-index: 1; top: 26px; inset-inline-start: 18px; width: 20px; margin: 0; transform: translateY(-50%); color: var(--k7-fg2); pointer-events: none; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .v-select.select { width: 100%; }
 // NcSelect сам гасит фон, поля и тень у одиночного списка (.nc-select.v-select.select:not(.vs--multiple), с !important) — перебиваем весом и !important
-:root:root body .media-settings .media-devices-selector .nc-select.v-select.select .vs__dropdown-toggle { height: 52px !important; min-height: 52px !important; flex-wrap: nowrap; padding: 0 8px 0 48px !important; border: 0 !important; border-radius: 999px !important; background: var(--k7-bg3) !important; box-shadow: inset 0 0 0 1px var(--k7-line2) !important; color: var(--k7-fg); }
-:root:root body .media-settings .media-devices-selector .nc-select.v-select.select.vs--open .vs__dropdown-toggle { box-shadow: inset 0 0 0 2px var(--k7-acc) !important; }
-:root body .media-settings .media-devices-selector .vs__selected-options { flex-wrap: nowrap; min-width: 0; overflow: hidden; padding: 0 !important; }
-:root body .media-settings .media-devices-selector .vs__selected { display: block; position: static !important; min-width: 0; max-width: 100%; margin: 0 !important; padding: 0 !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--k7-fg) !important; font-size: 15px; font-weight: 600; opacity: 1 !important; }
-:root body .media-settings .media-devices-selector .vs__selected .name-parts { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 52px !important; min-height: 52px !important; flex-wrap: nowrap; padding: 0 8px 0 48px !important; border: 0 !important; border-radius: 999px !important; background: var(--k7-bg3) !important; box-shadow: inset 0 0 0 1px var(--k7-line2) !important; color: var(--k7-fg); }
+:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select.vs--open .vs__dropdown-toggle { box-shadow: inset 0 0 0 2px var(--k7-acc) !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected-options { flex-wrap: nowrap; min-width: 0; overflow: hidden; padding: 0 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected { display: block; position: static !important; min-width: 0; max-width: 100%; margin: 0 !important; padding: 0 !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--k7-fg) !important; font-size: 15px; font-weight: 600; opacity: 1 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected .name-parts { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 // поиск у списка устройств не нужен (readonly): штатное поле рисует свою рамку поверх капсулы
-:root:root body .media-settings .media-devices-selector .vs__search { position: absolute !important; width: 0 !important; height: 0 !important; margin: 0 !important; padding: 0 !important; opacity: 0; overflow: hidden; }
-:root body .media-settings .media-devices-selector .vs__clear { display: none !important; }
-:root body .media-settings .media-devices-selector .vs__actions { padding: 0 6px 0 0 !important; }
-:root body .media-settings .media-devices-selector .vs--disabled .vs__dropdown-toggle { opacity: .55; }
-:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { position: absolute; top: 0; inset-inline-end: -62px; width: 52px; min-width: 52px; height: 52px; padding: 0; margin: 0; border: 0 !important; border-radius: 999px !important; background: var(--k7-pill) !important; color: var(--k7-fg) !important; }
-:root body .media-settings .media-devices-selector .media-devices-speaker-test-button .button-vue__text { display: none; }
-:root body .media-settings .media-devices-selector .media-devices-speaker-test-button .equalizer__bar { background: currentColor; }
+:root:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__search { position: absolute !important; width: 0 !important; height: 0 !important; margin: 0 !important; padding: 0 !important; opacity: 0; overflow: hidden; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__clear { display: none !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__actions { padding: 0 6px 0 0 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs--disabled .vs__dropdown-toggle { opacity: .55; }
+:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { position: absolute; top: 6px; inset-inline-end: 44px; width: 40px; min-width: 40px; height: 40px; min-height: 40px; padding: 0; margin: 0; border: 0 !important; border-radius: 999px !important; background: var(--k7-pill) !important; color: var(--k7-fg) !important; }
+// ket4tec: все списки во всю ширину; тест динамика — круг внутри капсулы перед стрелкой
+:root:root body .media-settings .media-devices-selector:has(.media-devices-speaker-test-button) .nc-select.v-select.select .vs__dropdown-toggle { padding-inline-end: 92px !important; }
+// стрелка списка — цвет темы, не системный синий; текст обрезается до стрелки
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected-options { flex: 1 1 0 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__actions { flex: 0 0 auto; color: var(--k7-fg2) !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) :is(.vs__open-indicator, .vs__open-indicator-button, .vs__actions svg) { color: var(--k7-fg2) !important; fill: currentColor !important; }
+:root body .media-settings .face-frame__hint { margin: 2px 6px 8px; font-size: 13px; color: var(--k7-fg2); }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .media-devices-speaker-test-button .button-vue__text { display: none; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .media-devices-speaker-test-button .equalizer__bar { background: currentColor; }
 // одна вкладка (фоны запрещены темой) — полоса вкладок не нужна; запись без сервера записи — неактивная строка, прячем
 :root body .media-settings .tab-list { display: none !important; }
 :root body .media-settings .tab-panels-container, :root body .media-settings .tab-panel { min-height: 0 !important; padding: 0 !important; }
@@ -147,7 +154,8 @@ $glass: blur(24px) saturate(180%);
 	.local-audio-control-wrapper button:not(.action-item__menutoggle),
 	.local-video-control-wrapper button:not(.action-item__menutoggle),
 	.action-item__menutoggle:not(.audio-selector-button, .video-selector-button):not(:has(.chevron-up-icon, .chevron-down-icon)),
-	.k4-pencil.button-vue
+	.k4-pencil.button-vue,
+	.k7-call-settings.button-vue
 ) {
 	flex: none !important;
 	width: var(--k7-btn) !important;
@@ -248,6 +256,12 @@ $glass: blur(24px) saturate(180%);
 #content-vue .top-bar--in-call .top-bar__controls { gap: 6px; }
 // «Открыть чат» справа в шапке звонка — та же капсула (штатная прозрачная иконка на светлой теме не видна)
 #content-vue.in-call .app-sidebar__toggle.button-vue { border-radius: 999px !important; background: var(--k7-pill) !important; color: var(--k7-fg) !important; }
+// шапка звонка: таймер, «…» и чат — одна высота 40; слева нет гамбургера — заголовок без отступа под него
+// (тема на ≤430 резервирует 48px под кнопку списка бесед, но в звонке она спрятана — пустое место слева от названия)
+@media (max-width: 700px) { html.k7f #content-vue.in-call .top-bar--in-call .conversation-header { padding-inline-start: 4px; } }
+#content-vue .top-bar--in-call .top-bar__controls :is(.call-time, .button-vue) { height: 40px !important; min-height: 40px !important; }
+#content-vue .top-bar--in-call .top-bar__controls > .button-vue:not(:has(.button-vue__text)), #content-vue .top-bar--in-call .top-bar__controls .action-item .button-vue { width: 40px !important; min-width: 40px !important; }
+#content-vue.in-call .app-sidebar__toggle.button-vue { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; transform: translateY(-4px); }
 
 // телефон
 @media (max-width: 768px) {
@@ -262,17 +276,17 @@ $glass: blur(24px) saturate(180%);
 
 /* телефон: окно проверки устройств — шторка снизу, под шапкой Стола (~110 px); всё внутри шторки, листается сама шторка */
 @media (max-width: 500px) {
-	:root:root body .modal-wrapper:has(.media-settings) { display: flex !important; flex-direction: column; justify-content: flex-end !important; align-items: stretch !important; padding: 0 !important; }
-	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: calc(100dvh - 110px) !important; margin: 0 !important; border-radius: 28px 28px 0 0 !important; overflow: hidden; display: flex; flex-direction: column; }
-	:root:root body .modal-container:has(.media-settings) .modal-container__content { overflow-y: auto; overscroll-behavior: contain; max-height: none; }
+	:root:root body .modal-wrapper:has(.media-settings) { display: flex !important; flex-direction: column; justify-content: flex-end !important; align-items: stretch !important; padding: 0 0 var(--k7-sheet-bottom, 0px) !important; }
+	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: calc(100dvh - 110px - var(--k7-sheet-bottom, 0px)) !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
+	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; max-height: none; }
 	:root body .media-settings { padding: 20px 16px max(20px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
 	:root body .media-settings__title { font-size: 24px; margin-bottom: 12px; }
 	:root body .media-settings__content--mobile { gap: 12px !important; }
 	:root body .media-settings__preview { margin-inline-end: 0 !important; aspect-ratio: 16 / 11 !important; }
 	:root body .media-settings .media-settings__settings { max-width: none; }
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
-	:root body .media-settings .media-devices-selector { margin: 6px 62px 6px 0; }
-	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: static !important; inset: auto !important; width: 100% !important; min-width: 0 !important; margin: 10px 0 0 !important; }
+	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 6px 0; }
+	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: sticky !important; inset: auto 0 0 0 !important; z-index: 2; width: 100% !important; min-width: 0 !important; margin: 10px 0 0 !important; box-shadow: 0 0 0 10px var(--k7-bg2), 0 14px 0 10px var(--k7-bg2) !important; }
 }
 
 // светлая и тёмная тема: компоненты звонка стоят в data-theme-dark (белый текст), на светлом фоне Стола он не виден — подставляем цвет темы
@@ -305,3 +319,25 @@ $glass: blur(24px) saturate(180%);
 // своё превью: cover и скругление 20 px
 #call-container .local-video, #call-container .local-video :is(video, .local-video__container) { border-radius: 20px; }
 #call-container .local-video video { object-fit: cover; }
+
+// ---------- Блок 4: звонок на телефоне ----------
+// выбор устройств — шестерёнкой «Настройки» (шторка устройств), стрелки-меню у микрофона и камеры не нужны
+#content-vue #call-container > .bottom-bar :is(.local-audio-control-wrapper, .local-video-control-wrapper) div.action-item { display: none !important; }
+#content-vue #call-container > .bottom-bar .k7-call-settings.button-vue:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; }
+#content-vue #call-container > .bottom-bar .k7-call-settings.button-vue:active:not(:disabled) { transform: scale(.92); }
+
+// экран ожидания: коротко, крупная капсула «Отправить ссылку», выше своего превью
+#call-container .empty-call-view:not(.empty-call-view--small):not(.empty-call-view--sidebar) {
+	justify-content: flex-start !important;
+	padding: 18vh 24px 0;
+	gap: 18px;
+	h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+	.emptycontent-additional { margin: 0; font-size: 15px; color: var(--k7-fg2); }
+	.empty-call-view__link.button-vue { align-self: center; min-height: 52px !important; padding: 0 26px !important; border: 0 !important; border-radius: 999px !important; background: var(--k7-grad) !important; color: #fff !important; font-size: 16px; font-weight: 700; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent) !important; }
+}
+
+// реакции — крупными стикерами поверх видео (NAS_CLOUD#18): картинка 96, подпись — капсула под ней
+#call-container .toaster .toast { flex-direction: column; gap: 4px; }
+#call-container .toaster .toast__reaction-img { width: 96px !important; height: 96px !important; filter: drop-shadow(0 6px 16px #0006); }
+#call-container .toaster .toast__reaction { font-size: 80px !important; line-height: 1; filter: drop-shadow(0 6px 16px #0006); }
+#call-container .toaster .toast__name { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }

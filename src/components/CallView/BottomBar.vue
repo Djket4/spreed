@@ -7,6 +7,7 @@
 import {
 	showError,
 } from '@nextcloud/dialogs'
+import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { useResizeObserver } from '@vueuse/core'
 import debounce from 'debounce'
@@ -18,6 +19,7 @@ import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconChevronUp from 'vue-material-design-icons/ChevronUp.vue'
+import IconCogOutline from 'vue-material-design-icons/CogOutline.vue' // ket4tec v7: настройки звонка
 import IconFullscreen from 'vue-material-design-icons/Fullscreen.vue'
 import IconFullscreenExit from 'vue-material-design-icons/FullscreenExit.vue'
 import IconPencil from 'vue-material-design-icons/Pencil.vue' // ket4tec: k4draw
@@ -531,6 +533,20 @@ function setCallLayout(layout: CallLayout) {
 				@click="k4draw.mode = true">
 				<template #icon>
 					<IconPencil :size="24" />
+				</template>
+			</NcButton>
+
+			<!-- ket4tec v7: настройки во время звонка — та же шторка устройств: микрофон, камера, динамик, кадр по лицу, фон.
+				Стрелки-меню у микрофона и камеры не показываем (k7call.scss) -->
+			<NcButton
+				v-if="!isSidebar"
+				class="k7-call-settings"
+				variant="tertiary"
+				:title="t('spreed', 'Settings')"
+				:aria-label="t('spreed', 'Settings')"
+				@click="emit('talk:media-settings:show')">
+				<template #icon>
+					<IconCogOutline :size="22" />
 				</template>
 			</NcButton>
 

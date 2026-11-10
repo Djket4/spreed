@@ -863,6 +863,7 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 	z-index: 100000;
 	display: flex;
 	align-items: flex-end;
+	padding-bottom: var(--k7-sheet-bottom, 0px);
 	justify-content: center;
 	color: var(--m-fg);
 
@@ -881,7 +882,7 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 		gap: 12px;
 		padding: 28px 20px calc(20px + env(safe-area-inset-bottom));
 		background: var(--m-bg);
-		border-radius: 28px 28px 0 0;
+		border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0);
 		box-shadow: 0 -12px 60px #0006, inset 0 0 0 1px var(--m-line);
 	}
 
