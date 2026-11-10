@@ -20,6 +20,12 @@
 			draggable="false"
 			:style="{ '--w': it.w * 2 + 'px', aspectRatio: it.w + '/' + it.h }">
 		<template v-else>
+			<img
+				:key="'p' + e.id"
+				class="k4stk-p"
+				:src="it.pos"
+				alt=""
+				draggable="false">
 			<video
 				v-if="fit"
 				:key="'b' + e.id"
@@ -126,7 +132,8 @@ onBeforeUnmount(() => ro?.disconnect())
 		-webkit-user-drag: none;
 		user-select: none;
 	}
-	.k4stk-g {
+	.k4stk-g,
+	.k4stk-p {
 		position: absolute;
 		inset: 0;
 		width: 100%;
@@ -142,7 +149,7 @@ onBeforeUnmount(() => ro?.disconnect())
 		object-fit: cover;
 		filter: blur(22px) brightness(.58) saturate(1.5);
 	}
-	&.k4stk-fit .k4stk-g {
+	&.k4stk-fit :is(.k4stk-g, .k4stk-p) {
 		object-fit: contain;
 		object-position: 50% 50%;
 	}

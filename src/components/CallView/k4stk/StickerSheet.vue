@@ -27,7 +27,7 @@
 						v-if="state.mine"
 						type="button"
 						class="k4stk-clear"
-						@click="clear()">
+						@click="clear(); close()">
 						Убрать
 					</button>
 				</header>
@@ -95,7 +95,7 @@
 									:data-id="g.id"
 									:style="{ aspectRatio: g.w + '/' + g.h }"
 									:aria-label="g.tx"
-									@click="pick('g', g.id)">
+									@click="choose('g', g.id)">
 									<img :src="g.pos" loading="lazy" alt="">
 									<video
 										v-k4vis
@@ -127,7 +127,7 @@
 									data-k="s"
 									:data-id="k.id"
 									:aria-label="'Стикер ' + k.tx"
-									@click="pick('s', k.id)">
+									@click="choose('s', k.id)">
 									<img :src="k.th" loading="lazy" alt="">
 								</button>
 							</div>
@@ -202,6 +202,16 @@ const sections = computed(() => PACKS
  */
 function close() {
 	state.open = false
+}
+/**
+ * Как в прототипе: выбор (и повторный тап = убрать) закрывает шторку.
+ *
+ * @param k
+ * @param id
+ */
+function choose(k, id) {
+	pick(k, id)
+	close()
 }
 const onKey = (e) => e.key === 'Escape' && state.open && close()
 onMounted(() => document.addEventListener('keydown', onKey))
@@ -366,7 +376,7 @@ const vK4vis = vVisible
 	}
 	.k4stk-body {
 		flex: 1;
-		min-height: 120px;
+		min-height: 0;
 		overflow-y: auto;
 		overflow-x: hidden;
 		overscroll-behavior: contain;
@@ -418,7 +428,10 @@ const vK4vis = vVisible
 		flex: none;
 		align-items: center;
 		gap: 10px;
-		margin-top: 8px;
+		margin: 8px -12px -10px;
+		padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+		background: color-mix(in srgb, var(--k7-bg2, #242021) 94%, transparent);
+		box-shadow: 0 -1px 0 var(--k7-line, #ffffff12);
 		.k4stk-ttl { height: 40px; button { font-size: 13px; } }
 	}
 }
@@ -435,7 +448,7 @@ const vK4vis = vVisible
 		max-height: 70dvh;
 		transform: none;
 		border-radius: 28px 28px 0 0;
-		padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+		height: min(70dvh, 640px);
 		animation-name: k4stk-sheet-in-m;
 	}
 }
