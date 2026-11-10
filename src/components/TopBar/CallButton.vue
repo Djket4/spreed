@@ -102,13 +102,8 @@ const startCallButtonDisabled = computed(() => {
 		|| !tokenStore.currentConversationIsJoined
 		|| blockCalls
 })
-const showSplitStartCallButton = computed(() => {
-	return showStartCallButton.value
-		&& !props.isMediaSettings && !props.label // ket4tec v7: у гостевой кнопки без меню «тихо»
-		&& !isPhoneRoom.value
-		&& !hasExternalCallService(conversation.value)
-		&& !hasCall.value
-})
+// ket4tec v7 (владелец 10.11): без половинки-меню «начать тихо», кнопка одна
+const showSplitStartCallButton = computed(() => false)
 const showRecordingWarning = computed(() => {
 	return [
 		CALL.RECORDING.VIDEO_STARTING,

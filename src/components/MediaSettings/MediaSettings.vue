@@ -227,7 +227,7 @@
 					</NcCheckboxRadioSwitch>
 					<!-- Notify call option-->
 					<NcCheckboxRadioSwitch
-						v-if="showNotifyCallOption"
+						v-if="false && showNotifyCallOption /* ket4tec v7: без «Уведомить всех» */"
 						v-model="notifyCall"
 						type="switch"
 						class="checkbox"
