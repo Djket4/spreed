@@ -20,7 +20,6 @@ import IconArrowRight from 'vue-material-design-icons/ArrowRight.vue'
 import IconCalendarBlankOutline from 'vue-material-design-icons/CalendarBlankOutline.vue'
 import IconCheck from 'vue-material-design-icons/Check.vue'
 import IconClose from 'vue-material-design-icons/Close.vue'
-import IconList from 'vue-material-design-icons/FormatListBulleted.vue'
 import IconMicrophoneOutline from 'vue-material-design-icons/MicrophoneOutline.vue'
 import IconPhoneOutline from 'vue-material-design-icons/PhoneOutline.vue'
 import IconPlus from 'vue-material-design-icons/Plus.vue'
@@ -329,15 +328,6 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 						<IconPlus :size="20" />
 					</template>
 					{{ t('spreed', 'New conversation') }}
-				</NcButton>
-
-				<NcButton
-					class="talk-dashboard__action"
-					@click="EventBus.emit('open-conversations-list:show')">
-					<template #icon>
-						<IconList :size="20" />
-					</template>
-					{{ t('spreed', 'Join conversations') }}
 				</NcButton>
 
 				<NcButton
