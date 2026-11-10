@@ -2,6 +2,7 @@
  * ket4tec: k4draw. Рисование поверх показа экрана: транспорт (сигналинг HPB, протокол v1) и состояние.
  * Один модуль на всех: слой, док и кнопка в панели звонка работают с одним `state` и одним набором показов.
  */
+import { generateOcsUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
 import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
@@ -65,6 +66,7 @@ export const state = reactive({
 	undo: 0, // сколько своих пометок можно отменить в крупном показе
 	board: null, // sessionId того, кто открыл доску (одна на звонок)
 	boardHidden: false, // доска скрыта только у себя
+	bg: null, // фон доски «Показать всем»: { t: 's' снимок | 'm' картинка из беседы, id }
 	ask: false, // «Сохранить рисунок?» перед закрытием своей доски
 	gd: true, // гости рисуют (переключает модератор)
 	col: PALETTE.includes(ls('col')) ? ls('col') : '', // свой цвет пометок ('' = цвет автора, назначенный автоматически)
@@ -97,7 +99,7 @@ export const canDraw = () => state.gd || !amGuest()
  */
 function hOf(k, cols) {
 	const s = shows.get(k)
-	return { op: 'h', k, ...(shows.get(k)?.presenter === me() && !k.startsWith(me() + ':') ? { ho: 1 } : {}), ...(cols ? { cols } : {}), ...(s?.ar ? { ar: s.ar } : {}), gd: state.gd ? 1 : 0 }
+	return { op: 'h', k, ...(shows.get(k)?.presenter === me() && !k.startsWith(me() + ':') ? { ho: 1 } : {}), ...(cols ? { cols } : {}), ...(s?.ar ? { ar: s.ar } : {}), ...(s?.bg ? { bg: s.bg } : {}), gd: state.gd ? 1 : 0 }
 }
 
 /**
@@ -676,6 +678,8 @@ function apply(d, from) {
 					s.ar = ar
 					emit({ t: 'show', show: s })
 				}
+				s.bg = okBg(d.bg)
+				state.bg = s.bg
 				if (state.board !== from) {
 					state.board = from
 					state.boardHidden = false
@@ -1274,8 +1278,9 @@ export function setGuestsDraw(on) {
  * Открыть доску у всех.
  *
  * @param {number} ar соотношение сторон доски (ширина / высота) у открывшего
+ * @param {object|null} bg фон доски «Показать всем»
  */
-export function openBoard(ar) {
+export function openBoard(ar, bg = null) {
 	if (myK || state.board === me()) {
 		return
 	}
@@ -1287,6 +1292,8 @@ export function openBoard(ar) {
 	myK = me() + ':b' + Date.now()
 	setShow(me(), myK)
 	shows.get(myK).ar = Math.min(3, Math.max(0.33, +ar.toFixed(3)))
+	shows.get(myK).bg = bg
+	state.bg = bg
 	state.board = me()
 	state.boardHidden = false
 	wire(hOf(myK))
@@ -1409,6 +1416,7 @@ export function boardGone(sid) {
 		state.board = null
 		state.boardHidden = false
 		state.ask = false
+		state.bg = null
 	}
 	if (state.big === sid) {
 		state.big = null
@@ -1417,12 +1425,62 @@ export function boardGone(sid) {
 	}
 }
 
+// соотношение сторон — от области видео открывшего за вычетом полей доски (DrawBoard.vue)
+const boardAr = (el = document.getElementById('videos')) => ((el?.clientWidth || 800) - 24) / Math.max(100, (el?.clientHeight || 600) - 160)
+
+/**
+ * ket4tec (NAS_CLOUD#91/#92): фон доски — картинка. Только снимок доски этого звонка или картинка из сообщения беседы,
+ * адрес каждый собирает сам (гость тоже, по сессии участника).
+ *
+ * @param {object} bg из сообщения `h`
+ * @return {{ t: string, id: number }|null}
+ */
+function okBg(bg) {
+	return bg && (bg.t === 's' || bg.t === 'm') && Number.isSafeInteger(bg.id) && bg.id > 0 ? { t: bg.t, id: bg.id } : null
+}
+
+/**
+ * Адрес картинки фона доски / превью в панели.
+ *
+ * @param {{ t: string, id: number }} bg фон
+ * @param {number} size сторона превью, px
+ */
+export function bgUrl(bg, size = 1600) {
+	return generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/' + (bg.t === 's' ? 'snapshot' : 'image') + '/{id}', { token: useTokenStore().token, id: bg.id }) + '?size=' + size
+}
+
+/**
+ * «Показать всем»: картинка во весь экран доски у всех, рисуют поверх тем же «Рисовать».
+ * Доска чужая — не перехватываем; своя — рисунок поверх прежней картинки уходит в Снимки, доска открывается заново.
+ *
+ * @param {{ t: string, id: number }} bg снимок (`s`) или картинка из беседы (`m`)
+ * @return {Promise<string>} '' — показано, иначе причина
+ */
+export async function showImage(bg) {
+	bg = okBg(bg)
+	if (!bg || !hasHpb()) {
+		return 'Показ недоступен в этом звонке'
+	}
+	if (state.board && state.board !== me()) {
+		return 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
+	}
+	const s = myShow()
+	if (s && isBoard(s.k)) {
+		if (s.bg?.t === bg.t && s.bg?.id === bg.id) {
+			state.boardHidden = false
+			return ''
+		}
+		s.perm > 0 && await Promise.resolve(autoSnap?.()).catch(() => {})
+		closeBoard()
+	}
+	openBoard(boardAr(), bg)
+	return state.board === me() ? '' : 'Доска не открылась'
+}
+
 /** Кнопка «Доска»: открыть у всех / показать скрытую / закрыть свою / скрыть чужую у себя. */
 export function toggleBoard() {
 	if (!state.board) {
-		// соотношение сторон — от области видео открывшего за вычетом полей доски (DrawBoard.vue)
-		const el = document.getElementById('videos')
-		openBoard(((el?.clientWidth || 800) - 24) / Math.max(100, (el?.clientHeight || 600) - 160))
+		openBoard(boardAr())
 	} else if (state.boardHidden) {
 		state.boardHidden = false
 	} else if (state.board === me()) {

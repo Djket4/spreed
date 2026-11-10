@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Talk\Controller;
 
+use OCA\Talk\Chat\ChatManager;
 use OCA\Talk\Middleware\Attribute\RequireModeratorOrNoLobby;
 use OCA\Talk\Middleware\Attribute\RequireParticipant;
 use OCA\Talk\Middleware\Attribute\RequirePermission;
@@ -16,14 +17,21 @@ use OCA\Talk\Middleware\Attribute\RequireReadWriteConversation;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\FileDisplayResponse;
+use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\Files\File;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\IPreview;
 use OCP\IRequest;
+use OCP\Share\IManager as IShareManager;
 use Psr\Log\LoggerInterface;
 
 class K4DrawController extends AEnvironmentAwareOCSController {
@@ -37,6 +45,9 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		private readonly IRootFolder $rootFolder,
 		private readonly ITimeFactory $timeFactory,
 		private readonly LoggerInterface $logger,
+		private readonly ChatManager $chatManager,
+		private readonly IShareManager $shareManager,
+		private readonly IPreview $preview,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -100,5 +111,158 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		$path = 'Talk/Recording/' . $this->room->getToken() . '/Снимки/' . $name;
 
 		return new DataResponse(['file' => $path, 'id' => $file->getId()]);
+	}
+
+	/**
+	 * Папка снимков комнаты у владельца записи (null — снимков ещё не было).
+	 */
+	private function snapFolder(): ?Folder {
+		$folder = $this->rootFolder->getUserFolder($this->appConfig->getAppValueString('k4draw_snapshot_owner', 'andrey'));
+		foreach (['Talk', 'Recording', $this->room->getToken(), 'Снимки'] as $dir) {
+			if (!$folder->nodeExists($dir)) {
+				return null;
+			}
+			$folder = $folder->get($dir);
+			if (!$folder instanceof Folder) {
+				return null;
+			}
+		}
+		return $folder;
+	}
+
+	/**
+	 * Картинка для доски и превью панели: превью нужного размера, PNG-снимок без превью — как есть.
+	 */
+	private function image(File $file, int $size): Response {
+		$size = max(64, min(2048, $size));
+		try {
+			$img = $this->preview->getPreview($file, $size, $size, false);
+			$res = new FileDisplayResponse($img, Http::STATUS_OK, ['Content-Type' => $img->getMimeType()]);
+		} catch (\Throwable) {
+			if (!in_array($file->getMimeType(), ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], true)) {
+				return new DataResponse([], Http::STATUS_NOT_FOUND);
+			}
+			$res = new FileDisplayResponse($file, Http::STATUS_OK, ['Content-Type' => $file->getMimeType()]);
+		}
+		$res->cacheFor(3600, false, true);
+		return $res;
+	}
+
+	/**
+	 * Снимки доски этого звонка (новые первыми) для панели «Файлы».
+	 *
+	 * @return DataResponse<Http::STATUS_OK, list<array{id: int, name: string, mtime: int}>, array{}>
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[RequireModeratorOrNoLobby]
+	#[RequireParticipant]
+	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/k4draw/{token}/snapshots', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+	])]
+	public function snapshots(): DataResponse {
+		$out = [];
+		try {
+			foreach ($this->snapFolder()?->getDirectoryListing() ?? [] as $n) {
+				if ($n instanceof File && $n->getMimeType() === 'image/png') {
+					$out[] = ['id' => $n->getId(), 'name' => $n->getName(), 'mtime' => $n->getMTime()];
+				}
+			}
+		} catch (\Throwable $e) {
+			$this->logger->warning('k4draw snapshots: ' . $e->getMessage());
+		}
+		usort($out, static fn ($a, $b) => $b['mtime'] <=> $a['mtime'] ?: $b['id'] <=> $a['id']);
+		return new DataResponse(array_slice($out, 0, 60));
+	}
+
+	/**
+	 * Снимок доски этого звонка картинкой (фон доски, превью в панели). Гость — по сессии участника.
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[RequireModeratorOrNoLobby]
+	#[RequireParticipant]
+	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/k4draw/{token}/snapshot/{id}', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+		'id' => '\d{1,18}',
+	])]
+	public function snapshotImage(int $id, int $size = 1600): Response {
+		try {
+			$file = $this->snapFolder()?->getFirstNodeById($id);
+		} catch (\Throwable) {
+			$file = null;
+		}
+		return $file instanceof File ? $this->image($file, $size) : new DataResponse([], Http::STATUS_NOT_FOUND);
+	}
+
+	/**
+	 * Картинка из сообщения беседы с файлом (`file_shared` этой комнаты), иначе null.
+	 */
+	private function chatFile(int $messageId): ?File {
+		try {
+			$m = json_decode($this->chatManager->getComment($this->room, (string)$messageId)->getMessage(), true);
+			if (($m['message'] ?? '') !== 'file_shared') {
+				return null;
+			}
+			$node = isset($m['parameters']['share'])
+				? $this->shareManager->getShareById('ocRoomShare:' . $m['parameters']['share'])->getNode()
+				: $this->rootFolder->getFirstNodeById((int)($m['parameters']['fileId'] ?? 0));
+		} catch (\Throwable) {
+			return null;
+		}
+		return $node instanceof File && str_starts_with($node->getMimeType(), 'image/') ? $node : null;
+	}
+
+	/** Картинки из беседы, выведенные на доску в этой комнате (гость без чата видит только их). */
+	private function shown(): array {
+		return json_decode($this->appConfig->getAppValueString('k4draw_shown_' . $this->room->getToken(), '[]'), true) ?: [];
+	}
+
+	/**
+	 * «Показать всем» картинку из беседы: отметить, что её можно отдать участникам без чата (гостям) как фон доски.
+	 *
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_FOUND, array{}, array{}>
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[RequireModeratorOrNoLobby]
+	#[RequireParticipant]
+	#[RequireReadWriteConversation]
+	#[UserRateLimit(limit: 60, period: 600)]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/k4draw/{token}/image/{messageId}', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+		'messageId' => '\d{1,18}',
+	])]
+	public function showChatImage(int $messageId): DataResponse {
+		if ($this->participant->cannotSeeChat() || $this->chatFile($messageId) === null) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+		// ponytail: список на комнату в app config (последние 20), без чистки; в таблицу — если комнат с показами станут тысячи
+		$ids = array_values(array_unique([$messageId, ...$this->shown()]));
+		$this->appConfig->setAppValueString('k4draw_shown_' . $this->room->getToken(), json_encode(array_slice($ids, 0, 20)));
+		return new DataResponse([]);
+	}
+
+	/**
+	 * Картинка из сообщения беседы — фон доски «Показать всем» и превью в панели.
+	 * Участник с чатом — любая картинка беседы; гость без чата (#55) — только выведенная на доску.
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[RequireModeratorOrNoLobby]
+	#[RequireParticipant]
+	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/k4draw/{token}/image/{messageId}', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+		'messageId' => '\d{1,18}',
+	])]
+	public function chatImage(int $messageId, int $size = 1600): Response {
+		$file = (!$this->participant->cannotSeeChat() || in_array($messageId, $this->shown(), true)) ? $this->chatFile($messageId) : null;
+		return $file ? $this->image($file, $size) : new DataResponse([], Http::STATUS_NOT_FOUND);
 	}
 }

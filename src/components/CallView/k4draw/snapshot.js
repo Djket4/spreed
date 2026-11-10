@@ -8,7 +8,7 @@ import { generateOcsUrl, generateUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useTokenStore } from '../../../stores/token.ts'
-import { amGuest, localScreen, myId, onDraw, sendSnap, setAutoSnap, SP, state } from './useDrawing.js'
+import { amGuest, bgUrl, localScreen, myId, onDraw, sendSnap, setAutoSnap, SP, state } from './useDrawing.js'
 
 export const snap = reactive({ n: 0, k: '', busy: false })
 const PERM = ['marker', 'arrow', 'frame', 'text']
@@ -76,6 +76,12 @@ async function render(all = false) {
 	if (board) {
 		ctx.fillStyle = getComputedStyle(surf).backgroundColor
 		ctx.fillRect(0, 0, vw, vh)
+		if (state.bg) {
+			// фон «Показать всем»: как на экране, целиком по центру (тот же сервер — холст не «грязный»)
+			const im = await loadImg(bgUrl(state.bg))
+			const f = Math.min(vw / im.naturalWidth, vh / im.naturalHeight)
+			ctx.drawImage(im, (vw - im.naturalWidth * f) / 2, (vh - im.naturalHeight * f) / 2, im.naturalWidth * f, im.naturalHeight * f)
+		}
 	} else {
 		ctx.drawImage(video, 0, 0, vw, vh)
 	}

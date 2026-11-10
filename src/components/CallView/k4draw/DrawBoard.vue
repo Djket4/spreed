@@ -4,7 +4,10 @@
 -->
 
 <template>
-	<div class="k4-board" :class="{ 'k4-board--draw': state.mode, 'k4-board--strip': people.length }">
+	<div
+		class="k4-board"
+		:class="{ 'k4-board--draw': state.mode, 'k4-board--strip': people.length, 'k4-board--img': state.bg }"
+		:style="state.bg ? { '--k4-bgimg': `url('${bgUrl(state.bg)}')` } : null">
 		<DrawLayer :key="state.board" :presenter="state.board" board />
 		<!-- ket4tec (NAS_CLOUD#103 п.42, 53): камеры участников полосой рядом с доской (iPad — сбоку, iPhone — сверху);
 			звук идёт отдельно (CallParticipantsAudioPlayer), здесь видео без звука -->
@@ -59,7 +62,7 @@ import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 import { shoot, snap } from './snapshot.js'
-import { closeBoard, myId, passBoard, state } from './useDrawing.js'
+import { bgUrl, closeBoard, myId, passBoard, state } from './useDrawing.js'
 
 const token = useGetToken()
 
@@ -130,7 +133,8 @@ onBeforeUnmount(() => clearInterval(timer))
 	// iPad и компьютер: камеры столбиком справа
 	&.k4-board--strip { --k4-sr: 172px; }
 	.k4-surf {
-		background: var(--k4-board-bg);
+		// ket4tec (NAS_CLOUD#91/#92): «Показать всем» — картинка во всю доску, целиком, по центру
+		background: var(--k4-bgimg, none) center / contain no-repeat, var(--k4-board-bg);
 		border-radius: 16px;
 		box-shadow: 0 0 0 1px #0000000f, 0 6px 24px #00000014;
 	}
