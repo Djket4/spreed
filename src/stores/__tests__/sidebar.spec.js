@@ -3,11 +3,16 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { getCurrentUser } from '@nextcloud/auth'
 import { emit } from '@nextcloud/event-bus'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BrowserStorage from '../../services/BrowserStorage.js'
-import { useSidebarStore } from '../sidebar.ts'
+import { sidebarOpenByDefault, useSidebarStore } from '../sidebar.ts'
+
+vi.mock('@nextcloud/auth', () => ({
+	getCurrentUser: vi.fn(() => ({ uid: 'user' })),
+}))
 
 vi.mock('@nextcloud/event-bus', () => ({
 	emit: vi.fn(),
@@ -68,5 +73,16 @@ describe('sidebarStore', () => {
 
 		expect(sidebarStore.show).toBe(false)
 		expect(BrowserStorage.setItem).not.toHaveBeenCalled()
+	})
+
+	it('ket4tec: guest without saved choice gets the sidebar closed, user — open', () => {
+		BrowserStorage.getItem.mockReturnValue(null)
+		getCurrentUser.mockReturnValueOnce(null)
+		expect(sidebarOpenByDefault()).toBe(false)
+		expect(sidebarOpenByDefault()).toBe(true)
+		BrowserStorage.getItem.mockReturnValue('true')
+		getCurrentUser.mockReturnValueOnce(null)
+		expect(sidebarOpenByDefault()).toBe(true)
+		BrowserStorage.getItem.mockReturnValue(undefined)
 	})
 })
