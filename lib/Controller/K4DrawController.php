@@ -31,6 +31,8 @@ use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IPreview;
 use OCP\IRequest;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 use OCP\Share\IManager as IShareManager;
 use Psr\Log\LoggerInterface;
 
@@ -48,6 +50,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		private readonly ChatManager $chatManager,
 		private readonly IShareManager $shareManager,
 		private readonly IPreview $preview,
+		private readonly ILockingProvider $lockingProvider,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -162,6 +165,10 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		'token' => '[a-z0-9]{4,30}',
 	])]
 	public function snapshots(): DataResponse {
+		// гость без чата снимки прошлых звонков не листает — только выведенные на доску
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse([]);
+		}
 		$out = [];
 		try {
 			foreach ($this->snapFolder()?->getDirectoryListing() ?? [] as $n) {
@@ -190,6 +197,9 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		'id' => '\d{1,18}',
 	])]
 	public function snapshotImage(int $id, int $size = 1600): Response {
+		if ($this->participant->cannotSeeChat() && !in_array('s' . $id, $this->shown(), true)) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
 		try {
 			$file = $this->snapFolder()?->getFirstNodeById($id);
 		} catch (\Throwable) {
@@ -199,32 +209,65 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	}
 
 	/**
-	 * Картинка из сообщения беседы с файлом (`file_shared` этой комнаты), иначе null.
+	 * Картинка из сообщения беседы с файлом (системное `file_shared` этой комнаты), иначе null.
 	 */
 	private function chatFile(int $messageId): ?File {
 		try {
-			$m = json_decode($this->chatManager->getComment($this->room, (string)$messageId)->getMessage(), true);
-			if (($m['message'] ?? '') !== 'file_shared') {
+			$c = $this->chatManager->getComment($this->room, (string)$messageId);
+			// обычное сообщение пользователя (verb comment) с подделанным JSON не годится
+			if ($c->getVerb() !== ChatManager::VERB_OBJECT_SHARED) {
 				return null;
 			}
-			$node = isset($m['parameters']['share'])
-				? $this->shareManager->getShareById('ocRoomShare:' . $m['parameters']['share'])->getNode()
-				: $this->rootFolder->getFirstNodeById((int)($m['parameters']['fileId'] ?? 0));
+			$m = json_decode($c->getMessage(), true);
+			if (($m['message'] ?? '') !== 'file_shared' || !isset($m['parameters']['share'])) {
+				return null;
+			}
+			$share = $this->shareManager->getShareById('ocRoomShare:' . $m['parameters']['share']);
+			if ($share->getSharedWith() !== $this->room->getToken()) {
+				return null;
+			}
+			$node = $share->getNode();
 		} catch (\Throwable) {
 			return null;
 		}
 		return $node instanceof File && str_starts_with($node->getMimeType(), 'image/') ? $node : null;
 	}
 
-	/** Картинки из беседы, выведенные на доску в этой комнате (гость без чата видит только их). */
+	/** Выведенное на доску в этой комнате ('m<id>' — картинка беседы, 's<id>' — снимок); гость без чата видит только это. */
 	private function shown(): array {
-		return json_decode($this->appConfig->getAppValueString('k4draw_shown_' . $this->room->getToken(), '[]'), true) ?: [];
+		$list = json_decode($this->appConfig->getAppValueString('k4draw_shown_' . $this->room->getToken(), '[]'), true) ?: [];
+		// старый формат: число = id сообщения беседы
+		return array_map(static fn ($v) => is_int($v) ? 'm' . $v : (string)$v, $list);
+	}
+
+	/** Добавить отметку в список «выведенного» под эксклюзивной блокировкой (чтение-запись неатомарны). */
+	private function markShown(string $key): bool {
+		$lock = 'spreed/k4draw/shown/' . $this->room->getToken();
+		for ($i = 0;; $i++) {
+			try {
+				$this->lockingProvider->acquireLock($lock, ILockingProvider::LOCK_EXCLUSIVE);
+				break;
+			} catch (LockedException) {
+				if ($i >= 50) {
+					return false;
+				}
+				usleep(100000);
+			}
+		}
+		try {
+			// ponytail: список на комнату в app config (последние 20), без чистки; в таблицу — если комнат с показами станут тысячи
+			$ids = array_values(array_unique([$key, ...$this->shown()]));
+			$this->appConfig->setAppValueString('k4draw_shown_' . $this->room->getToken(), json_encode(array_slice($ids, 0, 20)));
+		} finally {
+			$this->lockingProvider->releaseLock($lock, ILockingProvider::LOCK_EXCLUSIVE);
+		}
+		return true;
 	}
 
 	/**
 	 * «Показать всем» картинку из беседы: отметить, что её можно отдать участникам без чата (гостям) как фон доски.
 	 *
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_FOUND, array{}, array{}>
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{}, array{}>
 	 */
 	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 	#[PublicPage]
@@ -241,10 +284,38 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		if ($this->participant->cannotSeeChat() || $this->chatFile($messageId) === null) {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		}
-		// ponytail: список на комнату в app config (последние 20), без чистки; в таблицу — если комнат с показами станут тысячи
-		$ids = array_values(array_unique([$messageId, ...$this->shown()]));
-		$this->appConfig->setAppValueString('k4draw_shown_' . $this->room->getToken(), json_encode(array_slice($ids, 0, 20)));
-		return new DataResponse([]);
+		return $this->markShown('m' . $messageId) ? new DataResponse([]) : new DataResponse([], Http::STATUS_INTERNAL_SERVER_ERROR);
+	}
+
+	/**
+	 * «Показать всем» снимок доски: отметить, что его можно отдать гостям как фон доски.
+	 *
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{}, array{}>
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[RequireModeratorOrNoLobby]
+	#[RequireParticipant]
+	#[RequireReadWriteConversation]
+	#[UserRateLimit(limit: 60, period: 600)]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/k4draw/{token}/snapshot/{id}', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+		'id' => '\d{1,18}',
+	])]
+	public function showSnapshot(int $id): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+		try {
+			$file = $this->snapFolder()?->getFirstNodeById($id);
+		} catch (\Throwable) {
+			$file = null;
+		}
+		if (!$file instanceof File) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+		return $this->markShown('s' . $id) ? new DataResponse([]) : new DataResponse([], Http::STATUS_INTERNAL_SERVER_ERROR);
 	}
 
 	/**
@@ -262,7 +333,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		'messageId' => '\d{1,18}',
 	])]
 	public function chatImage(int $messageId, int $size = 1600): Response {
-		$file = (!$this->participant->cannotSeeChat() || in_array($messageId, $this->shown(), true)) ? $this->chatFile($messageId) : null;
+		$file = (!$this->participant->cannotSeeChat() || in_array('m' . $messageId, $this->shown(), true)) ? $this->chatFile($messageId) : null;
 		return $file ? $this->image($file, $size) : new DataResponse([], Http::STATUS_NOT_FOUND);
 	}
 }

@@ -40,7 +40,7 @@ import { useGetToken } from '../../../composables/useGetToken.ts'
 import { SHARED_ITEM } from '../../../constants.ts'
 import { useSharedItemsStore } from '../../../stores/sharedItems.ts'
 import { useSidebarStore } from '../../../stores/sidebar.ts'
-import { bgUrl, onDraw, showImage, state } from './useDrawing.js'
+import { bgUrl, canShow, onDraw, showImage, state } from './useDrawing.js'
 
 const props = defineProps({
 	active: { type: Boolean, default: false },
@@ -96,8 +96,14 @@ onBeforeUnmount(() => {
 async function show(it) {
 	busy.value = true
 	try {
-		// картинку из беседы сервер отдаёт гостям (у них нет чата) только после такой отметки
-		it.t === 'm' && await axios.post(generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/image/{id}', { token: token.value, id: it.id }))
+		// сначала дешёвые проверки: отказанный показ не должен открывать картинку гостям
+		const denied = canShow({ t: it.t, id: it.id })
+		if (denied) {
+			showError(denied)
+			return
+		}
+		// сервер отдаёт гостям (у них нет чата) только отмеченное: картинку беседы и снимок
+		await axios.post(generateOcsUrl(it.t === 'm' ? 'apps/spreed/api/v1/k4draw/{token}/image/{id}' : 'apps/spreed/api/v1/k4draw/{token}/snapshot/{id}', { token: token.value, id: it.id }))
 		const err = await showImage({ t: it.t, id: it.id })
 		// показано — панель закрываем: картинка во весь экран доски
 		err ? showError(err) : sidebarStore.hideSidebar()

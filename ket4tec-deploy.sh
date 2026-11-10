@@ -22,7 +22,9 @@ n() { ssh "$H" "$@"; }
 live=$(n "grep -m1 -o '<version>[^<]*' $R/appinfo/info.xml" | cut -d'>' -f2)
 mine=$(grep -m1 -o '<version>[^<]*' appinfo/info.xml | cut -d'>' -f2)
 [ "$live" = "$mine" ] || { echo "на $TARGET Talk $live, форк $mine — сначала перенести правки на $live"; exit 1; }
-[ -z "$DB" ] && calls=0 || calls=$(n "docker exec $DB sh -c 'psql -U \$POSTGRES_USER -d \$POSTGRES_DB -At -c \"select count(*) from oc_talk_rooms where active_since is not null\"'")
+# активные звонки через occ (работает и на SQLite); exit 1 при звонках — не ошибка
+calls=$(n "docker exec -u 33 $APP php occ talk:active-calls --output=json" | grep -o '"calls": *[0-9]*' | grep -o '[0-9]*$') || true
+[ -n "$calls" ] || { echo "не удалось узнать число активных звонков"; exit 1; }
 [ "$calls" = 0 ] || [ "${FORCE:-}" = 1 ] || { echo "идёт звонков: $calls; FORCE=1 чтобы выложить всё равно"; exit 1; }
 
 [ -d img/k4stk ] || { mkdir -p img/k4stk && rsync -rt nas:/Volume1/homes/ANNANAS/pnr-base/docs/site/_gdoc/talk-media-k7m2x/ img/k4stk/; }

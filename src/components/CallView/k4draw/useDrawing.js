@@ -1457,24 +1457,50 @@ export function bgUrl(bg, size = 1600) {
  * @return {Promise<string>} '' — показано, иначе причина
  */
 export async function showImage(bg) {
+	const err = canShow(bg)
+	if (err) {
+		return err
+	}
 	bg = okBg(bg)
-	if (!bg || !hasHpb()) {
-		return 'Показ недоступен в этом звонке'
-	}
-	if (state.board && state.board !== me()) {
-		return 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
-	}
 	const s = myShow()
+	const busy = 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
 	if (s && isBoard(s.k)) {
 		if (s.bg?.t === bg.t && s.bg?.id === bg.id) {
 			state.boardHidden = false
 			return ''
 		}
-		s.perm > 0 && await Promise.resolve(autoSnap?.()).catch(() => {})
+		if (s.perm > 0) {
+			// не сохранилось — рисунок не трогаем
+			const ok = await Promise.resolve(autoSnap?.()).catch(() => false)
+			if (ok === false) {
+				return 'Не удалось сохранить доску — попробуйте ещё раз'
+			}
+		}
+		// пока ждали снимок, доска могла смениться
+		const cur = myShow()
+		if (state.board !== me() || !cur || cur.k !== s.k) {
+			return busy
+		}
 		closeBoard()
 	}
 	openBoard(boardAr(), bg)
 	return state.board === me() ? '' : 'Доска не открылась'
+}
+
+/**
+ * Дешёвая проверка до показа (до отметки «выведено» на сервере).
+ *
+ * @param {{ t: string, id: number }} bg снимок или картинка из беседы
+ * @return {string} '' — можно, иначе причина
+ */
+export function canShow(bg) {
+	if (!okBg(bg) || !hasHpb()) {
+		return 'Показ недоступен в этом звонке'
+	}
+	if (state.board && state.board !== me()) {
+		return 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
+	}
+	return ''
 }
 
 /** Кнопка «Доска»: открыть у всех / показать скрытую / закрыть свою / скрыть чужую у себя. */
