@@ -64,6 +64,10 @@ const roomName = computed<string>(() => store.getters.conversation(token.value)?
 		font-size: 18px;
 		font-weight: 600;
 		border-radius: 999px;
+		// ket4tec v7: одна кнопка «Слива» во всех состояниях (идёт звонок → success было зелёным)
+		border: 0 !important;
+		background: var(--k7-grad, linear-gradient(135deg, #5b2a86, #a86bff)) !important;
+		color: #fff !important;
 	}
 }
 </style>
