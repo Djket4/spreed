@@ -190,12 +190,14 @@ function fileName() {
  * @return {Promise<boolean>} сохранён ли на сервере
  */
 export async function shoot(token, btn = null, quiet = false) {
+	console.debug('k4snap shoot', { busy: snap.busy, big: state.big })
 	if (snap.busy || !state.big) {
 		return false
 	}
 	snap.busy = true
 	try {
 		const blob = await render(true)
+		console.debug('k4snap rendered', blob?.size)
 		fly(blob, btn)
 		const file = new File([blob], fileName(), { type: 'image/png' })
 		// «Поделиться» — до запроса к серверу, пока жест пользователя ещё действует
@@ -216,6 +218,7 @@ export async function shoot(token, btn = null, quiet = false) {
 		return true
 	} catch (e) {
 		console.error('k4draw shoot', e)
+		console.debug('k4snap err', String(e))
 		quiet || showError('Снимок не сохранился')
 		return false
 	} finally {
@@ -245,6 +248,7 @@ function save(blob) {
  * @return {Promise<boolean>} сохранён ли
  */
 export async function downloadSnapshot() {
+	console.debug('k4snap shoot', { busy: snap.busy, big: state.big })
 	if (snap.busy || !state.big) {
 		return false
 	}

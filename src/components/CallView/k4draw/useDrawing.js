@@ -1384,6 +1384,7 @@ let snapped = false // автоснимок уже сделан при выхо�
 // До выхода из звонка (список участников и холст ещё целы): последний на доске с рисунком снимает её в Файлы, ждём до 4 с
 beforeLeaveCall.fn = async () => {
 	const s = myShow()
+	console.debug('k4snap hook', { has: !!s, board: isBoard(s?.k), perm: s?.perm, snapped, others: callParticipantCollection.callParticipantModels.length, big: state.big })
 	if (!s || !isBoard(s.k) || s.perm <= 0 || snapped || callParticipantCollection.callParticipantModels.length) {
 		return
 	}
