@@ -79,6 +79,7 @@ import { useReactionsStore } from '../stores/reactions.js'
 import { useSharedItemsStore } from '../stores/sharedItems.ts'
 import { useTalkHashStore } from '../stores/talkHash.js'
 import { useTokenStore } from '../stores/token.ts'
+import { k7ConversationAvatar } from '../utils/conversation.ts'
 import { convertToUnix } from '../utils/formattedTime.ts'
 import { getDisplayNamesList } from '../utils/getDisplayName.ts'
 
@@ -1182,6 +1183,12 @@ const actions = {
 	}) {
 		if (roomType === CONVERSATION.TYPE.PUBLIC && forcePasswordProtection && !password) {
 			throw new Error('password_required')
+		}
+
+		// ket4tec: без выбранной аватарки — весёлый эмодзи на цветном круге, сохраняется на сервере (одинаково на всех клиентах)
+		if (!avatar?.emoji && !avatar?.file && roomName) {
+			const k7 = k7ConversationAvatar(roomName)
+			avatar = { emoji: k7.emoji, color: k7.color.slice(1) }
 		}
 
 		try {

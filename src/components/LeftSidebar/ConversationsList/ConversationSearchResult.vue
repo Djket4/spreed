@@ -19,7 +19,8 @@
 				:hideFavorite="!item?.attendeeId"
 				:hideCall="!item?.attendeeId" />
 		</template>
-		<template v-if="conversationInformation.message" #subname>
+		<!-- ket4tec: без второй строки -->
+		<template v-if="false && conversationInformation.message" #subname>
 			<span class="conversation__subname" :title="conversationInformation.title">
 				<span
 					v-if="conversationInformation.actor"

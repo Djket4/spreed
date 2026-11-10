@@ -463,3 +463,14 @@ html.k7f .navigation-bottom:not(:has(button)) { display: none !important; }
 		font-weight: 600;
 	}
 }
+
+// ---------- Список бесед в одну строку (блок 3) ----------
+// вариант аватарки «только буква» — html.k7-ava-letter (по умолчанию эмодзи)
+html.k7-ava-letter .conversation-icon .k7-ava {
+	.k7-ava__emoji { display: none !important; }
+	.k7-ava__letter { display: inline !important; }
+}
+// телефон: карточка 40 + 4 + 4 = 48 (+2+2 обёртка = 52 — ровно высота строки виртуального списка)
+@media (max-width: 700px) {
+	html.k7f[data-k7-app="spreed"] .conversation .list-item { padding-block: 4px !important; }
+}

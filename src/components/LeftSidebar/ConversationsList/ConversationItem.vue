@@ -45,7 +45,8 @@
 			</template>
 			<span class="text"> {{ item.displayName }} </span>
 		</template>
-		<template v-if="!compact && !item.isSensitive && !isVoiceRoom" #subname>
+		<!-- ket4tec: вторую строку (превью последнего сообщения) не показываем — только название -->
+		<template v-if="false && !compact && !item.isSensitive && !isVoiceRoom" #subname>
 			<span class="conversation__subname" :title="conversationInformation.title">
 				<span
 					v-if="conversationInformation.actor"

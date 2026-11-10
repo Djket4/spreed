@@ -315,3 +315,40 @@ export function sortConversationsList(
 			return conversation2.lastActivity - conversation1.lastActivity
 		})
 }
+
+// ket4tec: весёлая аватарка беседы без своей картинки — цветной круг v7 + эмодзи по смыслу названия (или первая буква).
+// Детерминированно от названия: тот же эмодзи ставится на сервер при создании (createGroupConversation), список рисует его же.
+const K7_AVATAR_COLORS = ['#9B6BEA', '#FFB38A', '#FF7A6B', '#5FD3A8', '#6BB8FF', '#FFD45C', '#FF8FC1', '#FF9F43', '#B9A2FF', '#3CC8C8']
+const K7_AVATAR_RULES: [RegExp, string][] = [
+	[/звон|созвон|встреч|звонок|call|meet/, '📞'],
+	[/тест|провер|test|qa/, '🧪'],
+	[/утр|morning/, '☀️'],
+	[/обед|кофе|завтрак|ужин|lunch|coffee/, '☕️'],
+	[/проект|работ|задач|офис|work|project/, '💼'],
+	[/рожден|праздн|party|вечерин/, '🎉'],
+	[/семь|дом|family|home/, '🏡'],
+	[/спорт|трен|футбол|бег/, '⚽️'],
+	[/отпуск|поездк|путешеств|trip|travel/, '✈️'],
+	[/музык|music/, '🎵'],
+	[/фото|photo/, '📸'],
+	[/выставк|экспо|expo|площадк/, '🎪'],
+]
+const K7_AVATAR_FUN = ['🦊', '🐙', '🌵', '🍉', '🚀', '🎈', '🌈', '🍀', '🐳', '🍩', '🦄', '🌻']
+
+/**
+ * @param name название беседы
+ */
+export function k7ConversationAvatar(name: string): { color: string, emoji: string, letter: string } {
+	const n = (name || '').trim()
+	let h = 0
+	for (const ch of n) {
+		h = (h * 31 + ch.codePointAt(0)!) >>> 0
+	}
+	const low = n.toLowerCase()
+	const rule = K7_AVATAR_RULES.find(([re]) => re.test(low))
+	return {
+		color: K7_AVATAR_COLORS[h % K7_AVATAR_COLORS.length],
+		emoji: rule ? rule[1] : K7_AVATAR_FUN[h % K7_AVATAR_FUN.length],
+		letter: (Array.from(n.replace(/^[^\p{L}\p{N}]+/u, ''))[0] || '#').toUpperCase(),
+	}
+}
