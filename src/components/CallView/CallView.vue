@@ -689,6 +689,21 @@ export default {
 		}
 		this.k4unwatch = watchCall() // ket4tec: k4draw — о доске узнаём без показа экрана
 		this.k4stkUnwatch = watchStickers() // ket4tec: k4stk
+		// ket4tec (NAS_CLOUD#103 п.48): на тач-устройствах iOS шлёт перед касанием mouseover/mousemove; плитки и оверлей звонка
+		// меняют разметку на них, и Safari считает первое касание «наведением» — кнопка срабатывает со второго. Глотаем до Vue.
+		if (window.matchMedia?.('(hover: none)').matches) {
+			this.k7noHover = (e) => e.stopPropagation()
+			;['mouseover', 'mouseenter', 'mousemove'].forEach((t) => this.$el.addEventListener(t, this.k7noHover, true))
+		}
+		// ket4tec (п.51): «Talk» в шапке Стола — полная загрузка страницы, звонок обрывался. Во время звонка остаёмся в нём.
+		this.k7talkTab = (e) => {
+			if (!e.target.closest?.('#k7 [data-s="talk"]')) {
+				return
+			}
+			e.preventDefault()
+			document.querySelector('#k7.k7-fo .k7-scrim')?.click()
+		}
+		document.addEventListener('click', this.k7talkTab, true)
 	},
 
 	beforeUnmount() {
@@ -697,6 +712,7 @@ export default {
 		}
 		this.k4unwatch?.() // ket4tec: k4draw
 		this.k4stkUnwatch?.() // ket4tec: k4stk
+		document.removeEventListener('click', this.k7talkTab, true)
 
 		this.debounceFetchPeers.clear?.()
 		this.debounceHandleMovement.clear?.()

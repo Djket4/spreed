@@ -20,7 +20,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconChevronUp from 'vue-material-design-icons/ChevronUp.vue'
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue' // ket4tec v7: настройки звонка
-import IconDraw from 'vue-material-design-icons/Draw.vue' // ket4tec: k4draw — доска
+import IconDraw from 'vue-material-design-icons/Draw.vue' // ket4tec: k4draw — пункт «Доска» в меню «Вид»
 import IconFullscreen from 'vue-material-design-icons/Fullscreen.vue'
 import IconFullscreenExit from 'vue-material-design-icons/FullscreenExit.vue'
 import IconPencil from 'vue-material-design-icons/Pencil.vue' // ket4tec: k4draw
@@ -50,7 +50,7 @@ import { useLiveTranscriptionStore } from '../../stores/liveTranscription.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
-import { boardBtn, boardLabel, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
+import { boardBtn, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
 import { ITEMS } from './k4stk/catalog.js' // ket4tec: k4stk
 import { state as k4stk, canUse as k4stkCan } from './k4stk/useStickers.js' // ket4tec: k4stk
 
@@ -73,14 +73,29 @@ const callButtonWithActions = useTemplateRef('callButtonWithActions')
 const conversation = computed(() => {
 	return store.getters.conversation(token.value) || store.getters.dummyConversation
 })
-// ket4tec: k4draw. Карандаш виден, пока крупно идёт показ с известным ключом (HPB и форк у показывающего)
-const k4Pencil = computed(() => !isSidebar && !!k4draw.big && !!k4draw.keys[k4draw.big] && canDraw())
-// ket4tec: k4draw. «Доска» в панели — на компьютере; на телефоне она в шторке настроек (MediaSettings)
-const k4Board = computed(() => !isSidebar && (k4draw.board, k4draw.gd, k4draw.boardHidden, boardBtn()))
+// ket4tec: k4draw. Одна кнопка «Рисовать» на всех устройствах (решение владельца 10.11, NAS_CLOUD#103 п.48–50):
+// идёт показ экрана — рисуем поверх показа, иначе открывается доска; всё с одного касания
+const k4Share = computed(() => !!k4draw.big && !!k4draw.keys[k4draw.big] && canDraw())
+const k4BoardShown = computed(() => !!k4draw.board && !k4draw.boardHidden)
+const k4Draw = computed(() => !isSidebar && (k4draw.gd, k4Share.value || boardBtn()))
+/** «Рисовать»: включает рисование (и доску, если показа нет); повторное касание выключает рисование, доска остаётся. */
+function k4DrawTap() {
+	if (k4draw.mode) {
+		k4draw.mode = false
+	} else if (k4BoardShown.value || (!k4Share.value && k4draw.board)) {
+		k4draw.boardHidden = false
+		k4draw.mode = canDraw()
+	} else if (k4Share.value) {
+		k4draw.mode = true
+	} else {
+		toggleBoard() // открывает свою доску и сразу включает рисование
+	}
+}
+// ket4tec: на тач-устройствах «во весь экран» нет (Safari на iPhone не умеет): набор кнопок iPhone и iPad один
+const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: none) and (pointer: coarse)').matches
 // ket4tec: k4stk. Кнопка «Гифки и стикеры»: только с HPB и по правилу рисования (гости — как в k4draw)
 const k4stkBtn = computed(() => !isSidebar && (k4draw.gd, k4stkCan()))
 const k4stkItem = computed(() => (k4stk.mine ? ITEMS[k4stk.mine.id] : null))
-const k4BoardLabel = computed(() => (k4draw.board, k4draw.boardHidden, boardLabel()))
 const isGuestActor = computed(() => actorStore.actorType === ATTENDEE.ACTOR_TYPE.GUESTS)
 const isVoiceRoom = computed(() => Boolean(conversation.value.attributes & CONVERSATION.ATTRIBUTE.VOICE_ROOM))
 
@@ -185,15 +200,15 @@ const CALL_LAYOUT = {
 } as const
 const CALL_LAYOUT_COMPONENT = {
 	[CALL_LAYOUT.GRID]: {
-		label: t('spreed', 'Grid view'),
+		label: 'Все участники сеткой', // ket4tec: понятные подписи (п.47)
 		icon: IconViewGridOutline,
 	},
 	[CALL_LAYOUT.SPEAKER]: {
-		label: t('spreed', 'Speaker view'),
+		label: 'Крупно — кто говорит',
 		icon: IconViewGalleryOutline,
 	},
 	[CALL_LAYOUT.MULTI_SPEAKER]: {
-		label: t('spreed', 'Multi-speaker view'),
+		label: 'Крупно — несколько говорящих',
 		icon: IconViewDashboardOutline,
 	},
 } as const
@@ -206,13 +221,12 @@ const callLayout = computed(() => {
 	return callViewStore.isMultiSpeaker ? CALL_LAYOUT.MULTI_SPEAKER : CALL_LAYOUT.SPEAKER
 })
 
-const COLLAPSIBLE_BUTTONS = ['virtualBackground', 'liveTranscription', 'callLayout', 'fullscreen'] as const
+// ket4tec: меню «Вид» и фон в панели не сворачиваются — меню всегда в капсуле, фоны запрещены темой (настройки — шестерёнкой)
+const COLLAPSIBLE_BUTTONS = ['liveTranscription', 'fullscreen'] as const
 type CollapsibleButtons = Record<typeof COLLAPSIBLE_BUTTONS[number], boolean>
 const isActionAvailableMask = computed<CollapsibleButtons>(() => ({
-	fullscreen: !isSidebar,
-	callLayout: showCallLayoutSwitch.value,
+	fullscreen: !isSidebar && !isTouch,
 	liveTranscription: !isSidebar && isLiveTranscriptionSupported.value,
-	virtualBackground: !isSidebar,
 }))
 const hidingList = ref<CollapsibleButtons>({ ...isActionAvailableMask.value })
 const hasHiddenItems = computed(() => Object.values(hidingList.value).some(Boolean))
@@ -460,6 +474,22 @@ async function disableLiveTranslation() {
 	languageType.value = LanguageType.Original
 }
 
+// ket4tec: k4draw. Меню «Вид»: доска — такой же пункт, как сетка и докладчик; галка там, что на экране сейчас (п.47)
+const viewValue = computed(() => (k4BoardShown.value ? 'board' : callLayout.value))
+const showViewMenu = computed(() => !isSidebar && (showCallLayoutSwitch.value || !!k4draw.board))
+/**
+ * Пункт меню «Вид»: сетка или докладчик прячет доску только у себя (у других она остаётся).
+ *
+ * @param layout вид
+ */
+function pickView(layout: CallLayout) {
+	if (k4BoardShown.value) {
+		k4draw.boardHidden = true
+		k4draw.mode = false
+	}
+	setCallLayout(layout)
+}
+
 /**
  * Switches the call view to the given layout.
  *
@@ -482,7 +512,6 @@ function setCallLayout(layout: CallLayout) {
 	<div
 		ref="bottomBar"
 		class="bottom-bar"
-		:class="{ 'k4-hidden': k4draw.mode }"
 		data-theme-dark>
 		<!-- ket4tec: k4stk -->
 		<StickerSheet v-if="!isSidebar" />
@@ -491,7 +520,7 @@ function setCallLayout(layout: CallLayout) {
 		<div v-if="!isSidebar" class="bottom-bar-call-controls">
 			<!-- Fullscreen -->
 			<NcButton
-				v-if="!hidingList.fullscreen"
+				v-if="isActionAvailableMask.fullscreen && !hidingList.fullscreen"
 				:aria-label="fullscreenLabel"
 				:variant="isFullscreen ? 'secondary' : 'tertiary'"
 				:title="fullscreenLabel"
@@ -501,29 +530,6 @@ function setCallLayout(layout: CallLayout) {
 					<IconFullscreenExit v-else :size="20" />
 				</template>
 			</NcButton>
-			<!-- Call layout switcher -->
-			<NcActions
-				v-if="showCallLayoutSwitch && !hidingList.callLayout"
-				variant="tertiary"
-				:aria-label="CALL_LAYOUT_COMPONENT[callLayout].label"
-				:title="CALL_LAYOUT_COMPONENT[callLayout].label">
-				<template #icon>
-					<component :is="CALL_LAYOUT_COMPONENT[callLayout].icon" :size="20" />
-				</template>
-				<NcActionButton
-					v-for="layout in callLayouts"
-					:key="layout"
-					:modelValue="callLayout"
-					:value="layout"
-					type="radio"
-					closeAfterClick
-					@click="setCallLayout(layout)">
-					<template #icon>
-						<component :is="CALL_LAYOUT_COMPONENT[layout].icon" :size="20" />
-					</template>
-					{{ CALL_LAYOUT_COMPONENT[layout].label }}
-				</NcActionButton>
-			</NcActions>
 		</div>
 
 		<div class="bottom-bar-call-controls">
@@ -532,7 +538,7 @@ function setCallLayout(layout: CallLayout) {
 				:token="token"
 				:model="localMediaModel"
 				:isSidebar="isSidebar"
-				:hideVirtualBackgroundShortcut="hidingList.virtualBackground"
+				:hideVirtualBackgroundShortcut="true"
 				:localCallParticipantModel="localCallParticipantModel" />
 
 			<!-- ket4tec: k4stk -->
@@ -576,27 +582,18 @@ function setCallLayout(layout: CallLayout) {
 										fill="currentColor" /></svg>
 				</template>
 			</NcButton>
-			<!-- ket4tec: k4draw -->
+			<!-- ket4tec: k4draw. «Рисовать» — одна кнопка; Слива, пока рисую или открыта доска -->
 			<NcButton
-				v-if="k4Pencil"
+				v-if="k4Draw"
 				class="k4-pencil"
-				title="Рисовать на показе"
-				aria-label="Рисовать на показе"
+				:class="{ 'k4-on': k4draw.mode || k4BoardShown }"
+				:title="k4draw.mode ? 'Перестать рисовать' : 'Рисовать'"
+				:aria-label="k4draw.mode ? 'Перестать рисовать' : 'Рисовать'"
+				:aria-pressed="k4draw.mode"
 				variant="tertiary"
-				@click="k4draw.mode = true">
+				@click="k4DrawTap">
 				<template #icon>
 					<IconPencil :size="24" />
-				</template>
-			</NcButton>
-			<NcButton
-				v-if="k4Board"
-				class="k4-board-btn"
-				:title="k4BoardLabel"
-				:aria-label="k4BoardLabel"
-				:variant="k4draw.board && !k4draw.boardHidden ? 'secondary' : 'tertiary'"
-				@click="toggleBoard()">
-				<template #icon>
-					<IconDraw :size="24" />
 				</template>
 			</NcButton>
 
@@ -613,6 +610,48 @@ function setCallLayout(layout: CallLayout) {
 					<IconCogOutline :size="22" />
 				</template>
 			</NcButton>
+
+			<!-- ket4tec: меню «Вид» — в капсуле на всех устройствах; доска — его пункт (п.47) -->
+			<NcActions
+				v-if="showViewMenu"
+				class="k7-view"
+				variant="tertiary"
+				aria-label="Вид"
+				title="Вид">
+				<template #icon>
+					<IconDraw v-if="viewValue === 'board'" :size="22" />
+					<component :is="CALL_LAYOUT_COMPONENT[callLayout].icon" v-else :size="22" />
+				</template>
+				<NcActionButton
+					v-if="k4draw.board"
+					class="k7-view-item"
+					:modelValue="viewValue"
+					value="board"
+					type="radio"
+					closeAfterClick
+					@click="k4draw.boardHidden = false">
+					<template #icon>
+						<IconDraw :size="20" />
+					</template>
+					Доска
+				</NcActionButton>
+				<template v-if="showCallLayoutSwitch">
+					<NcActionButton
+						v-for="layout in callLayouts"
+						:key="layout"
+						class="k7-view-item"
+						:modelValue="viewValue"
+						:value="layout"
+						type="radio"
+						closeAfterClick
+						@click="pickView(layout)">
+						<template #icon>
+							<component :is="CALL_LAYOUT_COMPONENT[layout].icon" :size="20" />
+						</template>
+						{{ CALL_LAYOUT_COMPONENT[layout].label }}
+					</NcActionButton>
+				</template>
+			</NcActions>
 
 			<!-- Reactions menu -->
 			<ReactionMenu
@@ -720,10 +759,10 @@ function setCallLayout(layout: CallLayout) {
 		</div>
 		<div ref="callButtonWithActions" class="bottom-bar-options call-options">
 			<!-- Collapsed actions -->
-			<NcActions v-if="hasHiddenItems" forceMenu>
+			<NcActions v-if="hasHiddenItems" forceMenu class="k7-more">
 				<!-- Fullscreen -->
 				<NcActionButton
-					v-if="!isSidebar && hidingList.fullscreen"
+					v-if="isActionAvailableMask.fullscreen && hidingList.fullscreen"
 					:aria-label="fullscreenLabel"
 					:variant="isFullscreen ? 'secondary' : 'tertiary'"
 					:title="fullscreenLabel"
@@ -734,22 +773,6 @@ function setCallLayout(layout: CallLayout) {
 					</template>
 					{{ fullscreenLabel }}
 				</NcActionButton>
-				<!-- Call layout switcher -->
-				<template v-if="hidingList.callLayout && showCallLayoutSwitch">
-					<NcActionButton
-						v-for="layout in callLayouts"
-						:key="layout"
-						:modelValue="callLayout"
-						:value="layout"
-						type="radio"
-						closeAfterClick
-						@click="setCallLayout(layout)">
-						<template #icon>
-							<component :is="CALL_LAYOUT_COMPONENT[layout].icon" :size="20" />
-						</template>
-						{{ CALL_LAYOUT_COMPONENT[layout].label }}
-					</NcActionButton>
-				</template>
 				<NcActionButton
 					v-if="isLiveTranscriptionSupported && hidingList.liveTranscription"
 					:title="liveTranscriptionButtonLabel"
@@ -803,9 +826,6 @@ function setCallLayout(layout: CallLayout) {
 </template>
 
 <style lang="scss" scoped>
-.k4-hidden {
-	visibility: hidden;
-}
 
 // ket4tec: k4stk. Миниатюра моего элемента на кнопке и кольцо таймера
 .bottom-bar .k4stk-btn.button-vue { position: relative; }
@@ -826,25 +846,6 @@ function setCallLayout(layout: CallLayout) {
 	background: conic-gradient(#fff calc(var(--p, 0) * 1turn), #ffffff2e 0);
 	-webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
 	mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-}
-
-@media (max-width: 600px) {
-	.bottom-bar .k4-board-btn.button-vue { display: none; }
-}
-
-// ket4tec: k4draw. Карандаш — квадрат 56 как соседние кнопки звонка (их размер задаёт тема облака по .buttons-bar)
-.bottom-bar .k4-pencil.button-vue,
-.bottom-bar .k4-board-btn.button-vue {
-	flex: none;
-	width: 56px !important;
-	height: 56px;
-	min-width: 56px;
-	min-height: 56px;
-	padding: 0;
-	border: 1px solid rgba(255, 255, 255, .1);
-	border-radius: 8px;
-	background: #23262d;
-	color: #f3f5fb;
 }
 
 .bottom-bar {
