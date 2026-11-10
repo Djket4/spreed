@@ -92,11 +92,11 @@ $phone: 700px;
 		}
 	}
 
-	// узкая колонка беседы (планшет при открытой боковой панели): аватар и календарь прячем, иначе название сжимается в ноль
+	// узкая колонка беседы (планшет при открытой боковой панели): аватар прячем, иначе название сжимается в ноль
 	container-type: inline-size;
 	@container (max-width: 460px) {
-		.top-bar__icon-wrapper:not(.top-bar__icon-wrapper--with-action), .top-bar__calendar-events { display: none !important; }
-		.conversation-header { flex: 1 1 0; min-width: 60px; }
+		.top-bar__icon-wrapper:not(.top-bar__icon-wrapper--with-action) { display: none !important; }
+		.conversation-header { flex: 1 1 0; min-width: 120px; }
 	}
 
 	@media (max-width: $phone) {
