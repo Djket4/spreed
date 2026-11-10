@@ -104,7 +104,7 @@ const startCallButtonDisabled = computed(() => {
 })
 const showSplitStartCallButton = computed(() => {
 	return showStartCallButton.value
-		&& !props.isMediaSettings
+		&& !props.isMediaSettings && !props.label // ket4tec v7: у гостевой кнопки без меню «тихо»
 		&& !isPhoneRoom.value
 		&& !hasExternalCallService(conversation.value)
 		&& !hasCall.value

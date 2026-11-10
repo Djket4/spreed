@@ -376,12 +376,14 @@ body .vs__dropdown-menu {
 	border: 1px solid var(--k7u-line);
 }
 // крестик «Нового обсуждения» — круглая серая кнопка, как в «Проверке устройств» и настройках (блок 7)
-.modal-mask.new-group-conversation .modal-container__close {
+:root:root body .modal-mask.new-group-conversation .modal-container__close.button-vue {
 	z-index: 3;
 	top: 16px !important;
 	inset-inline-end: 16px !important;
 	width: 40px !important;
+	min-width: 40px !important;
 	height: 40px !important;
+	padding: 0 !important;
 	border-radius: 999px !important;
 	background: var(--k7u-pill) !important;
 	color: var(--k7u-fg) !important;

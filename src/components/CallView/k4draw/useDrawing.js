@@ -6,7 +6,7 @@ import { reactive } from 'vue'
 import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useTokenStore } from '../../../stores/token.ts'
-import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
+import { beforeLeaveCall, callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 
 export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff', '#a6e36b', '#ff6b6b']
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
@@ -1282,6 +1282,7 @@ export function openBoard(ar) {
 		release()
 		return
 	}
+	snapped = false
 	myK = me() + ':b' + Date.now()
 	setShow(me(), myK)
 	shows.get(myK).ar = Math.min(3, Math.max(0.33, +ar.toFixed(3)))
@@ -1352,6 +1353,7 @@ function moveBoard(show, next) {
 	state.big === old && (state.big = next)
 	if (next === me()) {
 		acquire()
+		snapped = false
 		myK = show.k
 		enqueue(hOf(myK, colsOut(show))) // новичкам и тем, кто пропустил уход: теперь доску держу я
 	}
@@ -1377,6 +1379,16 @@ let autoSnap = null
  */
 export function setAutoSnap(f) {
 	autoSnap = f
+}
+let snapped = false // автоснимок уже сделан при выходе из звонка
+// До выхода из звонка (список участников и холст ещё целы): последний на доске с рисунком снимает её в Файлы, ждём до 4 с
+beforeLeaveCall.fn = async () => {
+	const s = myShow()
+	if (!s || !isBoard(s.k) || s.perm <= 0 || snapped || callParticipantCollection.callParticipantModels.length) {
+		return
+	}
+	snapped = true
+	await Promise.race([autoSnap?.(), new Promise((r) => setTimeout(r, 4000))]).catch(() => {})
 }
 let others = 0 // сколько других в звонке было видно в последний раз (при выходе из звонка список уже пуст)
 
@@ -1454,7 +1466,7 @@ export function watchCall() {
 			others = Math.max(others, callParticipantCollection.callParticipantModels.length)
 			// некому передать доску: снимок рисунка в Файлы, пока холст ещё в DOM
 			const s = myShow()
-			s && isBoard(s.k) && s.perm > 0 && !others && autoSnap?.()
+			s && isBoard(s.k) && s.perm > 0 && !others && !snapped && autoSnap?.() // запасной путь
 		}
 		// звонок ушёл (а не перерисовка вида звонка): доска переходит дальше по звонку или, если никого нет, закрывается
 		setTimeout(() => views || leaveBoard(), 1500)

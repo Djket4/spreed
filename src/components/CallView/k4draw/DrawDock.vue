@@ -382,7 +382,7 @@ onMounted(() => {
 	span { font-size: 13px; color: var(--k4-fg3); }
 }
 // тема облака в светлом режиме красит все button белым: держим фон дока
-.k4-dockwrap button:not(.k4-pill):not(.k4-cb) { background: transparent !important; }
+.k4-dockwrap button:not(.k4-pill):not(.k4-cb):not(.k4-sw) { background: transparent !important; }
 .k4-dockwrap .k4-cb { background: #ffffff12 !important; }
 .k4-dockwrap .k4-pill { background: var(--k4-grad) !important; }
 .k4-dockwrap .k4-pill--ghost { background: #ffffff14 !important; }
@@ -463,7 +463,7 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	&.up { bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 138px); }
 }
 .k4-dockwrap .k4-style .k4-sw {
-	flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--c) !important; box-shadow: inset 0 0 0 1px #0004; transition: transform .12s ease-out;
+	flex: none; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: var(--c) !important; box-shadow: inset 0 0 0 1px #0004; transition: transform .12s ease-out;
 	&[aria-pressed=true] { box-shadow: 0 0 0 2px var(--k4-bg), 0 0 0 4px #fff; }
 	&--auto { background: conic-gradient(var(--c) 0 50%, #ffffff30 0) !important; }
 	&:active { transform: scale(.88); }
