@@ -350,11 +350,12 @@ function enqueue(data) {
  */
 function rekey() {
 	const sid = me()
-	if (!myK || !sid || myK.startsWith(sid + ':')) {
+	// доска, переданная мне (moveBoard): ключ чужой по задумке, переименовывать нельзя
+	if (!myK || !sid || myK.startsWith(sid + ':') || shows.get(myK)?.presenter === sid) {
 		return
 	}
 	const old = myK
-	myK = sid + ':' + Date.now()
+	myK = sid + (isBoard(old) ? ':b' : ':') + Date.now() // доска остаётся доской
 	const s = shows.get(old)
 	if (s) {
 		shows.delete(old)
