@@ -46,20 +46,28 @@ $glass: blur(24px) saturate(180%);
 }
 #call-container .video-container.speaking::after { box-shadow: inset 0 0 0 3px var(--k7-acc); }
 #call-container .video-container.hover::after { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--k7-acc) 70%, #fff); }
-#call-container .wrapper:not(.wrapper--big) { padding: 0 10px 10px; }
-#call-container .wrapper .participant-name {
+// ket4tec (слово владельца 11.11): подпись плитки — «нижняя треть», как в ТВ: тёмная плашка с полосой фирменного градиента слева,
+// имя крупно и жирно; размер от ширины плитки (контейнер — полоса подписи во всю ширину плитки)
+#call-container :is(.wrapper, .localVideoContainer > .bottom-bar) { container-type: inline-size; }
+#call-container .wrapper:not(.wrapper--big) { padding: 0 14px 14px; }
+#call-container .participant-name {
+	position: relative;
 	flex: 0 1 auto;
 	margin-inline: 0 auto;
-	padding: 5px 13px;
-	border-radius: 999px;
-	background: #1a171899;
+	padding: .42em .95em .42em 1.15em;
+	border-radius: 6px 12px 12px 6px;
+	background: linear-gradient(90deg, #140f17eb, #1a1718b8);
 	-webkit-backdrop-filter: blur(14px);
 	backdrop-filter: blur(14px);
-	color: #f3eee9;
-	font-size: 14px;
-	font-weight: 600;
+	box-shadow: 0 8px 22px #0007, inset 0 0 0 1px #ffffff14;
+	color: #fff;
+	font-size: clamp(14px, 2.7cqi, 24px);
+	font-weight: 700;
+	letter-spacing: .01em;
+	line-height: 1.25;
 	filter: none;
 	text-shadow: none;
+	&::before { content: ''; position: absolute; inset: 0 auto 0 0; width: .3em; background: var(--k7-grad); }
 }
 #call-container .wrapper .media-indicators > * {
 	border-radius: 999px;

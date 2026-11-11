@@ -54,7 +54,9 @@
 		</div>
 
 		<!-- ket4tec: k4stk -->
-		<TileSticker v-if="k4stkOn" own />
+		<TileSticker :on="k4stkOn" own />
+		<!-- ket4tec: своя связь пропала после подключения -->
+		<K4Reconnect v-if="k4WasConn && isNotConnected && !isSidebar" title="Нет связи" sub="переподключаемся…" />
 
 		<div class="bottom-bar">
 			<!-- ket4tec: подпись своей плитки, видна и поверх стикера/гифки -->
@@ -79,6 +81,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
+import K4Reconnect from './K4Reconnect.vue' // ket4tec
 import VideoBackground from './VideoBackground.vue'
 import { AVATAR } from '../../../constants.ts'
 import { useActorStore } from '../../../stores/actor.ts'
@@ -98,6 +101,7 @@ export default {
 		NcButton,
 		VideoBackground,
 		NcLoadingIcon,
+		K4Reconnect,
 		TileSticker,
 	},
 
@@ -179,6 +183,7 @@ export default {
 			containerAspectRatio: null,
 			resizeObserver: null,
 			mouseover: false,
+			k4WasConn: false, // ket4tec
 		}
 	},
 
@@ -262,6 +267,16 @@ export default {
 	},
 
 	watch: {
+		// ket4tec: плашку обрыва показываем только после первого подключения
+		isNotConnected: {
+			immediate: true,
+			handler(v) {
+				if (!v) {
+					this.k4WasConn = true
+				}
+			},
+		},
+
 		localCallParticipantModel: {
 			immediate: true,
 
@@ -488,18 +503,8 @@ export default {
 		justify-content: center;
 	}
 
-	// ket4tec: как .participant-name чужих плиток (k7call.scss)
-	.k7-self {
-		margin-inline: 0 auto;
-		padding: 5px 13px;
-		border-radius: 999px;
-		background: #1a171899;
-		-webkit-backdrop-filter: blur(14px);
-		backdrop-filter: blur(14px);
-		color: #f3eee9;
-		font-size: 14px;
-		font-weight: 600;
-	}
+	// ket4tec: вид подписи — общий с чужими плитками («нижняя треть», k7call.scss)
+	.k7-self { margin-inline: 0 auto; }
 
 	& &__button {
 		opacity: 0.8;

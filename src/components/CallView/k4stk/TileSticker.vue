@@ -3,68 +3,72 @@
 -->
 
 <template>
-	<div
-		v-if="e && it"
-		ref="root"
-		class="k4stk-tile"
-		:class="{ 'k4stk-fit': fit }"
-		:data-sid="own ? state.sid : sid"
-		:data-k="e.k"
-		:data-id="e.id">
-		<img
-			v-if="e.k === 's'"
-			:key="e.id"
-			class="k4stk-s"
-			:src="it.src"
-			alt=""
-			draggable="false"
-			:style="{ '--w': it.w * 2 + 'px', aspectRatio: it.w + '/' + it.h }">
-		<template v-else>
-			<img
-				:key="'p' + e.id"
-				class="k4stk-p"
-				:src="it.pos"
-				alt=""
-				draggable="false">
-			<video
-				v-if="fit"
-				:key="'b' + e.id"
-				class="k4stk-bg"
-				:src="it.src"
-				:poster="it.pos"
-				muted
-				loop
-				autoplay
-				playsinline />
-			<video
-				:key="e.id"
-				class="k4stk-g"
-				:src="it.src"
-				:poster="it.pos"
-				muted
-				loop
-				autoplay
-				playsinline />
-		</template>
-		<button
-			v-if="own"
-			class="k4stk-x"
-			type="button"
-			aria-label="Убрать"
-			title="Убрать"
-			@click.stop="clear()">
-			<svg
-				viewBox="0 0 24 24"
-				width="16"
-				height="16"
-				aria-hidden="true"><path
-					d="M6 6l12 12M18 6L6 18"
-					stroke="currentColor"
-					stroke-width="2.4"
-					stroke-linecap="round"
-					fill="none" /></svg>
-		</button>
-	</div>
+	<!-- ket4tec (слово владельца 11.11): без «ката» — слой проявляется поверх камеры, смена стикера/гифки — перекрёстный фейд,
+		снятие — слой гаснет, камера уже под ним -->
+	<Transition name="k4stk-t">
+		<div
+			v-if="on && e && it"
+			ref="root"
+			class="k4stk-tile"
+			:class="{ 'k4stk-fit': fit }"
+			:data-sid="own ? state.sid : sid"
+			:data-k="e.k"
+			:data-id="e.id">
+			<Transition name="k4stk-m">
+				<div :key="e.k + e.id" class="k4stk-m">
+					<img
+						v-if="e.k === 's'"
+						class="k4stk-s"
+						:src="it.src"
+						alt=""
+						draggable="false"
+						:style="{ '--w': it.w * 2 + 'px', aspectRatio: it.w + '/' + it.h }">
+					<template v-else>
+						<img
+							class="k4stk-p"
+							:src="it.pos"
+							alt=""
+							draggable="false">
+						<video
+							v-if="fit"
+							class="k4stk-bg"
+							:src="it.src"
+							:poster="it.pos"
+							muted
+							loop
+							autoplay
+							playsinline />
+						<video
+							class="k4stk-g"
+							:src="it.src"
+							:poster="it.pos"
+							muted
+							loop
+							autoplay
+							playsinline />
+					</template>
+				</div>
+			</Transition>
+			<button
+				v-if="own"
+				class="k4stk-x"
+				type="button"
+				aria-label="Убрать"
+				title="Убрать"
+				@click.stop="clear()">
+				<svg
+					viewBox="0 0 24 24"
+					width="16"
+					height="16"
+					aria-hidden="true"><path
+						d="M6 6l12 12M18 6L6 18"
+						stroke="currentColor"
+						stroke-width="2.4"
+						stroke-linecap="round"
+						fill="none" /></svg>
+			</button>
+		</div>
+	</Transition>
 </template>
 
 <script setup>
@@ -76,6 +80,8 @@ const props = defineProps({
 	/** sessionId владельца плитки (для моей плитки не нужен) */
 	sid: { type: String, default: '' },
 	own: { type: Boolean, default: false },
+	/** слой разрешён на этой плитке (не боковая панель, не показ экрана) */
+	on: { type: Boolean, default: true },
 })
 
 const e = computed(() => (props.own ? state.mine : state.peers[props.sid]))
@@ -124,7 +130,13 @@ onBeforeUnmount(() => ro?.disconnect())
 	// плитка без камеры: тот же фон, что у обычной (k7call.scss), под стикером
 	background: linear-gradient(135deg, var(--k7-tile-a, #3b2f3f), var(--k7-tile-b, #1d1620));
 	pointer-events: none;
-	animation: k4stk-in .32s cubic-bezier(.2, 1.1, .3, 1) both;
+
+	.k4stk-m {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+	}
 
 	.k4stk-s {
 		width: min(78cqmin, var(--w));
@@ -174,15 +186,26 @@ onBeforeUnmount(() => ro?.disconnect())
 		cursor: pointer;
 	}
 }
-// камера и аватар под слоем не нужны: прячем целиком, подпись (имя) остаётся
+// камера и аватар под слоем не нужны: прячем, когда слой проявился (до того камера видна сквозь фейд); подпись (имя) остаётся
 .k4stk-has :is(.avatar-container, .videoWrapper, .video-background) {
-	display: none !important;
+	animation: k4stk-hide 1ms .42s forwards;
 }
-@keyframes k4stk-in {
-	from { opacity: 0; transform: scale(.9); }
-	to { opacity: 1; transform: none; }
+@keyframes k4stk-hide {
+	to { visibility: hidden; }
 }
+// появление слоя: проявление с лёгким приближением; снятие: гаснет
+.k4stk-t-enter-active { transition: opacity .4s ease, transform .5s cubic-bezier(.2, 1.1, .3, 1), filter .4s ease; }
+.k4stk-t-leave-active { transition: opacity .35s ease, transform .35s ease; }
+.k4stk-t-enter-from { opacity: 0; transform: scale(1.06); filter: blur(8px); }
+.k4stk-t-leave-to { opacity: 0; transform: scale(.98); }
+// смена стикера/гифки: перекрёстный фейд, новое чуть «наплывает»
+.k4stk-m-enter-active { transition: opacity .45s ease, transform .55s cubic-bezier(.2, 1.1, .3, 1); }
+.k4stk-m-leave-active { transition: opacity .45s ease; }
+.k4stk-m-enter-from { opacity: 0; transform: scale(.94); }
+.k4stk-m-leave-to { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
-	.k4stk-tile { animation: none; }
+	.k4stk-t-enter-active, .k4stk-t-leave-active, .k4stk-m-enter-active, .k4stk-m-leave-active { transition: opacity .2s linear; }
+	.k4stk-t-enter-from, .k4stk-m-enter-from, .k4stk-t-leave-to { transform: none; filter: none; }
+	.k4stk-has :is(.avatar-container, .videoWrapper, .video-background) { animation-delay: .2s; }
 }
 </style>

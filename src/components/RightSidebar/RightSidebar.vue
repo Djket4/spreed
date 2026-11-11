@@ -67,6 +67,18 @@
 					:canSearch="canSearchParticipants"
 					:canAdd="canAddParticipants" />
 			</NcAppSidebarTab>
+			<!-- ket4tec (владелец 11.11): гифки и стикеры — вкладкой рядом с участниками, камеры не перекрывает -->
+			<NcAppSidebarTab
+				v-if="isInCall && k4stkCan()"
+				id="k4-stickers"
+				key="k4-stickers"
+				:order="3"
+				name="Гифки">
+				<template #icon>
+					<IconStickerEmoji :size="20" />
+				</template>
+				<StickerSheet />
+			</NcAppSidebarTab>
 			<NcAppSidebarTab
 				v-if="showBreakoutRoomsTab && !isInCall"
 				id="breakout-rooms"
@@ -137,7 +149,9 @@ import IconAccountMultipleOutline from 'vue-material-design-icons/AccountMultipl
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue'
 import IconDotsCircle from 'vue-material-design-icons/DotsCircle.vue'
 import IconInformationOutline from 'vue-material-design-icons/InformationOutline.vue'
+import IconStickerEmoji from 'vue-material-design-icons/StickerEmoji.vue' // ket4tec: k4stk
 import K4Snaps from '../CallView/k4draw/K4Snaps.vue'
+import StickerSheet from '../CallView/k4stk/StickerSheet.vue' // ket4tec: k4stk
 import SetGuestUsername from '../SetGuestUsername.vue'
 import BreakoutRoomsTab from './BreakoutRooms/BreakoutRoomsTab.vue'
 import InternalSignalingHint from './InternalSignalingHint.vue'
@@ -157,6 +171,7 @@ import { useActorStore } from '../../stores/actor.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts'
 import { isChatHiddenForActor } from '../../utils/chatHidden.ts'
 import { isChannelConversation } from '../../utils/conversation.ts'
+import { state as k4stk, canUse as k4stkCan } from '../CallView/k4stk/useStickers.js' // ket4tec: k4stk
 
 const canStartConversations = getTalkConfig('local', 'conversations', 'can-create')
 const supportConversationCreationAll = hasTalkFeature('local', 'conversation-creation-all')
@@ -172,6 +187,8 @@ export default {
 		LobbyStatus,
 		NcAppSidebar,
 		NcAppSidebarTab,
+		IconStickerEmoji,
+		StickerSheet,
 		NcButton,
 		NcIconSvgWrapper,
 		ParticipantsTab,
@@ -398,6 +415,10 @@ export default {
 			return this.conversation.unreadMention
 		},
 
+		k4stkOpen() {
+			return this.opened && this.activeTab === 'k4-stickers'
+		},
+
 		inCallToggleAttrs() {
 			return {
 				'data-theme-dark': true,
@@ -408,6 +429,12 @@ export default {
 	},
 
 	watch: {
+		// ket4tec: k4stk — кнопка «Гифки» в панели звонка подсвечена, пока открыта вкладка
+		k4stkOpen: {
+			immediate: true,
+			handler(v) { k4stk.open = v },
+		},
+
 		conversation(newConversation, oldConversation) {
 			if (newConversation.token === oldConversation.token || !this.showParticipantsTab) {
 				return
@@ -527,11 +554,12 @@ export default {
 
 	methods: {
 		t,
+		k4stkCan,
 
 		handleUpdateOpen(open) {
 			if (open) {
 				// в звонке по умолчанию «Участники»
-				if (this.isInCall && !['participants', 'shared-items'].includes(this.activeTab)) {
+				if (this.isInCall && !['participants', 'shared-items', 'k4-stickers'].includes(this.activeTab)) {
 					this.activeTab = this.inCallTab()
 				}
 				this.sidebarStore.showSidebar()

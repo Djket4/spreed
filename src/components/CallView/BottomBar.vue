@@ -32,7 +32,6 @@ import ReactionMenu from '../TopBar/ReactionMenu.vue'
 import TopBarMediaControls from '../TopBar/TopBarMediaControls.vue'
 import CallEndLeaveButton from './CallEndLeaveButton.vue'
 import DrawDock from './k4draw/DrawDock.vue' // ket4tec: k4draw
-import StickerSheet from './k4stk/StickerSheet.vue' // ket4tec: k4stk
 import {
 	toggleFullscreen,
 	useDocumentFullscreen,
@@ -47,6 +46,7 @@ import { useActorStore } from '../../stores/actor.ts'
 import { useCallViewStore } from '../../stores/callView.ts'
 import { useLiveTranscriptionStore } from '../../stores/liveTranscription.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
+import { useSidebarStore } from '../../stores/sidebar.ts' // ket4tec: k4stk
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
 import { boardBtn, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
@@ -94,6 +94,16 @@ const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: no
 // ket4tec: k4stk. Кнопка «Гифки и стикеры»: только с HPB и по правилу рисования (гости — как в k4draw)
 const k4stkBtn = computed(() => !isSidebar && (k4draw.gd, k4stkCan()))
 const k4stkItem = computed(() => (k4stk.mine ? ITEMS[k4stk.mine.id] : null))
+const sidebarStore = useSidebarStore()
+/** ket4tec (владелец 11.11): кнопка открывает вкладку «Гифки» боковой панели; открыта — закрывает */
+function k4stkToggle() {
+	if (k4stk.open) {
+		sidebarStore.hideSidebar()
+		return
+	}
+	emit('spreed:select-active-sidebar-tab', 'k4-stickers')
+	sidebarStore.showSidebar()
+}
 const isGuestActor = computed(() => actorStore.actorType === ATTENDEE.ACTOR_TYPE.GUESTS)
 const isVoiceRoom = computed(() => Boolean(conversation.value.attributes & CONVERSATION.ATTRIBUTE.VOICE_ROOM))
 
@@ -507,8 +517,6 @@ function setCallLayout(layout: CallLayout) {
 		ref="bottomBar"
 		class="bottom-bar"
 		data-theme-dark>
-		<!-- ket4tec: k4stk -->
-		<StickerSheet v-if="!isSidebar" />
 		<!-- ket4tec: k4draw -->
 		<DrawDock v-if="!isSidebar && k4draw.mode" />
 		<div v-if="!isSidebar" class="bottom-bar-call-controls">
@@ -540,11 +548,12 @@ function setCallLayout(layout: CallLayout) {
 				v-if="k4stkBtn"
 				class="k4stk-btn"
 				:class="{ 'k4stk-on': k4stk.mine }"
+				:aria-pressed="k4stk.open"
 				:title="k4stk.mine ? 'Гифки и стикеры: ваша сейчас на плитке' : 'Гифки и стикеры'"
 				:aria-label="k4stk.mine ? 'Гифки и стикеры: ваша сейчас на плитке' : 'Гифки и стикеры'"
-				variant="tertiary"
+				:variant="k4stk.open ? 'secondary' : 'tertiary'"
 				:style="{ '--p': k4stk.p }"
-				@click="k4stk.open = !k4stk.open">
+				@click="k4stkToggle">
 				<template #icon>
 					<span v-if="k4stkItem" class="k4stk-th">
 						<img :src="k4stkItem.pos || k4stkItem.th" alt="" :class="{ s: k4stkItem.k === 's' }">

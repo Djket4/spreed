@@ -5,13 +5,14 @@
 
 <template>
 	<div
+		ref="root"
 		class="k4-board"
 		:class="{ 'k4-board--draw': state.mode, 'k4-board--strip': people.length, 'k4-board--img': state.bg }"
-		:style="state.bg ? { '--k4-bgimg': `url('${bgUrl(state.bg)}')` } : null">
+		:style="{ ...(state.bg ? { '--k4-bgimg': `url('${bgUrl(state.bg)}')` } : {}), ...fit.root }">
 		<DrawLayer :key="state.board" :presenter="state.board" board />
 		<!-- ket4tec (NAS_CLOUD#103 п.42, 53): камеры участников полосой рядом с доской (iPad — сбоку, iPhone — сверху);
 			звук идёт отдельно (CallParticipantsAudioPlayer), здесь видео без звука -->
-		<div v-if="people.length" class="k4-strip">
+		<div v-if="people.length" class="k4-strip" :style="fit.strip">
 			<div
 				v-for="p in people"
 				:key="p.id"
@@ -59,13 +60,13 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 import { shoot, snap } from './snapshot.js'
-import { bgUrl, canDraw, closeBoard, myId, passBoard, requestCloseBoard, state } from './useDrawing.js'
+import { bgUrl, canDraw, closeBoard, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
 
 const token = useGetToken()
 
@@ -80,6 +81,49 @@ const people = computed(() => {
 		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, speaking: a.speaking })
 	})
 	return out.length > 1 ? out : []
+})
+
+// ket4tec (слово владельца 11.11): камеры заполняют место, которое доска не занимает, — чем меньше участников, тем крупнее;
+// много — в 2–3 столбца (на телефоне — строки). Доска не сжимается ради камер, пока им хватает минимума (160 / 76 px).
+const root = ref(null)
+const box = ref({ w: 0, h: 0 })
+let ro = null
+onMounted(() => {
+	ro = new ResizeObserver(([e]) => {
+		box.value = { w: e.contentRect.width, h: e.contentRect.height }
+	})
+	ro.observe(root.value)
+})
+const fit = computed(() => {
+	const n = people.value.length
+	const { w, h } = box.value
+	if (!n || !w || !h) {
+		return { root: {}, strip: {} }
+	}
+	const P = 12, G = 8, land = w > h
+	const ar = showOf(state.board)?.ar || 4 / 3
+	const bw = w - 2 * P, bh = h - 2 * P - (state.mode ? 64 : 0)
+	const free = land ? bw - P - bh * ar : bh - P - bw / ar // место рядом с доской во всю высоту (ширину)
+	const max = Math.max(land ? 160 : 76, Math.min(free, (land ? w : h) * 0.4))
+	const along = (land ? h : w) - 2 * P
+	let k = 1, tw = 0 // tw — ширина плитки 4:3
+	for (let c = 1; c <= 3; c++) {
+		const per = Math.ceil(n / c)
+		const a = (along - G * (per - 1)) / per // плитка вдоль полосы, чтобы влезли все без прокрутки
+		const t = (max - G * (c - 1)) / c // толщина одной линии
+		const x = land ? Math.min(t, a * 4 / 3) : Math.min(t * 4 / 3, a)
+		if (x > tw + 1) {
+			k = c
+			tw = x
+		}
+	}
+	tw = Math.floor(Math.max(tw, land ? 120 : 92))
+	const th = Math.floor(tw * 3 / 4)
+	const thick = land ? k * tw + G * (k - 1) : k * th + G * (k - 1)
+	return {
+		root: land ? { '--k4-sr': `${thick + P}px` } : { '--k4-st': `${thick + P}px` },
+		strip: land ? { width: `${thick}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)` } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` },
+	}
 })
 
 /** «Закрыть доску»: у всех; с рисунком — сначала «Сохранить рисунок?». */
@@ -134,6 +178,7 @@ document.addEventListener('visibilitychange', replay)
 onBeforeUnmount(() => {
 	document.removeEventListener('visibilitychange', replay)
 	clearInterval(timer)
+	ro?.disconnect()
 	held.forEach((b) => b.decreaseVisibleCounter())
 	held.clear()
 })
@@ -174,8 +219,8 @@ onBeforeUnmount(() => {
 	right: 12px;
 	bottom: 12px;
 	width: 160px;
-	display: flex;
-	flex-direction: column;
+	display: grid;
+	align-content: safe center;
 	gap: 8px;
 	overflow: auto;
 	scrollbar-width: none;
@@ -189,20 +234,24 @@ onBeforeUnmount(() => {
 	background: linear-gradient(135deg, var(--k7-tile-a, #3b2f3f), var(--k7-tile-b, #1d1620));
 	video { width: 100%; height: 100%; object-fit: cover; display: block; }
 	video.mirror { transform: scaleX(-1); }
+	container-type: inline-size;
+	// подпись — «нижняя треть», как у плиток звонка (k7call.scss)
 	b {
 		position: absolute;
 		left: 6px;
 		bottom: 6px;
 		max-width: calc(100% - 12px);
-		padding: 2px 8px;
+		padding: .4em .85em .4em 1.05em;
 		overflow: hidden;
-		border-radius: 999px;
-		background: #1a171899;
-		color: #f3eee9;
-		font-size: 12px;
-		font-weight: 600;
+		border-radius: 5px 10px 10px 5px;
+		background: linear-gradient(90deg, #140f17eb, #1a1718b8);
+		box-shadow: 0 6px 16px #0006;
+		color: #fff;
+		font-size: clamp(11px, 5.5cqi, 18px);
+		font-weight: 700;
 		white-space: nowrap;
 		text-overflow: ellipsis;
+		&::before { content: ''; position: absolute; inset: 0 auto 0 0; width: .3em; background: linear-gradient(135deg, var(--k7-acc2, #5b2a86), var(--k7-acc, #a86bff)); }
 	}
 	&--talk { box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
 }
@@ -240,8 +289,7 @@ onBeforeUnmount(() => {
 // iPhone и узкие окна (портрет): камеры строкой сверху
 @media (max-aspect-ratio: 1/1) {
 	.k4-board.k4-board--strip { --k4-sr: 0px; --k4-st: 84px; }
-	.k4-strip { left: 12px; bottom: auto; width: auto; height: 76px; flex-direction: row; }
-	.k4-strip__t { height: 100%; }
+	.k4-strip { left: 12px; bottom: auto; width: auto; height: 76px; grid-auto-flow: column; align-content: normal; justify-content: safe center; }
 	.k4-board__close span { display: none; }
 	.k4-board__close { padding: 0 9px; }
 }

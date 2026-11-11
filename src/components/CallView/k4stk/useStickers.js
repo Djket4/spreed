@@ -7,7 +7,7 @@ import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrt
 import { canDraw } from '../k4draw/useDrawing.js'
 import { find } from './catalog.js'
 
-const TTLS = [15, 60, 0]
+const TTLS = [3, 5, 10, 0] // владелец 11.11: 3, 5, 10 с и «до отмены»
 const MAX_TTL = 3600000
 const GRACE = 2000 // чужое состояние живёт ещё 2 с после ttl
 const IN_RATE = 10 // входящих в секунду от одного автора
@@ -25,10 +25,10 @@ function lsGet() {
 export const state = reactive({
 	mine: null, // { k, id, until } until=0: пока не уберу
 	peers: {}, // sessionId -> { k, id, until }
-	open: false, // шторка открыта
+	open: false, // вкладка «Гифки» в боковой панели открыта (ставит RightSidebar)
 	hpb: false, // сигналинг HPB доступен
 	sid: '', // мой sessionId
-	ttl: TTLS.includes(lsGet()) ? lsGet() : 60, // «Держать», секунды
+	ttl: TTLS.includes(lsGet()) ? lsGet() : 5, // «Держать», секунды
 	p: 0, // 0..1 — сколько прошло (кольцо на кнопке)
 })
 if (typeof window !== 'undefined') {
@@ -216,7 +216,6 @@ export function watchStickers() {
 			Object.keys(state.peers).forEach(dropPeer)
 			buckets.clear()
 			state.hpb = false
-			state.open = false
 		}
 	}
 }

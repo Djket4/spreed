@@ -67,14 +67,19 @@
 			class="placeholder-for-promoted">
 			<IconAccountCircleOutline v-if="isPromoted || isSelected" fillColor="#FFFFFF" :size="64" />
 		</div>
+		<!-- ket4tec: обрыв после того, как связь была, — плашка во всю плитку вместо застывшего кадра -->
+		<K4Reconnect
+			v-if="k4Recon"
+			:title="isNoLongerTryingToReconnect ? 'Связь потеряна' : 'Переподключается…'"
+			:sub="participantName" />
 		<div
-			v-if="connectionMessage"
+			v-else-if="connectionMessage"
 			:class="connectionMessageClass"
 			class="connection-message">
 			{{ connectionMessage }}
 		</div>
 		<!-- ket4tec: k4stk -->
-		<TileSticker v-if="k4stkOn" :sid="peerId" />
+		<TileSticker :on="k4stkOn" :sid="peerId" />
 		<slot v-if="!hideBottomBar" name="bottomBar">
 			<VideoBottomBar
 				:hasShadow="hasVideo"
@@ -95,6 +100,7 @@ import IconAccountCircleOutline from 'vue-material-design-icons/AccountCircleOut
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
+import K4Reconnect from './K4Reconnect.vue' // ket4tec
 import ScreenShare from './ScreenShare.vue'
 import VideoBackground from './VideoBackground.vue'
 import VideoBottomBar from './VideoBottomBar.vue'
@@ -114,6 +120,7 @@ export default {
 
 	components: {
 		AvatarWrapper,
+		K4Reconnect,
 		TileSticker,
 		VideoBackground,
 		ScreenShare,
@@ -545,6 +552,11 @@ export default {
 		},
 
 		// ket4tec: k4stk. Гифка/стикер этого участника (не на плитке показа экрана и не в заглушке «закреплённого»)
+		/** ket4tec: связь была и пропала (не первое подключение) */
+		k4Recon() {
+			return this.wasConnectedAtLeastOnce && !this.placeholderForPromoted && !this.isSidebar && (this.isDisconnected || this.isReconnecting || this.isNoLongerTryingToReconnect)
+		},
+
 		k4stkOn() {
 			return !!k4stk.peers[this.peerId] && !this.showSharedScreen && !this.placeholderForPromoted
 		},
