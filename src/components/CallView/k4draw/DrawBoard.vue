@@ -122,8 +122,17 @@ const timer = setInterval(() => {
 		passBoard(sid)
 	}
 	hold() // запасной путь: блокировщик плитки CallView заводит в своём наблюдателе, может позже нашего
+	replay()
 }, 3000)
+/** iOS Safari: видео, созданное пока страница в фоне (доску открыли без нас), само не стартует и после возврата. */
+function replay() {
+	if (!document.hidden) {
+		document.querySelectorAll('.k4-strip video').forEach((v) => v.paused && v.play().catch(() => {}))
+	}
+}
+document.addEventListener('visibilitychange', replay)
 onBeforeUnmount(() => {
+	document.removeEventListener('visibilitychange', replay)
 	clearInterval(timer)
 	held.forEach((b) => b.decreaseVisibleCounter())
 	held.clear()

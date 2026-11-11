@@ -1445,8 +1445,8 @@ export function boardGone(sid) {
 	}
 }
 
-// соотношение сторон — от области видео открывшего за вычетом полей доски (DrawBoard.vue)
-const boardAr = (el = document.getElementById('videos')) => ((el?.clientWidth || 800) - 24) / Math.max(100, (el?.clientHeight || 600) - 160)
+// ket4tec (NAS_CLOUD#106): доска у всех 4:3, как лист. От окна открывшего выходило до 3:1 — на iPhone узкая полоса
+const boardAr = () => 4 / 3
 
 /**
  * ket4tec (NAS_CLOUD#91/#92): фон доски — картинка. Только снимок доски этого звонка или картинка из сообщения беседы,
