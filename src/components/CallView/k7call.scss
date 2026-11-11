@@ -170,6 +170,14 @@ $glass: blur(24px) saturate(180%);
 	box-shadow: none !important;
 	transition: transform .12s ease-out, background .2s;
 }
+// ket4tec (NAS_CLOUD#106): иконки капсулы крупнее и одного размера. Тема облака (custom css) рисует штатные иконки маской
+// в ::before по 16px — в круге 52px мелко и рядом с нашими 24px (стикеры, карандаш) вразнобой
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__icon > .material-design-icon:not(.chevron-up-icon, .chevron-down-icon, .menu-down-icon) { width: 24px; height: 24px; }
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__icon > .material-design-icon:not(.chevron-up-icon, .chevron-down-icon, .menu-down-icon)::before { width: 24px; height: 24px; mask-size: 24px; -webkit-mask-size: 24px; }
+#content-vue #call-container > .bottom-bar .button-vue[aria-label^="Во весь экран"] .button-vue__icon > .material-design-icon::before { width: 20px; height: 20px; mask-size: 20px; -webkit-mask-size: 20px; }
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__wrapper { justify-content: center; }
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__icon > .volume-indicator-wrapper { transform: scale(1.2); } // микрофон: Talk рисует 20px с индикатором громкости
+#content-vue #call-container > .bottom-bar .k4stk-btn .button-vue__icon > svg { width: 26px; height: 26px; }
 // наведение только там, где есть мышь: на айфоне серый фон «залипал» на последней нажатой кнопке
 @media (hover: hover) { #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .k4stk-btn.button-vue, .action-item__menutoggle):hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; } }
 #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .k4stk-btn.button-vue, .local-audio-control-wrapper button, .local-video-control-wrapper button):active:not(:disabled) { transform: scale(.92); }
@@ -200,6 +208,7 @@ $glass: blur(24px) saturate(180%);
 // завершить звонок — единственный красный
 #content-vue #call-container > .bottom-bar .bottom-bar-options .leave-call.call-button.button-vue:not(.leave-call-actions--split) {
 	width: var(--k7-btn) !important;
+	padding: 0 !important;
 	min-width: var(--k7-btn) !important;
 	height: var(--k7-btn) !important;
 	min-height: var(--k7-btn) !important;
