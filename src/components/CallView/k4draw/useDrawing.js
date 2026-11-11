@@ -61,7 +61,7 @@ export const state = reactive({
 	tool: 'laser', // laser | fade | marker | arrow | frame | text | eraser
 	tsz: 'm', // размер текста s | m | l
 	tl: 0, // сколько секунд живёт текст (0 = остаётся)
-	ft: 3, // сколько секунд живёт «гаснущий» маркер
+	ft: 3, // сколько секунд живёт линия указки (3/5/10; «Маркер, гаснет» убран, правило 11.11)
 	big: null, // sessionId показывающего, чей показ сейчас крупно
 	keys: {}, // sessionId показывающего -> ключ показа (известен, когда пришёл `h`)
 	undo: 0, // сколько своих пометок можно отменить в крупном показе
@@ -536,6 +536,12 @@ function setShow(presenter, k) {
 }
 
 const isTemp = (tool) => tool === 'laser' || tool === 'fade'
+/**
+ * Сколько живёт линия указки, мс: выбор автора 3/5/10 с; без ttl (старый клиент) — 0,65 с.
+ *
+ * @param {object} m пометка
+ */
+export const laserLife = (m) => (m.ttl ? m.ttl * 1000 : LASER_LIFE)
 const cntKey = (by, tool) => by + '|' + isTemp(tool)
 
 /**
@@ -575,7 +581,7 @@ function endMark(show, m) {
 	stop(m)
 	m.done = true
 	if (m.tool === 'laser') {
-		m.timer = setTimeout(() => drop(show, m), LASER_LIFE + 100)
+		m.timer = setTimeout(() => drop(show, m), laserLife(m) + 100)
 	} else if (m.tool === 'fade' || (m.tool === 'text' && m.ttl)) {
 		m.timer = setTimeout(() => {
 			m.fading = true
@@ -706,7 +712,8 @@ function apply(d, from) {
 			if (!idOk(d.id) || !TOOLS.includes(d.tool)) {
 				return
 			}
-			const ttl = d.tool === 'fade' ? Math.min(30, Math.max(1, Number(d.ttl) || 3)) : 0
+			// ttl: «гаснет» старых клиентов и линия указки (у старых указка без ttl — прежние 0,65 с)
+			const ttl = d.tool === 'fade' ? Math.min(30, Math.max(1, Number(d.ttl) || 3)) : d.tool === 'laser' ? Math.min(30, Math.max(0, Number(d.ttl) || 0)) : 0
 			const m = addMark(show, from, d.id, d.tool, ttl)
 			if (m) {
 				m.col = PALETTE.includes(d.c) ? d.c : '' // свой цвет автора; чужое значение -> цвет автора
@@ -736,7 +743,7 @@ function apply(d, from) {
 					m.pr?.push(pr ? pr[i] : 0.5)
 				})
 				if (m.tool === 'laser') {
-					while (m.ts.length && now - m.ts[0] > LASER_LIFE) {
+					while (m.ts.length && now - m.ts[0] > laserLife(m)) {
 						m.ts.shift()
 						m.pts.shift()
 					}
@@ -1125,7 +1132,7 @@ function local(show, data) {
  */
 export function strokeStart(show, tool, p, pr) {
 	const id = rid()
-	local(show, { op: 's', id, tool, ttl: tool === 'fade' ? state.ft : 0, ...(state.col ? { c: state.col } : {}), ...(state.sz > 1 ? { w: state.sz } : {}) })
+	local(show, { op: 's', id, tool, ttl: tool === 'laser' ? state.ft : 0, ...(state.col ? { c: state.col } : {}), ...(state.sz > 1 ? { w: state.sz } : {}) })
 	const m = show.marks.get(me() + '/' + id)
 	strokePoint(show, m, p, pr)
 	return m
@@ -1627,4 +1634,3 @@ function spring(z, w, d, n = 40) {
 }
 export const SP = { in: spring(0.78, 16, 0.48), menu: spring(0.72, 20, 0.36), pop: spring(0.5, 22, 0.5) }
 export const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
-export const LIFE = LASER_LIFE

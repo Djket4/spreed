@@ -13,7 +13,6 @@
 				style="position:absolute"
 				aria-hidden="true">
 				<symbol id="k4i-laser" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" /><path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5" /></symbol>
-				<symbol id="k4i-fade" viewBox="0 0 24 24"><path d="M17.5 3l3.5 3.5-8.5 8.5H9v-3.5z" /><path d="M3 20c2-2.5 3.5-2.5 4.5-1s2.5 1.5 4.5-1 3.5-2 5 0" /></symbol>
 				<symbol id="k4i-marker" viewBox="0 0 24 24"><path d="M12 2.5l5.5 11.5v6.5h-11V14z" /><path d="M12 2.5v8" /><circle cx="12" cy="12.5" r="1.3" /></symbol>
 				<symbol id="k4i-arrow" viewBox="0 0 24 24"><path d="M5.5 18.5l13-13M9 5.5h9.5V15" /></symbol>
 				<symbol id="k4i-frame" viewBox="0 0 24 24"><rect
@@ -38,15 +37,18 @@
 				<symbol id="k4i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" /></symbol>
 			</svg>
 
-			<div class="k4-fsel" :class="{ on: state.tool === 'fade' }">
+			<!-- ket4tec (правило 11.11): «Маркер, гаснет» убран — линия указки живёт 3/5/10 с -->
+			<div class="k4-fsel" :class="{ on: state.tool === 'laser' }">
 				<span>Гаснет через</span>
-				<div class="k4-seg" :style="{ '--k': 2, '--i': state.ft === 10 ? 1 : 0 }">
+				<div class="k4-seg" :style="{ '--k': 3, '--i': FT.indexOf(state.ft), width: '156px' }">
 					<i />
-					<button type="button" :aria-pressed="state.ft === 3" @click="state.ft = 3">
-						3 с
-					</button>
-					<button type="button" :aria-pressed="state.ft === 10" @click="state.ft = 10">
-						10 с
+					<button
+						v-for="t in FT"
+						:key="t"
+						type="button"
+						:aria-pressed="state.ft === t"
+						@click="state.ft = t">
+						{{ t }} с
 					</button>
 				</div>
 			</div>
@@ -82,7 +84,7 @@
 			<!-- ket4tec: k4draw. Свой цвет и толщина — поповер по точке в доке, одинаково на iPhone, iPad и компьютере (п.11, 12) -->
 			<div
 				class="k4-style"
-				:class="{ up: state.tool === 'fade' || state.tool === 'text', open: pal }"
+				:class="{ up: state.tool === 'laser' || state.tool === 'text', open: pal }"
 				@mousedown.prevent
 				@click="$event.target.closest('.k4-sw') && (pal = false)">
 				<button
@@ -221,8 +223,7 @@ import { shoot, snap, watchSnaps } from './snapshot.js'
 import { amMod, canClearAll, clearAll, clearMine, isBoard, isPresenter, myColor, PALETTE, reducedMotion, requestCloseBoard, setColor, setGuestsDraw, setSize, SP, state, TSIZE, undo, WSZ } from './useDrawing.js'
 
 const TOOLS = [
-	{ id: 'laser', label: 'Указка: тап — мигающая точка, ведёшь — шлейф', sub: 'указка · тап — точка, ведёшь — шлейф' },
-	{ id: 'fade', label: 'Маркер, гаснет', sub: 'маркер · гаснет через ' },
+	{ id: 'laser', label: 'Указка: тап — мигающая точка, ведёшь — линия, гаснет сама', sub: 'указка · тап — точка, линия гаснет через ' },
 	{ id: 'marker', label: 'Маркер, остаётся', sub: 'маркер · остаётся' },
 	{ id: 'arrow', label: 'Стрелка', sub: 'стрелка · остаётся' },
 	{ id: 'frame', label: 'Рамка', sub: 'рамка · остаётся' },
@@ -231,6 +232,7 @@ const TOOLS = [
 ]
 
 const TL = [0, 3, 10]
+const FT = [3, 5, 10] // сколько живёт линия указки, с
 const pal = ref(false) // поповер цвета и толщины
 const more = ref(false) // меню «Ещё»
 const meColor = () => myColor()

@@ -29,7 +29,7 @@ import {
 	hash,
 	identity,
 	join,
-	LIFE,
+	laserLife,
 	moveMark,
 	myColor,
 	myId,
@@ -424,10 +424,11 @@ function drawText(v) {
 function drawLaser(v) {
 	const m = v.m
 	const now = performance.now()
+	const life = laserLife(m)
 	const P = []
 	const T = []
 	m.pts.forEach((p, i) => {
-		if (now - m.ts[i] <= LIFE) {
+		if (now - m.ts[i] <= life) {
 			P.push([p[0] * W, p[1] * H])
 			T.push(m.ts[i])
 		}
@@ -449,7 +450,7 @@ function drawLaser(v) {
 	const D = new Array(BANDS).fill('')
 	let prev = -1
 	for (let i = 1; i < Q.length; i++) {
-		const f = (now - (QT[i - 1] + QT[i]) / 2) / LIFE
+		const f = (now - (QT[i - 1] + QT[i]) / 2) / life
 		if (f >= 1) {
 			prev = -1
 			continue
