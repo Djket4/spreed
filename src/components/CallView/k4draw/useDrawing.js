@@ -7,6 +7,7 @@ import { reactive } from 'vue'
 import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useTokenStore } from '../../../stores/token.ts'
+import { k4log } from '../../../utils/k4log.js'
 import { beforeLeaveCall, callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 
 export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff', '#a6e36b', '#ff6b6b']
@@ -307,6 +308,7 @@ function applyCols(show, cols) {
  * @param data
  */
 function wire(data) {
+	(data.op === 'h' || data.op === 'H' || data.op === 'q') && k4log('board.out', { op: data.op, k: data.k })
 	sig.doSend({ type: 'message', message: { recipient: { type: 'call' }, data: { type: 'k4draw', v: 1, ...data } } })
 }
 
@@ -632,6 +634,7 @@ function idle(show, m, from) {
  */
 function apply(d, from) {
 	const op = d.op
+	;(op === 'h' || op === 'H' || op === 'q') && k4log('board.in', { op, from, k: d.k })
 	if (op === 'G') {
 		if (isMod(from)) {
 			state.gd = !!d.on
@@ -683,6 +686,7 @@ function apply(d, from) {
 				}
 				s.bg = okBg(d.bg)
 				state.bg = s.bg
+				state.board !== from && k4log('board.state', { board: from })
 				state.board = from
 			}
 			'gd' in d && isMod(from) && (state.gd = !!d.gd)
@@ -1302,6 +1306,7 @@ export function openBoard(ar, bg = null) {
 	shows.get(myK).ar = Math.min(3, Math.max(0.33, +ar.toFixed(3)))
 	shows.get(myK).bg = bg
 	state.bg = bg
+	k4log('board.state', { board: me(), own: 1 })
 	state.board = me()
 	// закрыть-и-открыть в одном такте (смена фона) слой не пересоздаёт, join() не зовётся, а boardGone() обнулил big
 	state.big = me()
@@ -1428,6 +1433,7 @@ export function boardGone(sid) {
 	isBoard(state.keys[sid]) && closedK.add(state.keys[sid])
 	dropShow(sid)
 	if (state.board === sid) {
+		k4log('board.state', { board: null, gone: sid })
 		state.board = null
 		state.ask = false
 		state.bg = null

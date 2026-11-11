@@ -15,6 +15,7 @@ import {
 } from '../../services/mediaDevicePreferences.ts'
 import { isSafari } from '../browserCheck.ts'
 import EmitterMixin from '../EmitterMixin.js'
+import { k4log } from '../k4log.js'
 
 /**
  * Special string to set null device ids in local storage (as only strings are
@@ -582,6 +583,7 @@ MediaDevicesManager.prototype = {
 		this._stopIncompatibleTracks(constraints)
 
 		return this._getUserMediaWithCameraFallback(constraints).then((stream) => {
+			k4log('media.ok', { tracks: stream.getTracks().map((track) => track.kind + ':' + String(track.label).slice(0, 40)) })
 			this._registerStream(stream)
 
 			// In Firefox the dialog to grant media permissions allows the user
@@ -596,6 +598,7 @@ MediaDevicesManager.prototype = {
 
 			return stream
 		}).catch((error) => {
+			k4log('media.err', { name: error?.name, msg: String(error?.message).slice(0, 100), a: !!constraints.audio, v: !!constraints.video })
 			// The list of devices is also updated in case of failure, as even
 			// if getting the stream failed the permissions may have been
 			// permanently granted.
@@ -633,6 +636,7 @@ MediaDevicesManager.prototype = {
 				.filter((device) => !tried.has(device.deviceId))
 				.sort((a, b) => isVirtualCamera(a) - isVirtualCamera(b))[0]
 			console.warn('Camera does not respond: ' + (hung?.label || hungId) + (next ? ', trying ' + next.label : ''))
+			k4log('media.cameraTimeout', { hung: hung?.label || hungId, next: next?.label || null })
 			this._trigger('cameraNotResponding', [{ label: hung?.label || '', next: next?.label || null }])
 			if (!next) {
 				throw new DOMException('Camera does not respond', 'TimeoutError')
@@ -656,6 +660,7 @@ MediaDevicesManager.prototype = {
 			return stream
 		}
 		pending.then((late) => late.getTracks().forEach((track) => track.stop()), () => {})
+		k4log('media.cameraTimeout', { hung: known?.label || '', next: null, reload: true })
 		this._trigger('cameraNotResponding', [{ label: known?.label || '', next: null, reload: true }])
 		throw new DOMException('Camera does not respond', 'TimeoutError')
 	},

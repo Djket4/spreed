@@ -4,6 +4,7 @@
  */
 import { markRaw, reactive } from 'vue'
 import EmitterMixin from '../../EmitterMixin.js'
+import { k4log } from '../../k4log.js'
 
 export const ConnectionState = {
 	NEW: 'new',
@@ -276,6 +277,7 @@ CallParticipantModel.prototype = {
 	},
 
 	_handleExtendedIceConnectionStateChange(extendedIceConnectionState) {
+		k4log('ice', { id: this.get('peerId'), st: extendedIceConnectionState })
 		// Ensure that the name is set, as when the MCU is not used it will
 		// not be set later for registered users without microphone nor
 		// camera.

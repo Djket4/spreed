@@ -25,6 +25,7 @@ import pinia from '../stores/pinia.ts'
 import CancelableRequest from './CancelableRequest.ts'
 import Encryption from './e2ee/encryption.js'
 import { convertToUnix } from './formattedTime.ts'
+import { k4log } from './k4log.js'
 import { messagePleaseTryToReload } from './talkDesktopUtils.ts'
 
 const actorStore = useActorStore(pinia)
@@ -516,6 +517,7 @@ Signaling.Internal.prototype._startPullingMessages = function() {
 				this._trigger('onBeforeReceiveMessage', [message])
 				switch (message.type) {
 					case 'usersInRoom':
+						k4log('sig.usersInRoom', { n: message.data.length, inCall: message.data.filter((p) => p.inCall).length })
 						this._trigger('usersInRoom', [message.data])
 						this._trigger('participantListChanged')
 
@@ -658,6 +660,7 @@ Signaling.Standalone.prototype.reconnect = function() {
 	// simultaneously in case the server connection is interrupted.
 	const interval = this.reconnectIntervalMs - (this.reconnectIntervalMs / 2) + (this.reconnectIntervalMs * Math.random())
 	console.info('Reconnect in', interval)
+	k4log('sig.reconnect', { in: Math.round(interval) })
 	this.reconnectTimer = window.setTimeout(function() {
 		this.reconnectTimer = null
 		this.connect()
@@ -706,6 +709,7 @@ Signaling.Standalone.prototype.connect = function() {
 	window.signalingSocket = this.socket
 	this.socket.onopen = function(event) {
 		console.debug('Connected', event)
+		k4log('sig.open')
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
@@ -723,6 +727,7 @@ Signaling.Standalone.prototype.connect = function() {
 	}.bind(this)
 	this.socket.onerror = function(event) {
 		console.error('Error', event)
+		k4log('sig.error')
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
@@ -740,6 +745,7 @@ Signaling.Standalone.prototype.connect = function() {
 	}.bind(this)
 	this.socket.onclose = function(event) {
 		console.debug('Close', event)
+		k4log('sig.close', { code: event.code, reason: String(event.reason || '').slice(0, 60) })
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
@@ -775,11 +781,13 @@ Signaling.Standalone.prototype.connect = function() {
 		const message = {}
 		switch (data.type) {
 			case 'welcome':
+				k4log('sig.welcome')
 				this.welcomeReceived(data)
 				break
 			case 'hello':
 				if (!id) {
 				// Only process if not received as result of our "hello".
+					k4log('sig.hello')
 					this.helloResponseReceived(data)
 				}
 				break
@@ -1558,6 +1566,7 @@ Signaling.Standalone.prototype.processRoomParticipantsEvent = function(data) {
 				}
 			} else {
 				console.debug('Users changed', data.event.update.users || [])
+				k4log('sig.usersChanged', { n: (data.event.update.users || []).length, inCall: (data.event.update.users || []).filter((p) => p.inCall).length })
 				// With updated user list
 				this._trigger('usersChanged', [data.event.update.users || []])
 			}

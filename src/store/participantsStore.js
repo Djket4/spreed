@@ -43,6 +43,7 @@ import { useTokenStore } from '../stores/token.ts'
 import CancelableRequest from '../utils/CancelableRequest.ts'
 import { isConversationPhoneRoom } from '../utils/conversation.ts'
 import { convertToUnix } from '../utils/formattedTime.ts'
+import { k4log, startK4Log, stopK4Log } from '../utils/k4log.js'
 import { messagePleaseTryToReload } from '../utils/talkDesktopUtils.ts'
 
 const tokenStore = useTokenStore(pinia)
@@ -647,6 +648,8 @@ const actions = {
 	},
 
 	async joinCall({ commit, getters, state }, { token, participantIdentifier, flags, silent, recordingConsent, silentFor, options }) {
+		startK4Log(token)
+		k4log('call.join', { flags, silent })
 		// SUMMARY: join call process
 		// There are 2 main steps to join a call:
 		// 1. Join the call (signaling-join-call)
@@ -701,6 +704,7 @@ const actions = {
 		}
 
 		const handleJoinCallFailed = ([token, payload]) => {
+			k4log('call.err', { where: 'joinFailed', payload: JSON.stringify(payload ?? null).slice(0, 150) })
 			finishConnecting()
 			commit('connectionFailed', {
 				token,
@@ -763,6 +767,7 @@ const actions = {
 
 		try {
 			const actualFlags = await joinCall(token, flags, silent, recordingConsent, silentFor, options)
+			k4log('call.joined', { flags: actualFlags })
 			const updatedData = {
 				inCall: actualFlags,
 			}
@@ -778,6 +783,7 @@ const actions = {
 			callViewStore.handleJoinCall(getters.conversation(token))
 		} catch (e) {
 			console.error('Error while joining call: ', e)
+			k4log('call.err', { where: 'join', message: String(e?.message ?? e).slice(0, 150) })
 		}
 	},
 
@@ -801,7 +807,9 @@ const actions = {
 			callViewStore.disableLiveTranscription(token)
 		}
 
+		k4log('call.leave', { all })
 		await leaveCall(token, all)
+		stopK4Log()
 
 		const updatedData = {
 			inCall: PARTICIPANT.CALL_FLAG.DISCONNECTED,

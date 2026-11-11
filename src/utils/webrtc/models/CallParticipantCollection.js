@@ -5,6 +5,7 @@
 
 import { reactive } from 'vue'
 import EmitterMixin from '../../EmitterMixin.js'
+import { k4log } from '../../k4log.js'
 import { CallParticipantModel } from './CallParticipantModel.js'
 
 /**
@@ -22,6 +23,7 @@ CallParticipantCollection.prototype = {
 		const callParticipantModel = new CallParticipantModel(options)
 		this.callParticipantModels.push(callParticipantModel)
 
+		k4log('peer.add', { id: options?.peerId, name: options?.name })
 		this._trigger('add', [callParticipantModel])
 
 		return callParticipantModel
@@ -42,6 +44,7 @@ CallParticipantCollection.prototype = {
 
 			this.callParticipantModels.splice(index, 1)
 
+			k4log('peer.rm', { id: peerId, name: callParticipantModel.attributes.name })
 			this._trigger('remove', [callParticipantModel])
 
 			callParticipantModel.destroy()

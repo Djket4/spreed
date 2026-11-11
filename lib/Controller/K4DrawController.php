@@ -29,6 +29,7 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\IConfig;
 use OCP\IPreview;
 use OCP\IRequest;
 use OCP\Lock\ILockingProvider;
@@ -51,6 +52,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		private readonly IShareManager $shareManager,
 		private readonly IPreview $preview,
 		private readonly ILockingProvider $lockingProvider,
+		private readonly IConfig $config,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -337,5 +339,71 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	public function chatImage(int $messageId, int $size = 1600): Response {
 		$file = (!$this->participant->cannotSeeChat() || in_array('m' . $messageId, $this->shown(), true)) ? $this->chatFile($messageId) : null;
 		return $file ? $this->image($file, $size) : new DataResponse([], Http::STATUS_NOT_FOUND);
+	}
+
+	/**
+	 * Журнал действий клиента в звонке (отладка): JSON-строки в <data>/k4calllog/YYYY-MM-DD.jsonl.
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[RequireModeratorOrNoLobby]
+	#[RequireParticipant]
+	#[UserRateLimit(limit: 400, period: 600)]
+	#[AnonRateLimit(limit: 400, period: 600)]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/k4draw/{token}/log', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+	])]
+	public function log(): DataResponse {
+		$params = $this->request->getParams();
+		$s = $params['s'] ?? null;
+		$ev = $params['ev'] ?? null;
+		if ((int)$this->request->getHeader('Content-Length') > 96 * 1024
+			|| strlen((string)json_encode($params)) > 96 * 1024) {
+			return new DataResponse(['error' => 'too large'], Http::STATUS_REQUEST_ENTITY_TOO_LARGE);
+		}
+		if (!is_string($s) || strlen($s) > 32 || !is_array($ev) || !array_is_list($ev) || count($ev) > 300) {
+			return new DataResponse(['error' => 'bad'], Http::STATUS_BAD_REQUEST);
+		}
+		$attendee = $this->participant->getAttendee();
+		$now = $this->timeFactory->getDateTime();
+		$ua = mb_substr((string)$this->request->getHeader('User-Agent'), 0, 160);
+		$lines = '';
+		foreach ($ev as $e) {
+			if (!is_array($e) || !is_int($e['t'] ?? null) || !is_string($e['k'] ?? null) || strlen($e['k']) > 40) {
+				return new DataResponse(['error' => 'bad'], Http::STATUS_BAD_REQUEST);
+			}
+			$e = ['t' => $e['t'], 'k' => $e['k'], 'd' => $e['d'] ?? null];
+			$d = json_encode($e, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+			if (mb_strlen($d) > 600) {
+				$e['d'] = mb_substr($d, 0, 500);
+				$e['cut'] = 1;
+			}
+			$lines .= json_encode([
+				'ts' => $now->format('Y-m-d\TH:i:s.v\Z'),
+				'tok' => $this->room->getToken(),
+				'actor' => $attendee->getActorType() . '/' . $attendee->getActorId(),
+				'name' => $attendee->getDisplayName(),
+				's' => $s,
+				'ua' => $ua,
+			] + $e, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
+		}
+		$dir = rtrim($this->config->getSystemValueString('datadirectory'), '/') . '/k4calllog';
+		if (!is_dir($dir) && !@mkdir($dir, 0770, true) && !is_dir($dir)) {
+			return new DataResponse(['error' => 'io'], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+		$file = $dir . '/' . $now->format('Y-m-d') . '.jsonl';
+		if (!file_exists($file)) {
+			// ponytail: ротация «по пути» - чистим старше 14 дней только при создании файла нового дня
+			foreach (glob($dir . '/*.jsonl') ?: [] as $old) {
+				if (filemtime($old) < $now->getTimestamp() - 14 * 86400) {
+					@unlink($old);
+				}
+			}
+		}
+		if ($lines !== '' && file_put_contents($file, $lines, FILE_APPEND | LOCK_EX) === false) {
+			return new DataResponse(['error' => 'io'], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+		return new DataResponse(['n' => count($ev)]);
 	}
 }
