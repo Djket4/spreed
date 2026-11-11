@@ -543,7 +543,8 @@ export default {
 
 		showPlaceholderForPromoted() {
 			if (this.isStripe) {
-				if (this.showVideo || this.showSharedScreen) {
+				// ket4tec (NAS_CLOUD#108 п.2): большой вид занят экраном участника, камеры у него нет — в полосе облако, а не заглушка
+				if (this.showVideo || this.showSharedScreen || (this.hasSharedScreen && !this.hasVideo)) {
 					return false
 				} else if (this.hasSelectedVideo) {
 					return this.isSelected

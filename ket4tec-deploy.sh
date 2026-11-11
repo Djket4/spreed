@@ -22,8 +22,8 @@ n() { ssh "$H" "$@"; }
 live=$(n "grep -m1 -o '<version>[^<]*' $R/appinfo/info.xml" | cut -d'>' -f2)
 mine=$(grep -m1 -o '<version>[^<]*' appinfo/info.xml | cut -d'>' -f2)
 [ "$live" = "$mine" ] || { echo "на $TARGET Talk $live, форк $mine — сначала перенести правки на $live"; exit 1; }
-# активные звонки через occ (работает и на SQLite); exit 1 при звонках — не ошибка
-calls=$(n "docker exec -u 33 $APP php occ talk:active-calls --output=json" | grep -o '"calls": *[0-9]*' | grep -o '[0-9]*$') || true
+# активные звонки через occ (работает и на SQLite); exit 1 при звонках — не ошибка; считаем людей в звонке — пустые звонки после упавших прогонов не мешают
+calls=$(n "docker exec -u 33 $APP php occ talk:active-calls --output=json" | grep -o '"participants": *[0-9]*' | grep -o '[0-9]*$') || true
 [ -n "$calls" ] || { echo "не удалось узнать число активных звонков"; exit 1; }
 [ "$calls" = 0 ] || [ "${FORCE:-}" = 1 ] || { echo "идёт звонков: $calls; FORCE=1 чтобы выложить всё равно"; exit 1; }
 

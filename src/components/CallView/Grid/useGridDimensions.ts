@@ -75,7 +75,9 @@ export function useGridDimensions({
 	})
 
 	const compact = computed(() => isStripe.value || isSidebar.value)
-	const minWidth = computed(() => getMinTileWidth(compact.value))
+	// ket4tec (NAS_CLOUD#108 п.2): на телефоне в полосу при показе экрана при 200px влезала только своя плитка — собеседника не было видно
+	// ponytail: ширина окна читается один раз на пересчёт; порог 600 и плитка 110 — подбор под iPhone, не под все экраны
+	const minWidth = computed(() => (isStripe.value && window.innerWidth < 600 ? 110 : getMinTileWidth(compact.value)))
 	const minHeight = computed(() => getMinTileHeight(compact.value))
 	const dpiAwareMinWidth = computed(() => minWidth.value / dpiFactor.value)
 	const dpiAwareMinHeight = computed(() => minHeight.value / dpiFactor.value)

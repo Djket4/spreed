@@ -179,6 +179,11 @@ export default class FaceFrame extends TrackSinkSource {
 	}
 
 	_handleInputTrackEnabled(trackId, enabled) {
+		// ket4tec (NAS_CLOUD#108): на выходе исходный трек (кадр «Выкл», аппаратный зум, откат) — замены трека нет,
+		// получателям надо сказать явно, иначе кнопка камеры не переключается и камеру не вернуть
+		if (this.getOutputTrack() === this.getInputTrack()) {
+			this._setOutputTrackEnabled('default', enabled)
+		}
 		if (!enabled) {
 			this._stopDigital()
 			this._setOutput(this.getInputTrack())

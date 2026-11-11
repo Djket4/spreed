@@ -475,6 +475,7 @@ export default {
 		},
 
 		stopScreen() {
+			this.screenSharingMenuOpen = false // ket4tec (NAS_CLOUD#108): меню исчезает вместе с показом и не успевает закрыться — кнопка оставалась с подписью «Параметры демонстрации экрана»
 			this.model.stopSharingScreen()
 		},
 

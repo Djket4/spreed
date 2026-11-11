@@ -20,6 +20,7 @@ describe('FaceFrame в цепочке превью', () => {
 		}
 	})
 	test('«Выкл»: поток в TrackToStream появляется сразу после установки трека', () => {
+		setFaceFrameLevel('off')
 		const ff = new FaceFrame()
 		const tts = new TrackToStream()
 		tts.addInputTrackSlot('video')
@@ -29,6 +30,18 @@ describe('FaceFrame в цепочке превью', () => {
 		expect(ff.getOutputTrack()).toBe(track)
 		expect(tts.getStream()?.getTracks()).toEqual([track])
 		ff.destroy() // иначе узел реагирует на смену уровня в следующем тесте
+	})
+	test('кадр «Выкл»: выключение камеры доходит до получателей (кнопка камеры переключается)', () => {
+		setFaceFrameLevel('off')
+		const ff = new FaceFrame()
+		const seen = []
+		ff.on('outputTrackEnabled', (source, trackId, enabled) => seen.push(enabled))
+		const track = { id: 'v3', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
+		ff._setInputTrack('default', track)
+		ff._handleInputTrackEnabled('default', false)
+		ff._handleInputTrackEnabled('default', true)
+		expect(seen).toEqual([false, true])
+		ff.destroy()
 	})
 	test('страховка: канвас без кадров -> через 2 с на выходе исходный трек', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
