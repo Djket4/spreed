@@ -37,22 +37,7 @@
 				<symbol id="k4i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" /></symbol>
 			</svg>
 
-			<!-- ket4tec (правило 11.11): «Маркер, гаснет» убран — линия указки живёт 3/5/10 с -->
-			<div class="k4-fsel" :class="{ on: state.tool === 'laser' }">
-				<span>Гаснет через</span>
-				<div class="k4-seg" :style="{ '--k': 3, '--i': FT.indexOf(state.ft), width: '156px' }">
-					<i />
-					<button
-						v-for="t in FT"
-						:key="t"
-						type="button"
-						:aria-pressed="state.ft === t"
-						@click="state.ft = t">
-						{{ t }} с
-					</button>
-				</div>
-			</div>
-
+			<!-- ket4tec (владелец 11.11): линия указки гаснет через 3,5 с, выбора нет (useDrawing state.ft) -->
 			<div
 				class="k4-fsel k4-tsel"
 				:class="{ on: state.tool === 'text' }"
@@ -233,7 +218,6 @@ const TOOLS = [
 ]
 
 const TL = [0, 3, 10]
-const FT = [3, 5, 10] // сколько живёт линия указки, с
 const pal = ref(false) // поповер цвета и толщины
 const more = ref(false) // меню «Ещё»
 const meColor = () => myColor()
