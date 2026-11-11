@@ -110,32 +110,43 @@ onMounted(() => {
 const fit = computed(() => {
 	const n = people.value.length
 	const { w, h } = box.value
-	if (!n || !w || !h) {
+	if (!w || !h) {
 		return { root: {}, strip: {} }
 	}
-	const P = 12, G = 8, land = w > h
+	const P = 12, G = 8, DOCK = state.mode ? 64 : 0, land = w > h
 	const ar = showOf(state.board)?.ar || 4 / 3
-	const bw = w - 2 * P, bh = h - 2 * P - (state.mode ? 64 : 0)
-	const free = land ? bw - P - bh * ar : bh - P - bw / ar // место рядом с доской во всю высоту (ширину)
-	const max = Math.max(land ? 160 : 76, Math.min(free, (land ? w : h) * 0.4))
-	const along = (land ? h : w) - 2 * P
-	let k = 1, tw = 0 // tw — ширина плитки 4:3
-	for (let c = 1; c <= 3; c++) {
-		const per = Math.ceil(n / c)
-		const a = (along - G * (per - 1)) / per // плитка вдоль полосы, чтобы влезли все без прокрутки
-		const t = (max - G * (c - 1)) / c // толщина одной линии
-		const x = land ? Math.min(t, a * 4 / 3) : Math.min(t * 4 / 3, a)
-		if (x > tw + 1) {
-			k = c
-			tw = x
+	const bw = w - 2 * P, bh = h - 2 * P - DOCK
+	let res = 0, strip = {} // res — место под полосу камер вместе с отступом
+	if (n) {
+		const free = land ? bw - P - bh * ar : bh - P - bw / ar // место рядом с доской во всю высоту (ширину)
+		const max = Math.max(land ? 160 : 76, Math.min(free, (land ? w : h) * 0.4))
+		// ket4tec (NAS_CLOUD#109 п.6): док инструментов (560 по центру сцены) не должен лежать на нижней плитке полосы
+		const under = land && w / 2 + 280 > w - P - max ? DOCK : 0
+		const along = (land ? h - under : w) - 2 * P
+		let k = 1, tw = 0 // tw — ширина плитки 4:3
+		for (let c = 1; c <= 3; c++) {
+			const per = Math.ceil(n / c)
+			const a = (along - G * (per - 1)) / per // плитка вдоль полосы, чтобы влезли все без прокрутки
+			const t = (max - G * (c - 1)) / c // толщина одной линии
+			const x = land ? Math.min(t, a * 4 / 3) : Math.min(t * 4 / 3, a)
+			if (x > tw + 1) {
+				k = c
+				tw = x
+			}
 		}
+		tw = Math.floor(Math.max(tw, land ? 120 : 92))
+		const th = Math.floor(tw * 3 / 4)
+		const thick = land ? k * tw + G * (k - 1) : k * th + G * (k - 1)
+		res = thick + P
+		strip = land ? { width: `${thick}px`, bottom: `${P + under}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)` } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` }
 	}
-	tw = Math.floor(Math.max(tw, land ? 120 : 92))
-	const th = Math.floor(tw * 3 / 4)
-	const thick = land ? k * tw + G * (k - 1) : k * th + G * (k - 1)
+	// ket4tec (NAS_CLOUD#109 п.1, 6): лист меньше поля. «Закрыть доску» — в углу листа, а не поля (--k4-gx);
+	// в портрете лист прижат к камерам, пустое место уходит вниз, к доку (--k4-gb)
+	const lw = bw - (land ? res : 0), lh = bh - (land ? 0 : res)
+	const sw = Math.min(lw, lh * ar)
 	return {
-		root: land ? { '--k4-sr': `${thick + P}px` } : { '--k4-st': `${thick + P}px` },
-		strip: land ? { width: `${thick}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)` } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` },
+		root: { [land ? '--k4-sr' : '--k4-st']: `${res}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': `${land ? 0 : Math.max(0, lh - sw / ar)}px` },
+		strip,
 	}
 })
 
@@ -211,11 +222,13 @@ onBeforeUnmount(() => {
 	// поле доски: сверху без пустой полосы (п.7); снизу место под док инструментов, пока рисую
 	--k4-st: 0px;
 	--k4-sr: 0px;
+	--k4-gx: 0px;
+	--k4-gb: 0px;
 	> .k4-layer {
-		inset: calc(12px + var(--k4-st)) calc(12px + var(--k4-sr)) 12px 12px;
+		inset: calc(12px + var(--k4-st)) calc(12px + var(--k4-sr)) calc(12px + var(--k4-gb)) 12px;
 		transform: none !important;
 	}
-	&.k4-board--draw > .k4-layer { bottom: 76px; }
+	&.k4-board--draw > .k4-layer { bottom: calc(76px + var(--k4-gb)); }
 	// iPad и компьютер: камеры столбиком справа
 	&.k4-board--strip { --k4-sr: 172px; }
 	.k4-surf {
@@ -272,7 +285,7 @@ onBeforeUnmount(() => {
 	position: absolute;
 	z-index: 7;
 	top: calc(20px + var(--k4-st));
-	right: calc(20px + var(--k4-sr));
+	right: calc(20px + var(--k4-sr) + var(--k4-gx));
 	display: flex;
 	align-items: center;
 	gap: 6px;

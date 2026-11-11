@@ -130,6 +130,8 @@ $glass: blur(24px) saturate(180%);
 :root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option--selected { font-weight: 700; color: var(--k7-acc); }
 // «Начать вызов» — капсула Слива
 :root body .media-settings .button-vue.join-call { border-radius: 999px !important; min-height: 52px; font-weight: 700; border: 0 !important; background: var(--k7-grad) !important; color: #fff !important; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent); }
+// ket4tec (NAS_CLOUD#109 п.14): недоступная кнопка одинакова на телефоне и планшете — без прозрачности (сквозь неё просвечивал список)
+:root:root body .media-settings .button-vue.join-call:disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
 
 // показ экрана: поверхность плитки, а не серый фон
 #call-container .screen-share, #call-container .screen { border-radius: var(--k7-r-tile); }
@@ -242,7 +244,7 @@ $glass: blur(24px) saturate(180%);
 	color: #fff !important;
 	box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-dng) 45%, transparent) !important;
 }
-#content-vue #call-container > .bottom-bar .leave-call-actions--split > div.action-item { position: absolute !important; z-index: 1; top: -4px; inset-inline-end: -4px; }
+#content-vue #call-container > .bottom-bar .leave-call-actions--split > div.action-item { position: absolute !important; z-index: 1; top: -8px; inset-inline-end: -8px; } // NAS_CLOUD#109 п.11: бейдж у угла, не на трубке
 #content-vue #call-container > .bottom-bar .leave-call-actions--split > div.action-item .action-item__menutoggle {
 	--button-size: 22px;
 	width: 22px !important;
@@ -314,7 +316,6 @@ $glass: blur(24px) saturate(180%);
 	:root body .media-settings__preview { width: 100% !important; height: auto !important; aspect-ratio: 16 / 10 !important; }
 	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
-	:root:root body .media-settings .button-vue.join-call:disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
 	:root body .media-settings__toggles { bottom: 10px; }
 	:root:root body .media-settings__toggles .button-vue { width: 48px; min-width: 48px; height: 48px; }
@@ -410,3 +411,8 @@ $glass: blur(24px) saturate(180%);
 // по высоте свободного места; на узком экране упирается в ширину (форма чуть шире 3:4, видео без искажений — cover)
 #call-container.k7-alone .stripe-wrapper .localVideoContainer { height: 100% !important; }
 @media (orientation: landscape) { #call-container.k7-alone .stripe-wrapper .localVideoContainer { aspect-ratio: 16 / 10; } }
+
+// ket4tec (NAS_CLOUD#109 п.7): телефон, в полосе есть плитка собеседника — своя плитка той же ширины, без дыры (100 px у края из custom.css остаётся для звонка один на один)
+@media (max-width: 430px) { #call-container .stripe-wrapper .grid:has(> .video-container) > .localVideoContainer { justify-self: stretch; width: 100% !important; } }
+// ket4tec (NAS_CLOUD#109): телефон, выбранная плитка на весь экран — «Открепить» заезжало под свою плитку (100 px в углу полосы)
+@media (max-width: 430px) { #call-container .video__promoted.full-page .wrapper--big { margin: 0 116px 0 8px !important; width: calc(100% - 124px) !important; } }

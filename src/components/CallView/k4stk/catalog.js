@@ -162,6 +162,9 @@ export const PACKS = [
 const media = (p) => generateFilePath('spreed', 'img', 'k4stk/' + p)
 
 /** id -> { k: 'g'|'s', id, w, h, tx, src, pos (gif) | th (sticker), pack } */
+// ket4tec (NAS_CLOUD#109 п.28): гифки длиннее 3 с — длина одного проигрывания, секунды (ffprobe); остальные короче
+export const LONG = { 'g/01': 3.2, 'g/08': 12, 'g/12': 3.3, 'g/15': 6.8, 'g/16': 6.1, 'g/22': 8, 'g/24': 5, 'g/30': 4, 'g/36': 3.5, 'g/38': 3.1, 'g/40': 4.2, 'g/44': 3.6, 'g/48': 7.9, 'g/52': 4.8, 'g/59': 3.5 }
+
 export const ITEMS = {}
 GIFS.forEach(([id, w, h, tx]) => {
 	ITEMS[id] = { k: 'g', id, w, h, tx, src: media(id + '.mp4'), pos: media(id + '.jpg') }

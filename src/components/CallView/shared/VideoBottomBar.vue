@@ -324,6 +324,7 @@ export default {
 	z-index: 1;
 
 	&--big {
+		bottom: var(--k4-pb, 0px); // ket4tec: у показа экрана — нижний край картинки (ScreenShare)
 		justify-content: center;
 		margin: 0 var(--default-clickable-area); // grid collapse button
 		width: calc(100% - var(--default-clickable-area) * 2);

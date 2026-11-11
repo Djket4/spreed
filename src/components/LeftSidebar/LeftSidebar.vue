@@ -517,7 +517,7 @@ const canModerateSipDialOut = hasTalkFeature('local', 'sip-support-dialout')
 const hintSipDialOut = !canModerateSipDialOut && showTalkFeatureHint(34)
 const canNoteToSelf = hasTalkFeature('local', 'note-to-self')
 const supportsArchive = hasTalkFeature('local', 'archived-conversations-v2')
-const supportThreads = hasTalkFeature('local', 'threads')
+const supportThreads = false // ket4tec (NAS_CLOUD#109 п.5): чата нет — «Темы» не показываем
 const supportSortOrder = getTalkConfig('local', 'conversations', 'sort-order') !== undefined
 const supportTags = hasTalkFeature('local', 'conversation-tags')
 

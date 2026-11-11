@@ -6,7 +6,7 @@
 <template>
 	<!-- в body: над верхней панелью звонка, вне её контекста наложения -->
 	<Teleport to="body">
-		<div class="k4-dockwrap" :style="[vars, scene]">
+		<div class="k4-dockwrap" :class="{ 'k4-dockwrap--side': sidebar.show }" :style="[vars, scene]">
 			<svg
 				width="0"
 				height="0"
@@ -218,6 +218,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
+import { useSidebarStore } from '../../../stores/sidebar.ts'
 import { isMac, mac, macLabel, openMac } from './macBridge.js'
 import { shoot, snap, watchSnaps } from './snapshot.js'
 import { amMod, canClearAll, clearAll, clearMine, isBoard, isPresenter, myColor, PALETTE, reducedMotion, requestCloseBoard, setColor, setGuestsDraw, setSize, SP, state, TSIZE, undo, WSZ } from './useDrawing.js'
@@ -255,6 +256,7 @@ function closeBoardBtn() {
 }
 const closeLabel = computed(() => (board.value ? 'Закрыть доску у всех' : 'Закрыть рисование (Esc)'))
 const vars = { '--sp-in': SP.in, '--sp-menu': SP.menu }
+const sidebar = useSidebarStore()
 // шапка-капсула живёт в пределах сцены звонка: под шапкой Стола и шапкой беседы, шапка Стола остаётся кликабельной
 const scene = reactive({})
 /**
@@ -272,6 +274,7 @@ function placeScene() {
 	// док стоит над панелью звонка: она теперь видна и в режиме рисования (п.9)
 	const bb = document.querySelector('#call-container > .bottom-bar')?.getBoundingClientRect()
 	scene['--k4-sb'] = Math.max(0, window.innerHeight - (bb ? bb.top : window.innerHeight)) + 'px'
+	document.documentElement.style.setProperty('--k4-sb', scene['--k4-sb']) // для тостов на телефоне (k7ui.scss)
 }
 let sceneRO = null
 
@@ -368,6 +371,8 @@ onMounted(() => {
 // .leave-call-actions--split). Она торчит прямо под крестиком дока, а её меню открывается поверх дока: промах по крестику
 // и повторное касание того же места = «Завершить звонок для всех». Пока док на экране, стрелку прячем; «Покинуть» остаётся.
 body:has(.k4-dockwrap) #call-container .leave-call-actions--split > div.action-item { visibility: hidden !important; pointer-events: none !important; }
+// ket4tec (NAS_CLOUD#109 п.10): на телефоне боковая панель во весь экран — док не должен лежать поверх неё
+@media (max-width: 512px) { .k4-dockwrap--side { display: none; } }
 // тема облака в светлом режиме красит все button белым: держим фон дока
 .k4-dockwrap button:not(.k4-sw) { background: transparent !important; }
 // ket4tec (п.9, 36): док над панелью звонка, по центру сцены звонка (не окна) — на одной оси с доской и при открытой боковой панели
@@ -382,6 +387,7 @@ body:has(.k4-dockwrap) #call-container .leave-call-actions--split > div.action-i
 	.k4-dockwrap .k4-dock .k4-tools { padding: 0 6px; }
 	.k4-dockwrap .k4-dock .k4-tb, .k4-dockwrap .k4-dock .k4-sp { width: 30px; height: 30px; }
 	.k4-dockwrap .k4-dock .k4-sp { top: 13px; }
+	.k4-dockwrap .k4-dock .k4-tb sup { right: -8px; top: -11px; } // кнопка 30: бейдж целиком над значком (NAS_CLOUD#109 п.2)
 	.k4-tools hr { display: none; }
 	.k4-dockwrap .k4-style .k4-sw { width: 30px; height: 30px; }
 }
@@ -400,7 +406,7 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	&--close:hover { color: #ff6b81; }
 	&:disabled { opacity: .35; }
 	// счётчик снимков — бейдж за краем значка, не поверх него (п.10/41)
-	sup { position: absolute; right: -5px; top: -3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--k4-acc); color: #fff; font-weight: 700; font-size: 10px; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px #2a2426; }
+	sup { position: absolute; right: -9px; top: -7px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--k4-acc); color: #fff; font-weight: 700; font-size: 10px; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px #2a2426; }
 }
 .k4-sp {
 	position: absolute; top: 8px; left: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--k4-grad); box-shadow: 0 4px 14px #a86bff55; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);

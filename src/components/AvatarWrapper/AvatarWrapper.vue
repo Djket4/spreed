@@ -28,8 +28,9 @@
 		</NcAvatar>
 		<NcAvatar
 			v-else
-			:key="id + (isDarkTheme ? '-dark' : '-light')"
+			:key="id + (isDarkTheme ? '-dark' : '-light') + k4plain"
 			:user="id"
+			:isNoUser="k4plain"
 			:displayName="name"
 			:menuContainer="menuContainer"
 			:disableTooltip="disableTooltip"
@@ -56,13 +57,30 @@
 
 <script>
 import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
 import { useIsDarkTheme } from '@nextcloud/vue/composables/useIsDarkTheme'
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import NcAvatar from '@nextcloud/vue/components/NcAvatar'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import WebIcon from 'vue-material-design-icons/Web.vue'
 import { ATTENDEE, AVATAR } from '../../constants.ts'
 import { getUserProxyAvatarOcsUrl } from '../../services/avatarService.ts'
+
+// ket4tec (NAS_CLOUD#109 п.4): у кого нет своей картинки — буква на акценте (k7ui.scss), а не блёклая картинка сервера.
+// ponytail: у таких аватарок нет меню профиля (isNoUser); нужно меню — рисовать букву своим слотом
+const k4own = reactive({}) // userId -> своя картинка есть (true, пока не узнали)
+/**
+ * @param {string} id пользователь
+ */
+function k4plainAvatar(id) {
+	if (id && !(id in k4own)) {
+		k4own[id] = true
+		fetch(generateUrl('/avatar/{id}/64', { id })).then((r) => {
+			k4own[id] = r.headers.get('X-NC-IsCustomAvatar') !== '0'
+		}).catch(() => {})
+	}
+	return k4own[id] === false
+}
 
 export default {
 
@@ -168,6 +186,10 @@ export default {
 	},
 
 	computed: {
+		k4plain() {
+			return !this.isSpecialAvatar && k4plainAvatar(this.id)
+		},
+
 		// Determines which icon is displayed
 		iconClass() {
 			if (!this.source) {

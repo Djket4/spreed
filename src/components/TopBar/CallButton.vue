@@ -51,8 +51,6 @@ const props = defineProps<{
 	hideText?: boolean
 	/** Whether to use text on button at mobile view */
 	shrinkOnMobile?: boolean
-	/** ket4tec v7: своя подпись (пустой экран гостя: «Войти в звонок») */
-	label?: string
 }>()
 
 const { joinCall } = useJoinCall()
@@ -115,9 +113,6 @@ const showRecordingWarning = computed(() => {
 })
 
 const startCallLabel = computed(() => {
-	if (props.label && !isJoiningCall.value) {
-		return props.label
-	}
 	if (hasCall.value && !isInLobby.value) {
 		return t('spreed', 'Join call')
 	}

@@ -25,7 +25,7 @@ const roomName = computed<string>(() => store.getters.conversation(token.value)?
 		</h2>
 		<SetGuestUsername v-if="isChatHiddenForActor(actorStore.actorType)" compact class="guest-join__username" />
 		<!-- та же кнопка, что в шапке: те же проверки и joinCall -->
-		<CallButton class="guest-join__button" label="Войти в звонок" />
+		<CallButton class="guest-join__button" />
 	</div>
 </template>
 

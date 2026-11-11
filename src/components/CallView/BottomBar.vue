@@ -50,7 +50,6 @@ import { useSidebarStore } from '../../stores/sidebar.ts' // ket4tec: k4stk
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
 import { boardBtn, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
-import { ITEMS } from './k4stk/catalog.js' // ket4tec: k4stk
 import { state as k4stk, canUse as k4stkCan } from './k4stk/useStickers.js' // ket4tec: k4stk
 
 const { isSidebar = false } = defineProps<{
@@ -93,7 +92,6 @@ function k4DrawTap() {
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: none) and (pointer: coarse)').matches
 // ket4tec: k4stk. Кнопка «Гифки и стикеры»: только с HPB и по правилу рисования (гости — как в k4draw)
 const k4stkBtn = computed(() => !isSidebar && (k4draw.gd, k4stkCan()))
-const k4stkItem = computed(() => (k4stk.mine ? ITEMS[k4stk.mine.id] : null))
 const sidebarStore = useSidebarStore()
 /** ket4tec (владелец 11.11): кнопка открывает вкладку «Гифки» боковой панели; открыта — закрывает */
 function k4stkToggle() {
@@ -555,11 +553,8 @@ function setCallLayout(layout: CallLayout) {
 				:style="{ '--p': k4stk.p }"
 				@click="k4stkToggle">
 				<template #icon>
-					<span v-if="k4stkItem" class="k4stk-th">
-						<img :src="k4stkItem.pos || k4stkItem.th" alt="" :class="{ s: k4stkItem.k === 's' }">
-					</span>
 					<span v-if="k4stk.mine && k4stk.mine.until" class="k4stk-ring" />
-					<!-- ket4tec 9Б п.44: значок «Гифки» всегда, моя гифка — маленькая метка в углу -->
+					<!-- ket4tec (NAS_CLOUD#109 п.3): миниатюры на кнопке нет — «моя на плитке» видно по цвету кнопки и кольцу таймера -->
 					<svg
 						viewBox="0 0 24 24"
 						width="24"
@@ -816,21 +811,9 @@ function setCallLayout(layout: CallLayout) {
 
 <style lang="scss" scoped>
 
-// ket4tec: k4stk. Миниатюра моего элемента на кнопке и кольцо таймера
+// ket4tec: k4stk. Кольцо таймера на кнопке
 .bottom-bar .k4stk-btn.button-vue { position: relative; }
 .bottom-bar .k4stk-btn.button-vue :deep(.button-vue__icon) { position: static; }
-.k4stk-th {
-	position: absolute;
-	inset: auto -2px -2px auto;
-	width: 22px;
-	height: 22px;
-	overflow: hidden;
-	border-radius: 50%;
-	background: #241f20;
-	box-shadow: 0 0 0 2px var(--k7-bg2, #242021);
-	img { display: block; width: 100%; height: 100%; object-fit: cover; }
-	img.s { object-fit: contain; padding: 3px; box-sizing: border-box; }
-}
 .k4stk-ring {
 	position: absolute;
 	inset: 0;

@@ -5,7 +5,7 @@
 import { reactive } from 'vue'
 import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 import { canDraw } from '../k4draw/useDrawing.js'
-import { find } from './catalog.js'
+import { find, LONG } from './catalog.js'
 
 const TTLS = [3, 5, 10, 0] // владелец 11.11: 3, 5, 10 с и «до отмены»
 const MAX_TTL = 3600000
@@ -16,7 +16,7 @@ const IN_RATE = 10 // входящих в секунду от одного ав�
  */
 function lsGet() {
 	try {
-		return +localStorage.getItem('k4stk.ttl')
+		return +(localStorage.getItem('k4stk.ttl') ?? NaN) // не сохранено — не 0 («до отмены»), а умолчание
 	} catch (e) {
 		return NaN
 	}
@@ -28,7 +28,7 @@ export const state = reactive({
 	open: false, // вкладка «Гифки» в боковой панели открыта (ставит RightSidebar)
 	hpb: false, // сигналинг HPB доступен
 	sid: '', // мой sessionId
-	ttl: TTLS.includes(lsGet()) ? lsGet() : 5, // «Держать», секунды
+	ttl: TTLS.includes(lsGet()) ? lsGet() : 3, // «Держать», секунды; по умолчанию 3 (владелец 11.11)
 	p: 0, // 0..1 — сколько прошло (кольцо на кнопке)
 })
 if (typeof window !== 'undefined') {
@@ -106,7 +106,7 @@ export function pick(k, id) {
 	}
 	clearTimeout(myTimer)
 	clearInterval(tick)
-	const ms = state.ttl * 1000
+	const ms = state.ttl && Math.max(state.ttl, LONG[id] || 0) * 1000 // не короче одного проигрывания гифки
 	state.mine = { k, id, until: ms ? Date.now() + ms : 0 }
 	state.p = 0
 	if (ms) {

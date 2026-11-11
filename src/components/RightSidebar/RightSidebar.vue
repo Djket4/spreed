@@ -490,9 +490,13 @@ export default {
 				// ket4tec v7: в звонке вкладки «Участники» и «Файлы», чата нет
 				this.contentState = 'default'
 				this.activeTab = this.inCallTab()
-				// ket4tec v7: при входе в звонок боковая панель закрыта (решение владельца 10.11), после звонка — как была
+				// ket4tec v7: в звонке список участников открыт (владелец 11.11, NAS_CLOUD#109 п.30); на телефоне панель во весь экран — закрыта. После звонка — как была
 				this.k7reopen = this.sidebarStore.show
-				this.sidebarStore.hideSidebar({ cache: false })
+				if (window.innerWidth < 512) {
+					this.sidebarStore.hideSidebar({ cache: false })
+				} else {
+					this.sidebarStore.showSidebar({ cache: false })
+				}
 				return
 			}
 
@@ -501,6 +505,8 @@ export default {
 			if (this.k7reopen) {
 				this.k7reopen = false
 				this.sidebarStore.showSidebar({ cache: false })
+			} else {
+				this.sidebarStore.hideSidebar({ cache: false })
 			}
 
 			// после звонка — участники (в один-на-один их нет, остаются «Общие файлы»)
