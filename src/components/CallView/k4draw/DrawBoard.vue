@@ -17,7 +17,7 @@
 				v-for="p in people"
 				:key="p.id"
 				class="k4-strip__t"
-				:class="{ 'k4-strip__t--talk': p.speaking }">
+				:class="{ 'k4-strip__t--talk': p.speaking, 'k4-strip__t--off': !p.on }">
 				<video
 					v-if="p.stream"
 					:srcObject="p.stream"
@@ -279,7 +279,9 @@ onBeforeUnmount(() => {
 		text-overflow: ellipsis;
 		&::before { content: ''; position: absolute; inset: 0 auto 0 0; width: .3em; background: linear-gradient(135deg, var(--k7-acc2, #5b2a86), var(--k7-acc, #a86bff)); }
 	}
-	&--talk { box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
+	// ket4tec (NAS_CLOUD#112): рамка поверх видео/облака — inset-тень самой плитки рисуется под детьми и закрывалась; говорящий важнее «без микрофона»
+	&--off::after, &--talk::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 3px var(--k7-dng, #e5453d); }
+	&--talk::after { box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
 }
 .k4-board__close {
 	position: absolute;
