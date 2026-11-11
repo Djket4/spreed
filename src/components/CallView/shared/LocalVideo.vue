@@ -42,7 +42,14 @@
 		</div>
 		<div v-if="!screenshotModeUrl && !localMediaModel.attributes.videoEnabled && !isSidebar" class="avatar-container">
 			<VideoBackground v-if="isGrid || isStripe" />
+			<K4Face
+				v-if="isGrid || isStripe"
+				:stream="localMediaModel.attributes.localStream"
+				:on="!!localMediaModel.attributes.audioEnabled"
+				:seed="actorStore.actorId ? actorStore.actorType + '/' + actorStore.actorId : (displayName || '?')"
+				:token="token" />
 			<AvatarWrapper
+				v-else
 				:id="userId"
 				:token="token"
 				:name="displayName"
@@ -81,6 +88,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
+import K4Face from './k4face/K4Face.vue' // ket4tec
 import K4Reconnect from './K4Reconnect.vue' // ket4tec
 import VideoBackground from './VideoBackground.vue'
 import { AVATAR } from '../../../constants.ts'
@@ -96,6 +104,7 @@ export default {
 	name: 'LocalVideo',
 
 	components: {
+		K4Face,
 		AvatarWrapper,
 		IconAccountOffOutline,
 		NcButton,

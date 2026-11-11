@@ -52,7 +52,15 @@
 			v-if="showBackgroundAndAvatar"
 			class="avatar-container">
 			<VideoBackground />
+			<!-- ket4tec: без камеры — облако синапсов, живое от голоса, вместо круга с буквой -->
+			<K4Face
+				v-if="!isSidebar"
+				:stream="model.attributes.stream"
+				:on="model.attributes.audioAvailable !== false"
+				:seed="k4seed"
+				:token="token" />
 			<AvatarWrapper
+				v-else
 				:id="participantUserId"
 				:token="token"
 				:name="displayName"
@@ -100,6 +108,7 @@ import IconAccountCircleOutline from 'vue-material-design-icons/AccountCircleOut
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
+import K4Face from './k4face/K4Face.vue' // ket4tec
 import K4Reconnect from './K4Reconnect.vue' // ket4tec
 import ScreenShare from './ScreenShare.vue'
 import VideoBackground from './VideoBackground.vue'
@@ -119,6 +128,7 @@ export default {
 	name: 'VideoVue',
 
 	components: {
+		K4Face,
 		AvatarWrapper,
 		K4Reconnect,
 		TileSticker,
@@ -402,6 +412,12 @@ export default {
 					? ATTENDEE.ACTOR_TYPE.USERS
 					: ATTENDEE.ACTOR_TYPE.GUESTS
 			}
+		},
+
+		// ket4tec: ключ облака — тот же, что в списке участников (тип/id), иначе имя
+		k4seed() {
+			const id = this.model.attributes.actorId || this.participant?.actorId || this.peerData?.actorId
+			return id && this.participantActorType ? this.participantActorType + '/' + id : (this.displayName || '?')
 		},
 
 		participantUserId() {
