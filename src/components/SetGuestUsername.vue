@@ -151,6 +151,17 @@ function toggleEdit() {
 				</template>
 			</NcButton>
 		</div>
+		<!-- ket4tec (владелец 11.11): «Придумать имя» вернуть — кнопкой с подписью, не голым кубиком (п.25) -->
+		<NcButton
+			v-if="compact"
+			variant="tertiary"
+			class="username-form__dice"
+			@click="guestUserName = funnyName()">
+			<template #icon>
+				<IconDice :size="20" />
+			</template>
+			{{ t('spreed', 'Придумать имя') }}
+		</NcButton>
 
 		<p class="login-info">
 			{{ t('spreed', 'Do you already have an account?') }}
@@ -174,6 +185,11 @@ function toggleEdit() {
 			flex-shrink: 0;
 			margin-inline-end: var(--default-grid-baseline);
 		}
+	}
+
+	&__dice {
+		margin-block-start: 4px;
+		margin-inline-start: calc(var(--default-grid-baseline) * 2 + 20px); // под полем, на одной оси с «У вас уже есть…»
 	}
 }
 

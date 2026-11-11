@@ -140,7 +140,8 @@
 					class="top-bar__calendar-events"
 					:token="token" />
 
-				<CallButton v-if="!isInCall" shrinkOnMobile />
+				<!-- ket4tec (владелец 11.11): гостю верхняя кнопка лишняя — у него большая «Войти в звонок» в центре -->
+				<CallButton v-if="!isInCall && actorStore.isLoggedIn" shrinkOnMobile />
 
 				<!-- Search messages button -->
 				<NcButton
