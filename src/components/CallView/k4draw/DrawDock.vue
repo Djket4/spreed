@@ -221,7 +221,7 @@ import { shoot, snap, watchSnaps } from './snapshot.js'
 import { amMod, canClearAll, clearAll, clearMine, isBoard, isPresenter, myColor, PALETTE, reducedMotion, requestCloseBoard, setColor, setGuestsDraw, setSize, SP, state, TSIZE, undo, WSZ } from './useDrawing.js'
 
 const TOOLS = [
-	{ id: 'laser', label: 'Лазерная указка', sub: 'лазер · след гаснет сам' },
+	{ id: 'laser', label: 'Указка: тап — мигающая точка, ведёшь — шлейф', sub: 'указка · тап — точка, ведёшь — шлейф' },
 	{ id: 'fade', label: 'Маркер, гаснет', sub: 'маркер · гаснет через ' },
 	{ id: 'marker', label: 'Маркер, остаётся', sub: 'маркер · остаётся' },
 	{ id: 'arrow', label: 'Стрелка', sub: 'стрелка · остаётся' },
@@ -246,17 +246,12 @@ const board = computed(() => !!state.big && state.big === state.board && isBoard
 const mod = computed(() => amMod())
 const canClear = computed(() => (state.undo, state.big, canClearAll()))
 
-/** «Закрыть доску»: своя — у всех (с вопросом о снимке), чужая — только у себя. */
+/** «Закрыть доску»: у всех, кто бы её ни открыл (правило 11.11); с рисунком — сначала «Сохранить рисунок?». */
 function closeBoardBtn() {
-	if (presenter.value) {
-		state.mode = false
-		requestCloseBoard()
-	} else {
-		state.mode = false
-		state.boardHidden = true
-	}
+	state.mode = false
+	requestCloseBoard()
 }
-const closeLabel = computed(() => (board.value ? (presenter.value ? 'Закрыть доску у всех' : 'Скрыть доску у себя') : 'Закрыть рисование (Esc)'))
+const closeLabel = computed(() => (board.value ? 'Закрыть доску у всех' : 'Закрыть рисование (Esc)'))
 const vars = { '--sp-in': SP.in, '--sp-menu': SP.menu }
 // шапка-капсула живёт в пределах сцены звонка: под шапкой Стола и шапкой беседы, шапка Стола остаётся кликабельной
 const scene = reactive({})
@@ -367,6 +362,10 @@ onMounted(() => {
 	button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; position: relative; touch-action: manipulation; }
 	.k4-ico { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
 }
+// ket4tec (NAS_CLOUD#106 п.2): у модератора на углу «Покинуть» — стрелка меню «Завершить звонок для всех» (k7call.scss,
+// .leave-call-actions--split). Она торчит прямо под крестиком дока, а её меню открывается поверх дока: промах по крестику
+// и повторное касание того же места = «Завершить звонок для всех». Пока док на экране, стрелку прячем; «Покинуть» остаётся.
+body:has(.k4-dockwrap) #call-container .leave-call-actions--split > div.action-item { visibility: hidden !important; pointer-events: none !important; }
 // тема облака в светлом режиме красит все button белым: держим фон дока
 .k4-dockwrap button:not(.k4-sw) { background: transparent !important; }
 // ket4tec (п.9, 36): док над панелью звонка, по центру сцены звонка (не окна) — на одной оси с доской и при открытой боковой панели

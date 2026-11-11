@@ -816,8 +816,10 @@ function eraseAt(p) {
  *
  */
 function cancelCur() {
-	if (cur?.m) {
-		cur.m.tool === 'laser' ? strokeEnd(show(), cur.m) : strokeCancel(show(), cur.m)
+	const s = show()
+	// показ уже забыт (доску закрыли посреди штриха): без проверки — TypeError, и onBeforeUnmount не доходит до leave()
+	if (cur?.m && s) {
+		cur.m.tool === 'laser' ? strokeEnd(s, cur.m) : strokeCancel(s, cur.m)
 	}
 	cur = null
 	erc.value?.classList.remove('on')
@@ -1033,22 +1035,21 @@ function onUp(e) {
 	const s = show()
 	const quick = performance.now() - t0 < 400
 	tap = quick ? performance.now() : 0
+	const P = px(m)
+	const len = P.reduce((a, p, i) => i ? a + Math.hypot(p[0] - P[i - 1][0], p[1] - P[i - 1][1]) : 0, 0)
+	// ket4tec (NAS_CLOUD#106 п.6): мигающая точка — только у указки, один инструмент: тап — точка, ведёшь — шлейф.
+	// Тап — по пройденному пути, а не по числу точек: палец на iPhone дрожит и даёт несколько точек за касание.
 	if (m.tool === 'laser') {
-		strokeEnd(s, m)
-		if (m.pts.length < 3 && quick && !multi && e.type !== 'pointercancel') {
+		if (len < 8 && !multi && e.type !== 'pointercancel') {
+			strokeCancel(s, m)
 			ping(s, c.last)
+		} else {
+			strokeEnd(s, m)
 		}
 		return
 	}
-	if (e.type === 'pointercancel' || multi) {
+	if (e.type === 'pointercancel' || multi || len < 8) {
 		strokeCancel(s, m)
-		return
-	}
-	const P = px(m)
-	const len = P.reduce((a, p, i) => i ? a + Math.hypot(p[0] - P[i - 1][0], p[1] - P[i - 1][1]) : 0, 0)
-	if (len < 8) {
-		strokeCancel(s, m)
-		quick && ping(s, c.last)
 		return
 	}
 	strokeEnd(s, m)

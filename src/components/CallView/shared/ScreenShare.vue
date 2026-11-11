@@ -47,7 +47,7 @@
 		</NcEmptyContent>
 		<!-- ket4tec: k4draw -->
 		<DrawLayer
-			v-if="isBig && k4Presenter && (isLocalScreen || isRemoteScreen) && !(k4state.board && !k4state.boardHidden)"
+			v-if="isBig && k4Presenter && (isLocalScreen || isRemoteScreen) && !k4state.board"
 			:presenter="k4Presenter"
 			:video="screen"
 			:transform="instanceTransform" />

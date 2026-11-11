@@ -64,10 +64,9 @@ export const state = reactive({
 	big: null, // sessionId показывающего, чей показ сейчас крупно
 	keys: {}, // sessionId показывающего -> ключ показа (известен, когда пришёл `h`)
 	undo: 0, // сколько своих пометок можно отменить в крупном показе
-	board: null, // sessionId того, кто открыл доску (одна на звонок)
-	boardHidden: false, // доска скрыта только у себя
+	board: null, // sessionId того, кто открыл доску (одна на звонок; открыта — у всех, локально не сворачивается)
 	bg: null, // фон доски «Показать всем»: { t: 's' снимок | 'm' картинка из беседы, id }
-	ask: false, // «Сохранить рисунок?» перед закрытием своей доски
+	ask: false, // «Сохранить рисунок?» перед закрытием доски
 	gd: true, // гости рисуют (переключает модератор)
 	col: PALETTE.includes(ls('col')) ? ls('col') : '', // свой цвет пометок ('' = цвет автора, назначенный автоматически)
 	sz: WSZ.includes(+ls('sz')) ? +ls('sz') : 1, // своя толщина
@@ -145,6 +144,7 @@ let lastQ = 0
 let lastGc = 0
 const buckets = new Map() // автор -> { t, n } token bucket приёма
 const pings = new Map() // автор -> время активных отметок
+const closedK = new Set() // ключи закрытых досок: `h`, пришедший после `H`, доску не открывает
 
 const hpb = () => !!sig && typeof sig.doSend === 'function'
 const me = () => (sig || k4drawSignaling())?.getSessionId() || ''
@@ -663,6 +663,9 @@ function apply(d, from) {
 		return
 	}
 	if (op === 'h') {
+		if (closedK.has(d.k)) {
+			return // доску уже закрыли: запоздалый `h` её не воскрешает
+		}
 		// ket4tec: k4draw. `ho`: новый владелец доски после ухода открывшего; принимаем, если прежнего владельца уже нет в звонке
 		const ho = d.ho === 1 && isBoard(d.k) && from !== me() && !!callParticipantCollection.get(from) && !callParticipantCollection.get(shows.get(d.k)?.presenter || d.k.slice(0, d.k.lastIndexOf(':')))
 		if (ho && shows.has(d.k) && shows.get(d.k).presenter !== from) {
@@ -680,10 +683,7 @@ function apply(d, from) {
 				}
 				s.bg = okBg(d.bg)
 				state.bg = s.bg
-				if (state.board !== from) {
-					state.board = from
-					state.boardHidden = false
-				}
+				state.board = from
 			}
 			'gd' in d && isMod(from) && (state.gd = !!d.gd)
 		}
@@ -838,8 +838,16 @@ function apply(d, from) {
 				show.marks.forEach((m) => drop(show, m, true))
 			}
 			break
-		case 'H': // доску закрыл тот, кто открыл
-			from === show.presenter && isBoard(show.k) && (d.ho === 1 ? passBoard(from) : boardGone(from))
+		case 'H': // доску закрыли: открывший — у всех (или передал, `ho`); любой, кому можно рисовать, — тоже у всех (правило 11.11)
+			if (!isBoard(show.k)) {
+				break
+			}
+			if (from === show.presenter) {
+				d.ho === 1 ? passBoard(from) : boardGone(from)
+			} else if (state.gd || !isGuestSid(from)) {
+				// владелец закрывает штатно и повторяет `H` всем (кто пропустил первое); остальные — сразу у себя
+				show.k === myK ? closeBoard() : boardGone(show.presenter)
+			}
 			break
 		case 'S': // снимок сохранён: только для счётчика и тоста
 			emit({ t: 'snap', show, by: from, n: Math.min(999, Math.max(1, Number(d.n) || 1)), name: identity(from).name })
@@ -1295,16 +1303,15 @@ export function openBoard(ar, bg = null) {
 	shows.get(myK).bg = bg
 	state.bg = bg
 	state.board = me()
-	state.boardHidden = false
 	// закрыть-и-открыть в одном такте (смена фона) слой не пересоздаёт, join() не зовётся, а boardGone() обнулил big
 	state.big = me()
 	wire(hOf(myK))
 	state.mode = canDraw()
 }
 
-/** Своя доска с рисунком: перед закрытием спросить «Сохранить рисунок?». */
+/** Закрыть доску у всех; с рисунком — сначала «Сохранить рисунок?» (снимок делает тот, кто закрывает). */
 export function requestCloseBoard() {
-	const s = myShow()
+	const s = showOf(state.board)
 	if (s && isBoard(s.k) && s.perm > 0) {
 		state.ask = true
 	} else {
@@ -1313,12 +1320,17 @@ export function requestCloseBoard() {
 }
 
 /**
- * Закрыть свою доску у всех.
+ * Закрыть доску у всех. Своя — штатно; чужая — `H` всем, владелец, получив его, закрывает и повторяет `H`.
  *
  * @param {boolean} pass не закрывать, а передать доску следующему в звонке (я ухожу из звонка)
  */
 export function closeBoard(pass = false) {
 	if (!isBoard(myK)) {
+		const k = state.keys[state.board]
+		if (!pass && state.board && canDraw()) {
+			isBoard(k) && hpb() && wire({ op: 'H', k })
+			boardGone(state.board)
+		}
 		return
 	}
 	wire({ op: 'H', k: myK, ...(pass ? { ho: 1 } : {}) })
@@ -1413,10 +1425,10 @@ function leaveBoard() {
  * @param sid кто открывал
  */
 export function boardGone(sid) {
+	isBoard(state.keys[sid]) && closedK.add(state.keys[sid])
 	dropShow(sid)
 	if (state.board === sid) {
 		state.board = null
-		state.boardHidden = false
 		state.ask = false
 		state.bg = null
 	}
@@ -1469,7 +1481,6 @@ export async function showImage(bg, beforeOpen) {
 	const busy = 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
 	if (s && isBoard(s.k)) {
 		if (s.bg?.t === bg.t && s.bg?.id === bg.id) {
-			state.boardHidden = false
 			return ''
 		}
 		if (s.perm > 0) {
@@ -1518,20 +1529,15 @@ export function canShow(bg) {
 	return ''
 }
 
-/** Кнопка «Доска»: открыть у всех / показать скрытую / закрыть свою / скрыть чужую у себя. */
+/** Кнопка «Доска»: открыть у всех / закрыть у всех. */
 export function toggleBoard() {
 	if (!state.board) {
 		openBoard(boardAr())
-	} else if (state.boardHidden) {
-		state.boardHidden = false
-	} else if (state.board === me()) {
-		requestCloseBoard()
-	} else {
-		state.boardHidden = true
+	} else if (canDraw()) {
 		state.mode = false
+		requestCloseBoard()
 	}
 }
-export const boardLabel = () => (!state.board ? 'Доска' : state.boardHidden ? 'Показать доску' : state.board === me() ? 'Закрыть доску' : 'Скрыть доску')
 /** Кнопку «Доска» показываем: есть HPB, и мне можно рисовать (или доска уже открыта). */
 export const boardBtn = () => hasHpb() && (!!state.board || canDraw())
 
@@ -1546,7 +1552,10 @@ export function watchCall() {
 	let n = 0
 	views++
 	const seen = setInterval(() => {
-		others = callParticipantCollection.callParticipantModels.length
+		const n = callParticipantCollection.callParticipantModels.length
+		// новичок (или вернувшийся Safari с новой сессией) мог пропустить `h` и свои `q`: доску объявляю заново, слой сам спросит пометки
+		n > others && isBoard(myK) && enqueue(hOf(myK, colsOut(shows.get(myK))))
+		others = n
 	}, 2000)
 	const t = setInterval(() => {
 		if (!held) {

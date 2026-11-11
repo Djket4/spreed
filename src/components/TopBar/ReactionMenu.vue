@@ -13,6 +13,7 @@ import { computed, watch } from 'vue'
 import { useStore } from 'vuex'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActionButtonGroup from '@nextcloud/vue/components/NcActionButtonGroup'
+import NcActionCaption from '@nextcloud/vue/components/NcActionCaption'
 import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
 import IconEmoticonOutline from 'vue-material-design-icons/EmoticonOutline.vue'
@@ -173,6 +174,8 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 			<IconEmoticonOutline v-else :size="20" />
 		</template>
 
+		<NcActionCaption v-if="hasReactionSupport" class="k7-react__title" :name="t('spreed', 'Reactions')" />
+
 		<NcActionButtonGroup
 			v-if="hasReactionSupport"
 			class="reaction__group"
@@ -196,6 +199,7 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 			:title="raiseHandButtonLabel"
 			:aria-label="raiseHandButtonLabel"
 			class="raise-hand__button"
+			:class="{ 'raise-hand__button--on': isHandRaised }"
 			closeAfterClick
 			:variant="isHandRaised ? 'secondary' : 'tertiary'"
 			@click="toggleHandRaised">
@@ -210,24 +214,43 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 	</NcActions>
 </template>
 
-<style lang="scss" scoped>
-.reaction {
-	&__group {
-		// Override NcActionButtonGroup styles to fit reactions in a compact way
-		:deep(.nc-button-group-content) {
-			flex-wrap: wrap;
-			justify-content: flex-start;
-			gap: 0 !important;
-			min-width: calc(var(--reactions-in-single-row) * var(--default-clickable-area))
-		}
+<style lang="scss">
+// Шторка реакций v7. Поповер телепортируется в body, поэтому стили не scoped; метка — .reaction__group внутри поповера.
+.v-popper__popper:has(.reaction__group) {
+	.v-popper__inner { border: 0 !important; border-radius: 24px !important; background: var(--k7-bg2, var(--color-main-background)) !important; color: var(--k7-fg, inherit) !important; box-shadow: 0 18px 50px #0007, inset 0 0 0 1px var(--k7-line2, transparent) !important; }
+	.v-popper__arrow-container { display: none; }
+	ul { padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+	.k7-react__title { color: var(--k7-fg2); font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; text-align: center; padding: 4px 0 6px; }
+	.reaction__group .nc-button-group-content { display: grid !important; grid-template-columns: repeat(6, 1fr); gap: 8px !important; min-width: 0 !important; width: min(360px, calc(100vw - 48px)); padding: 4px 0; }
+	.reaction__button { flex: none !important; width: auto !important; }
+	.reaction__button .action-button, .reaction__button button {
+		width: 100% !important; aspect-ratio: 1; min-width: 0; min-height: 0 !important; padding: 0 !important; border-radius: 50% !important; justify-content: center;
+		background: var(--k7-pill) !important; box-shadow: inset 0 0 0 1px var(--k7-line2); font-size: 26px; line-height: 1;
+		transition: transform .12s ease, background .12s ease; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 	}
-
-	&__button {
-		flex: 0 0 calc(100% / var(--reactions-in-single-row)) !important;
+	.reaction__button :is(.action-button__icon, .action-button__icon span) { font-size: 26px; line-height: 1; }
+	.reaction__button :is(.action-button, button):active { transform: scale(.82); }
+	@media (hover: hover) { .reaction__button :is(.action-button, button):hover { transform: scale(1.12); background: color-mix(in srgb, var(--k7-acc) 22%, var(--k7-pill)) !important; } }
+	.raise-hand__button { margin-top: 6px; }
+	.raise-hand__button :is(.action-button, button) {
+		min-height: 52px; border-radius: 999px !important; justify-content: center; font-weight: 700; color: var(--k7-fg) !important;
+		background: var(--k7-pill) !important; box-shadow: inset 0 0 0 1px var(--k7-line2); transition: transform .12s ease;
 	}
+	.raise-hand__button :is(.action-button, button):active { transform: scale(.97); }
+	.raise-hand__button--on :is(.action-button, button) { background: var(--k7-grad) !important; color: #fff !important; box-shadow: 0 6px 18px color-mix(in srgb, var(--k7-acc2) 55%, transparent); }
+	.raise-hand__button--on :is(.action-button__text, .material-design-icon) { color: #fff !important; }
+	.raise-hand__button :is(.action-button__text) { font-weight: 700; }
 }
 
-.raise-hand__button :deep(.action-button) {
-	justify-content: center;
+// телефон: шторка снизу на всю ширину, с ручкой
+@media (max-width: 600px) {
+	.v-popper__popper:has(.reaction__group) {
+		position: fixed !important; inset: auto 0 0 0 !important; transform: none !important; width: 100% !important;
+		.v-popper__wrapper, .v-popper__inner { width: 100%; }
+		.v-popper__inner { border-radius: 28px 28px 0 0 !important; }
+		.v-popper__inner::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--k7-line2); margin: 8px auto 0; }
+		.reaction__group .nc-button-group-content { width: 100%; }
+		.reaction__button .action-button, .reaction__button button { font-size: 30px; }
+	}
 }
 </style>

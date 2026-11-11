@@ -20,7 +20,6 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconChevronUp from 'vue-material-design-icons/ChevronUp.vue'
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue' // ket4tec v7: настройки звонка
-import IconDraw from 'vue-material-design-icons/Draw.vue' // ket4tec: k4draw — пункт «Доска» в меню «Вид»
 import IconFullscreen from 'vue-material-design-icons/Fullscreen.vue'
 import IconFullscreenExit from 'vue-material-design-icons/FullscreenExit.vue'
 import IconPencil from 'vue-material-design-icons/Pencil.vue' // ket4tec: k4draw
@@ -76,14 +75,13 @@ const conversation = computed(() => {
 // ket4tec: k4draw. Одна кнопка «Рисовать» на всех устройствах (решение владельца 10.11, NAS_CLOUD#103 п.48–50):
 // идёт показ экрана — рисуем поверх показа, иначе открывается доска; всё с одного касания
 const k4Share = computed(() => !!k4draw.big && !!k4draw.keys[k4draw.big] && canDraw())
-const k4BoardShown = computed(() => !!k4draw.board && !k4draw.boardHidden)
+const k4BoardShown = computed(() => !!k4draw.board) // доска общая: открыта — значит на экране у всех (правило 11.11)
 const k4Draw = computed(() => !isSidebar && (k4draw.gd, k4Share.value || boardBtn()))
 /** «Рисовать»: включает рисование (и доску, если показа нет); повторное касание выключает рисование, доска остаётся. */
 function k4DrawTap() {
 	if (k4draw.mode) {
 		k4draw.mode = false
-	} else if (k4BoardShown.value || (!k4Share.value && k4draw.board)) {
-		k4draw.boardHidden = false
+	} else if (k4BoardShown.value) {
 		k4draw.mode = canDraw()
 	} else if (k4Share.value) {
 		k4draw.mode = true
@@ -474,19 +472,15 @@ async function disableLiveTranslation() {
 	languageType.value = LanguageType.Original
 }
 
-// ket4tec: k4draw. Меню «Вид»: доска — такой же пункт, как сетка и докладчик; галка там, что на экране сейчас (п.47)
-const viewValue = computed(() => (k4BoardShown.value ? 'board' : callLayout.value))
-const showViewMenu = computed(() => !isSidebar && (showCallLayoutSwitch.value || !!k4draw.board))
+// ket4tec: k4draw. Меню «Вид» — только сетка и докладчик: доска общая и локально не прячется (правило 11.11)
+const viewValue = computed(() => callLayout.value)
+const showViewMenu = computed(() => !isSidebar && showCallLayoutSwitch.value)
 /**
- * Пункт меню «Вид»: сетка или докладчик прячет доску только у себя (у других она остаётся).
+ * Пункт меню «Вид».
  *
  * @param layout вид
  */
 function pickView(layout: CallLayout) {
-	if (k4BoardShown.value) {
-		k4draw.boardHidden = true
-		k4draw.mode = false
-	}
 	setCallLayout(layout)
 }
 
@@ -611,31 +605,16 @@ function setCallLayout(layout: CallLayout) {
 				</template>
 			</NcButton>
 
-			<!-- ket4tec: меню «Вид» — в капсуле на всех устройствах; доска — его пункт (п.47) -->
+			<!-- ket4tec: меню «Вид» — в капсуле на всех устройствах; доски в нём нет (правило 11.11: доска общая) -->
 			<NcActions
 				v-if="showViewMenu"
 				class="k7-view"
-				:class="{ 'k7-on': viewValue === 'board' }"
 				variant="tertiary"
 				aria-label="Вид"
 				title="Вид">
 				<template #icon>
-					<IconDraw v-if="viewValue === 'board'" :size="22" />
-					<component :is="CALL_LAYOUT_COMPONENT[callLayout].icon" v-else :size="22" />
+					<component :is="CALL_LAYOUT_COMPONENT[callLayout].icon" :size="22" />
 				</template>
-				<NcActionButton
-					v-if="k4draw.board"
-					class="k7-view-item"
-					:modelValue="viewValue"
-					value="board"
-					type="radio"
-					closeAfterClick
-					@click="k4draw.boardHidden = false">
-					<template #icon>
-						<IconDraw :size="20" />
-					</template>
-					Доска
-				</NcActionButton>
 				<template v-if="showCallLayoutSwitch">
 					<NcActionButton
 						v-for="layout in callLayouts"

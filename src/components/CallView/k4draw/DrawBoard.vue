@@ -28,13 +28,16 @@
 				<b>{{ p.name }}</b>
 			</div>
 		</div>
+		<!-- ket4tec (правило 11.11): доска общая — открыл любой, у всех; закрыл любой, кому можно рисовать, — у всех -->
 		<button
+			v-if="canDraw()"
 			type="button"
-			class="k4-board__min"
-			title="Свернуть доску у себя — вернуться к камерам"
-			@click="collapse">
-			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" /></svg>
-			<span>К камерам</span>
+			class="k4-board__close"
+			title="Закрыть доску у всех"
+			aria-label="Закрыть доску у всех"
+			@click="close">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+			<span>Закрыть доску</span>
 		</button>
 		<div v-if="state.ask" class="k4-board__ask" @pointerdown.stop>
 			<b>Сохранить рисунок?</b>
@@ -56,13 +59,13 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 import { useStore } from 'vuex'
 import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 import { shoot, snap } from './snapshot.js'
-import { bgUrl, closeBoard, myId, passBoard, state } from './useDrawing.js'
+import { bgUrl, canDraw, closeBoard, myId, passBoard, requestCloseBoard, state } from './useDrawing.js'
 
 const token = useGetToken()
 
@@ -79,11 +82,22 @@ const people = computed(() => {
 	return out.length > 1 ? out : []
 })
 
-/** «К камерам»: доска сворачивается только у меня, у остальных остаётся; вернуть — «Рисовать» или «Вид → Доска». */
-function collapse() {
+/** «Закрыть доску»: у всех; с рисунком — сначала «Сохранить рисунок?». */
+function close() {
 	state.mode = false
-	state.boardHidden = true
+	requestCloseBoard()
 }
+
+// Камеры полосы держим видимыми сами: доска закрывает сетку, и плитка собеседника под ней может быть не смонтирована
+// (свёрнутая полоса, своя камера крупно, страница сетки) — тогда RemoteVideoBlocker глушит его видео и в полосе пусто.
+const held = new Set() // блокировщики, которым мы добавили видимость
+/** Счётчик видимости: +1 каждому участнику звонка, −1 ушедшим (у ушедшего блокировщик уже уничтожен — вызов пустой). */
+function hold() {
+	const now = new Set(callParticipantCollection.callParticipantModels.map((m) => m.k4VideoBlocker).filter(Boolean))
+	now.forEach((b) => held.has(b) || (b.increaseVisibleCounter(), held.add(b)))
+	held.forEach((b) => now.has(b) || (b.decreaseVisibleCounter(), held.delete(b)))
+}
+watch(() => callParticipantCollection.callParticipantModels.length, hold, { immediate: true })
 
 /**
  * «Сохранить рисунок?»
@@ -107,8 +121,13 @@ const timer = setInterval(() => {
 		miss = 0
 		passBoard(sid)
 	}
+	hold() // запасной путь: блокировщик плитки CallView заводит в своём наблюдателе, может позже нашего
 }, 3000)
-onBeforeUnmount(() => clearInterval(timer))
+onBeforeUnmount(() => {
+	clearInterval(timer)
+	held.forEach((b) => b.decreaseVisibleCounter())
+	held.clear()
+})
 </script>
 
 <style lang="scss">
@@ -187,7 +206,7 @@ onBeforeUnmount(() => clearInterval(timer))
 	font-size: 28px;
 	font-weight: 700;
 }
-.k4-board__min {
+.k4-board__close {
 	position: absolute;
 	z-index: 7;
 	top: calc(20px + var(--k4-st));
@@ -214,8 +233,8 @@ onBeforeUnmount(() => clearInterval(timer))
 	.k4-board.k4-board--strip { --k4-sr: 0px; --k4-st: 84px; }
 	.k4-strip { left: 12px; bottom: auto; width: auto; height: 76px; flex-direction: row; }
 	.k4-strip__t { height: 100%; }
-	.k4-board__min span { display: none; }
-	.k4-board__min { padding: 0 9px; }
+	.k4-board__close span { display: none; }
+	.k4-board__close { padding: 0 9px; }
 }
 
 // тёмная тема: доска тёмная

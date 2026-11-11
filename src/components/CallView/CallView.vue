@@ -6,7 +6,7 @@
 <template>
 	<div
 		id="call-container"
-		:class="{ 'k7-alone': showEmptyCallView && !isSidebar && !(k4.board && !k4.boardHidden) }"
+		:class="{ 'k7-alone': showEmptyCallView && !isSidebar && !k4.board }"
 		@mousemove="debounceHandleMovement"
 		@keydown="debounceHandleMovement"
 		@mouseleave="hideOverlay">
@@ -137,7 +137,7 @@
 					@clickLocalVideo="handleClickLocalVideo" />
 
 				<!-- ket4tec: k4draw. Доска на месте главной плитки -->
-				<DrawBoard v-if="!isSidebar && k4.board && !k4.boardHidden" />
+				<DrawBoard v-if="!isSidebar && k4.board" />
 
 				<ReactionToaster
 					v-if="supportedReactions?.length"

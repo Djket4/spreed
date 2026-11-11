@@ -325,19 +325,21 @@ const vK4vis = vVisible
 <style lang="scss">
 .k4stk-wrap {
 	position: fixed;
-	inset: 0 0 var(--k4s-bar, 0px);
+	inset: 0;
 	z-index: 10000;
-	background: transparent;
+	background: rgba(10, 8, 9, .55);
+	animation: k4stk-fade .2s both;
 }
 .k4stk-sheet {
 	--k4s-pill: var(--k7-pill, #ffffff1f);
 	position: fixed;
+	// ПК/планшет: крупная модалка по центру
 	left: 50%;
-	bottom: calc(var(--k4s-bar, 96px) + 8px);
-	transform: translateX(-50%);
+	top: 50%;
+	transform: translate(-50%, -50%);
 	box-sizing: border-box;
-	width: min(420px, calc(100vw - 16px));
-	max-height: min(560px, calc(100dvh - var(--k4s-bar, 96px) - 24px));
+	width: min(720px, calc(100vw - 32px));
+	height: min(85vh, 85dvh);
 	display: flex;
 	flex-direction: column;
 	padding: 0 12px 10px;
@@ -508,7 +510,7 @@ const vK4vis = vVisible
 	}
 	.k4stk-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
 		gap: 4px;
 	}
 	.k4stk-cell {
@@ -532,7 +534,7 @@ const vK4vis = vVisible
 		margin: 8px -12px -10px;
 		flex-wrap: wrap;
 		gap: 6px;
-		padding: 8px 12px calc(10px + var(--k4s-safe, env(safe-area-inset-bottom, 0px)));
+		padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
 		background: var(--k7-bg2, #242021);
 		> .k4stk-cap { flex: 1 0 100%; padding-inline-start: 4px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; }
 		box-shadow: 0 -1px 0 var(--k7-line, #ffffff12);
@@ -540,19 +542,21 @@ const vK4vis = vVisible
 	}
 }
 @keyframes k4stk-sheet-in {
-	from { opacity: 0; transform: translateX(-50%) translateY(14px) scale(.97); }
-	to { opacity: 1; transform: translateX(-50%); }
+	from { opacity: 0; transform: translate(-50%, -48%) scale(.97); }
+	to { opacity: 1; transform: translate(-50%, -50%); }
 }
+@keyframes k4stk-fade { from { opacity: 0; } }
+// телефон: полноэкранный лист; сверху/снизу — safe-area
 @media (max-width: 600px) {
 	.k4stk-sheet {
 		left: 0;
-		right: 0;
-		bottom: var(--k4s-bar, 0px);
-		width: auto;
-		max-height: calc(100dvh - var(--k4s-bar, 0px) - 64px);
+		top: 0;
+		width: 100%;
+		height: 100dvh;
+		max-height: none;
 		transform: none;
-		border-radius: 28px 28px 0 0;
-		height: min(70dvh, 640px);
+		border-radius: 0;
+		padding-top: env(safe-area-inset-top, 0px);
 		animation-name: k4stk-sheet-in-m;
 	}
 }
