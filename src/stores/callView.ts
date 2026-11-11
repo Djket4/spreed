@@ -152,7 +152,7 @@ export const useCallViewStore = defineStore('callView', {
 			}
 			this.presentationStarted = true
 
-			this.setCallViewMode({ token, isGrid: false, isStripeOpen: false, clearLast: false })
+			this.setCallViewMode({ token, isGrid: false, isStripeOpen: true, clearLast: false }) // ket4tec (NAS_CLOUD#108 п.1): полоса не закрывается — своя камера видна
 		},
 
 		/**

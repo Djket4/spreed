@@ -16,6 +16,10 @@ import { callParticipantsAudioPlayer, mediaDevicesManager } from '../utils/webrt
 
 /** Permissions bitmask of each active subscriber */
 const subscribersPermissions = []
+/** ket4tec: сколько подписчиков «пассивные» (кнопки нижней панели в звонке): им нужны списки устройств, но не свой getUserMedia. */
+let passiveSubscribers = 0
+/** Свои потоки превью (второй getUserMedia, второй запрос камеры на iPhone) нужны, только если есть непассивный подписчик (шторка устройств). */
+const streamsWanted = () => subscribersPermissions.length > passiveSubscribers
 const videoElement = ref(null)
 
 /**
@@ -152,10 +156,12 @@ export const useDevices = createSharedComposable(function() {
 	 * Streams are started based on the combined (OR) permissions of all subscribers
 	 *
 	 * @param {number} permissions - requested permission (for call - attendee check, for device preview - MAX_DEFAULT)
+	 * @param passive
 	 * @public
 	 */
-	function subscribeToDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT) {
+	function subscribeToDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT, passive = false) {
 		subscribersPermissions.push(permissions)
+		passive && passiveSubscribers++
 		if (!initialized) {
 			initializeDevices()
 		} else {
@@ -170,9 +176,10 @@ export const useDevices = createSharedComposable(function() {
 	 * If reduced permissions no longer allow a stream, that stream should be stopped
 	 *
 	 * @param {number} permissions bitmask, must match the value passed to subscribeToDevices
+	 * @param passive
 	 * @public
 	 */
-	function unsubscribeFromDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT) {
+	function unsubscribeFromDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT, passive = false) {
 		const index = subscribersPermissions.indexOf(permissions)
 		if (index === -1) {
 			console.error('Attempt to unsubscribe from devices with unknown permissions')
@@ -180,8 +187,14 @@ export const useDevices = createSharedComposable(function() {
 		}
 
 		subscribersPermissions.splice(index, 1)
+		passive && passiveSubscribers--
 		if (subscribersPermissions.length === 0) {
 			stopDevices()
+			return
+		}
+		if (!streamsWanted()) {
+			stopAudioStream()
+			stopVideoStream()
 			return
 		}
 
@@ -443,7 +456,7 @@ export const useDevices = createSharedComposable(function() {
 			return
 		}
 
-		if (!hasAudioPermission()) {
+		if (!hasAudioPermission() || !streamsWanted()) {
 			return
 		}
 
@@ -546,7 +559,7 @@ export const useDevices = createSharedComposable(function() {
 			return
 		}
 
-		if (!hasVideoPermission()) {
+		if (!hasVideoPermission() || !streamsWanted()) {
 			return
 		}
 

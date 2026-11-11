@@ -332,11 +332,11 @@ export default {
 	},
 
 	mounted() {
-		this.subscribeToDevices(this.conversation.permissions)
+		this.subscribeToDevices(this.conversation.permissions, true) // ket4tec: пассивно, без своего getUserMedia (иначе второй запрос камеры при входе)
 	},
 
 	beforeUnmount() {
-		this.unsubscribeFromDevices(this.conversation.permissions)
+		this.unsubscribeFromDevices(this.conversation.permissions, true)
 	},
 
 	methods: {

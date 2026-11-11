@@ -110,11 +110,12 @@ function lost() {
 	if (mac.st === 'on') {
 		mac.st = 'lost'
 		clearInterval(watch)
+		consoleCmd('stopShare') // панель закрыта, приложение вышло или окно связи закрыто: показ экрана останавливаем
 		stopConsole()
 		const s = show()
 		cur && s && strokeEnd(s, cur)
 		cur = null
-		showWarning('Связь с приложением «Рисовать на экране» потеряна. Переподключить — кнопкой в панели рисования.')
+		showWarning('Связь с приложением «Рисовать на экране» потеряна, показ экрана остановлен. Переподключить — кнопкой в панели рисования.')
 	}
 }
 
@@ -263,7 +264,12 @@ export function openMac() {
 	const launch = mac.st === 'launch'
 	launched = mac.st === 'start'
 	pop?.close() // всегда свежее окно: окно, где Safari показал ошибку, больше не загрузится
-	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', 'popup,width=380,height=170')
+	// Safari: если вкладка в полноэкранном режиме, окно всё равно откроется на весь экран (размер игнорируется), поэтому ещё и left/top
+	const W = 380
+	const H = 170
+	const left = Math.max(0, Math.round((window.screen.availLeft || 0) + window.screen.availWidth - W - 24))
+	const top = Math.max(0, Math.round((window.screen.availTop || 0) + 80))
+	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', `popup=yes,width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=no`)
 	if (launch || !pop) {
 		// запуск: Safari спросит, открыть ли приложение; после запуска — ещё раз нажать (панель приложения подскажет)
 		mac.st = launch && pop ? 'start' : 'idle' // !pop: окно заблокировано

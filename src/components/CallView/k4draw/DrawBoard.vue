@@ -25,7 +25,12 @@
 					muted
 					playsinline
 					:class="{ mirror: p.me }" />
-				<span v-else class="k4-strip__ini">{{ p.name.slice(0, 1).toUpperCase() }}</span>
+				<K4Face
+					v-else
+					:stream="p.audio"
+					:on="p.on"
+					:seed="p.seed"
+					:token="token" />
 				<b>{{ p.name }}</b>
 			</div>
 		</div>
@@ -62,8 +67,10 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
+import K4Face from '../shared/k4face/K4Face.vue'
 import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
+import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 import { shoot, snap } from './snapshot.js'
 import { bgUrl, canDraw, closeBoard, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
@@ -71,14 +78,20 @@ import { bgUrl, canDraw, closeBoard, myId, passBoard, requestCloseBoard, showOf,
 const token = useGetToken()
 
 const store = useStore()
+const actor = useActorStore()
 /** Участники звонка для полосы камер: я первым, дальше остальные. */
 const people = computed(() => {
 	const me = localMediaModel.attributes
-	const out = [{ id: 'me', me: true, name: 'Вы', stream: me.videoEnabled && me.localStream, speaking: me.speaking }]
+	// ket4tec: без камеры — то же облако синапсов, что в сетке (ключ тип/id как в VideoVue/LocalVideo)
+	const mySeed = actor.actorId ? actor.actorType + '/' + actor.actorId : 'me'
+	const out = [{ id: 'me', me: true, name: 'Вы', stream: me.videoEnabled && me.localStream, audio: me.localStream, on: !!me.audioEnabled, seed: mySeed, speaking: me.speaking }]
 	callParticipantCollection.callParticipantModels.forEach((m) => {
 		const a = m.attributes
-		const name = a.name || store.getters.findParticipant(token.value, { sessionId: a.nextcloudSessionId })?.displayName || 'Участник'
-		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, speaking: a.speaking })
+		const pp = store.getters.findParticipant(token.value, { sessionId: a.nextcloudSessionId })
+		const name = a.name || pp?.displayName || 'Участник'
+		const id = a.actorId || pp?.actorId
+		const type = a.actorType || pp?.actorType
+		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, audio: a.stream, on: a.audioAvailable !== false, seed: id && type ? type + '/' + id : name, speaking: a.speaking })
 	})
 	return out.length > 1 ? out : []
 })
@@ -254,15 +267,6 @@ onBeforeUnmount(() => {
 		&::before { content: ''; position: absolute; inset: 0 auto 0 0; width: .3em; background: linear-gradient(135deg, var(--k7-acc2, #5b2a86), var(--k7-acc, #a86bff)); }
 	}
 	&--talk { box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
-}
-.k4-strip__ini {
-	position: absolute;
-	inset: 0;
-	display: grid;
-	place-items: center;
-	color: #f3eee9;
-	font-size: 28px;
-	font-weight: 700;
 }
 .k4-board__close {
 	position: absolute;

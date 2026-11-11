@@ -924,7 +924,7 @@ export default {
 				this.callViewStore.setCallViewMode({
 					token: this.token,
 					isGrid: false,
-					isStripeOpen: false,
+					isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 					clearLast: false,
 				})
 			} else {
@@ -963,7 +963,7 @@ export default {
 			this.callViewStore.setCallViewMode({
 				token: this.token,
 				isGrid: false,
-				isStripeOpen: false,
+				isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 				clearLast: false,
 			})
 		},
@@ -978,7 +978,7 @@ export default {
 			this.callViewStore.setCallViewMode({
 				token: this.token,
 				isGrid: false,
-				isStripeOpen: false,
+				isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 				clearLast: false,
 			})
 		},

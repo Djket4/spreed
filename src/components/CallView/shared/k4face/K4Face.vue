@@ -2,7 +2,7 @@
   ket4tec: плитка без камеры — облако синапсов, слушает голос участника (движок — face.js)
 -->
 <template>
-	<div class="k4face" :style="{ '--c': color, '--g': glow + 'px' }" aria-hidden="true">
+	<div class="k4face" :style="{ '--c': color }" aria-hidden="true">
 		<canvas ref="cv" />
 	</div>
 </template>
@@ -21,7 +21,7 @@ export default {
 	},
 
 	data() {
-		return { f: markRaw(face(this.seed)), glow: 4, color: 'transparent' }
+		return { f: markRaw(face(this.seed)), color: 'transparent' }
 	},
 
 	computed: {
@@ -82,10 +82,9 @@ export default {
 		size() {
 			const cv = this.$refs.cv
 			const r = this.$el.getBoundingClientRect()
-			const k = window.devicePixelRatio || 1
+			const k = Math.min(window.devicePixelRatio || 1, 1.5) // ponytail: потолок 1.5 — на iPhone DPR 3 холст в 4 раза дороже, глазу не видно
 			cv.width = Math.max(1, Math.round(r.width * k))
 			cv.height = Math.max(1, Math.round(r.height * k))
-			this.k = k
 		},
 
 		loop() {
@@ -98,12 +97,13 @@ export default {
 					return
 				}
 				const dt = Math.min(0.1, (t - this.last) / 1000)
-				if (dt >= 1 / 32) { // ponytail: ~30 кадров в секунду на плитку хватает глазу
+				if (dt >= 1 / 25) { // ~24 кадра в секунду на плитку: камеры не должны дёргаться из-за облаков
 					this.last = t
 					const cv = this.$refs.cv
-					const cs = draw(cv.getContext('2d'), cv.width, cv.height, this.f, this.src, this.on, dt)
-					this.glow = Math.round(cs / this.k * 1.3)
-					this.color = this.f.color
+					draw(cv.getContext('2d'), cv.width, cv.height, this.f, this.src, this.on, dt)
+					if (this.color !== this.f.color) {
+						this.color = this.f.color
+					}
 				}
 				this.raf = requestAnimationFrame(tick)
 			}
@@ -124,6 +124,5 @@ export default {
 	width: 100%;
 	height: 100%;
 	display: block;
-	filter: drop-shadow(0 0 var(--g) var(--c));
 }
 </style>
