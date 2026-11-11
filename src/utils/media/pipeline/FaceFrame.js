@@ -235,6 +235,9 @@ export default class FaceFrame extends TrackSinkSource {
 		if (this._hwZoomed) {
 			this._hwZoomed = false
 			await this._setHardwareZoom(input, 1)
+			if (token !== this._applyToken) {
+				return // пока ждали, кадрирование выключили или сменили камеру
+			}
 		}
 		this.path = 'digital'
 		// пока канвас не дал кадров, на выходе исходная камера: пустого превью не бывает

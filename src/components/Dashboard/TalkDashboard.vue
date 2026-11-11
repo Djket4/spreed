@@ -150,6 +150,7 @@ const filteredConversations = computed(() => {
 
 const meetingOpen = ref(false)
 const meetingBusy = ref(false)
+let meetingGen = 0 // ket4tec (NAS_CLOUD#110 Б6): номер открытия формы — ответ прошлого открытия её не заполняет
 const meetingToken = ref('')
 const meetingLink = ref('')
 const meetingPassword = ref('')
@@ -193,6 +194,7 @@ function copyMyCall(url: string) {
  * Opens the "new meeting" window with an empty form.
  */
 async function openMeeting() {
+	meetingGen++
 	conversationName.value = ''
 	meetingToken.value = ''
 	meetingOpen.value = true
@@ -238,6 +240,7 @@ async function startMeeting() {
 		return
 	}
 	meetingBusy.value = true
+	const gen = meetingGen
 	let resolveText!: (text: string) => void
 	let rejectText!: (error: unknown) => void
 	const textPromise = new Promise<string>((resolve, reject) => {
@@ -267,6 +270,10 @@ async function startMeeting() {
 			objectId: convertToUnix(new Date()).toString(),
 			password,
 		})
+		if (gen !== meetingGen) {
+			rejectText(new Error('stale'))
+			return
+		}
 		meetingToken.value = conversation.token
 		meetingLink.value = generateFullConversationLink(conversation.token)
 		meetingPassword.value = password ?? ''

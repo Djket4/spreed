@@ -403,6 +403,11 @@ class ChatController extends AEnvironmentAwareOCSController {
 		$parent = $parentMessage = null;
 		$creationDateTime = $this->timeFactory->getDateTime('now', new \DateTimeZone('UTC'));
 
+		if ($replyTo !== 0 && $this->participant->cannotSeeChat()) {
+			// ket4tec #55 (NAS_CLOUD#110 А1): ответ вернул бы в `parent` текст и автора скрытого сообщения
+			return new DataResponse(['error' => 'reply-to'], Http::STATUS_FORBIDDEN);
+		}
+
 		if ($replyTo !== 0) {
 			try {
 				$resolvedReplyTo = $this->resolveReplyTo($replyTo, $replyToToken, $actorType, $actorId, $creationDateTime);

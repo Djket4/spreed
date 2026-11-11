@@ -720,6 +720,10 @@ html.k7f .talk-dashboard__actions .button-vue--secondary {
 // NAS_CLOUD#109 п.4: буква на сплошном акценте, как аватарка в шапке Стола (была блёклая)
 html.k7f .avatardiv .avatardiv__initials-wrapper { background: var(--k7u-acc) !important; }
 html.k7f .avatardiv .avatardiv__initials { color: #fff !important; opacity: 1 !important; }
+// NAS_CLOUD#110 Б5: аватарка с меню контакта — та же буква, но под NcAvatar (его картинка сервера скрыта, меню и статус остаются)
+html.k7f .avatar-wrapper[data-k4ini] .avatardiv { background: transparent !important; }
+html.k7f .avatar-wrapper[data-k4ini] .avatardiv img { opacity: 0; }
+html.k7f .avatar-wrapper[data-k4ini]::before { content: attr(data-k4ini); position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: var(--k7u-acc); color: #fff; font-size: calc(var(--avatar-size) * .45); line-height: 1; pointer-events: none; }
 // «Настройка приложения «Конференции» не завершена» — у нас сигналинг встроенный (без High-performance backend), для пользователя это не ошибка
 .internal-warning { display: none !important; }
 // вкладки правой панели: подпись не обрезаем

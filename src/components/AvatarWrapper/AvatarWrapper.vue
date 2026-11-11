@@ -4,7 +4,11 @@
 -->
 
 <template>
-	<div class="avatar-wrapper" :class="avatarClass" :style="avatarStyle">
+	<div
+		class="avatar-wrapper"
+		:class="avatarClass"
+		:style="avatarStyle"
+		:data-k4ini="k4ini">
 		<NcAvatar
 			v-if="isSpecialAvatar"
 			:key="(isDarkTheme ? 'dark-' : 'light-') + '_' + id"
@@ -28,9 +32,9 @@
 		</NcAvatar>
 		<NcAvatar
 			v-else
-			:key="id + (isDarkTheme ? '-dark' : '-light') + k4plain"
+			:key="id + (isDarkTheme ? '-dark' : '-light') + (k4plain && disableMenu)"
 			:user="id"
-			:isNoUser="k4plain"
+			:isNoUser="k4plain && disableMenu"
 			:displayName="name"
 			:menuContainer="menuContainer"
 			:disableTooltip="disableTooltip"
@@ -67,7 +71,8 @@ import { ATTENDEE, AVATAR } from '../../constants.ts'
 import { getUserProxyAvatarOcsUrl } from '../../services/avatarService.ts'
 
 // ket4tec (NAS_CLOUD#109 п.4): у кого нет своей картинки — буква на акценте (k7ui.scss), а не блёклая картинка сервера.
-// ponytail: у таких аватарок нет меню профиля (isNoUser); нужно меню — рисовать букву своим слотом
+// Где нужно меню контакта (NAS_CLOUD#110 Б5), NcAvatar остаётся «пользователем», букву рисуем поверх его картинки (k4ini + k7ui.scss).
+// ponytail: один запрос на пользователя за жизнь страницы (тот же адрес, что грузит NcAvatar, — из кэша браузера); сменили картинку — видно после перезагрузки, как и у NcAvatar
 const k4own = reactive({}) // userId -> своя картинка есть (true, пока не узнали)
 /**
  * @param {string} id пользователь
@@ -188,6 +193,16 @@ export default {
 	computed: {
 		k4plain() {
 			return !this.isSpecialAvatar && k4plainAvatar(this.id)
+		},
+
+		// буквы как у NcAvatar: первая и первая после последнего пробела
+		k4ini() {
+			if (!this.k4plain || this.disableMenu) {
+				return null
+			}
+			const f = (this.name.match(/[\p{L}\p{N}\s]/gu) || []).join('').trim()
+			const i = f.lastIndexOf(' ')
+			return f ? (String.fromCodePoint(f.codePointAt(0)) + (i > 0 ? String.fromCodePoint(f.codePointAt(i + 1)) : '')).toLocaleUpperCase() : '?'
 		},
 
 		// Determines which icon is displayed

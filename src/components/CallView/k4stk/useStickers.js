@@ -4,7 +4,7 @@
  */
 import { reactive } from 'vue'
 import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
-import { canDraw } from '../k4draw/useDrawing.js'
+import { canDraw, state as draw, isGuestSid } from '../k4draw/useDrawing.js'
 import { find, LONG } from './catalog.js'
 
 const TTLS = [3, 5, 10, 0] // владелец 11.11: 3, 5, 10 с и «до отмены»
@@ -154,7 +154,7 @@ function onMsg(d) {
 		}
 	} else if (d.op === 'clr') {
 		dropPeer(from)
-	} else if (d.op === 'set' && find(d.k, d.id) && Number.isFinite(d.ttl) && d.ttl >= 0) {
+	} else if (d.op === 'set' && find(d.k, d.id) && Number.isFinite(d.ttl) && d.ttl >= 0 && (draw.gd || !isGuestSid(from))) { // гостям запрещено — их гифку не показываем
 		const ttl = Math.min(d.ttl, MAX_TTL)
 		dropPeer(from)
 		state.peers[from] = { k: d.k, id: d.id, until: ttl ? Date.now() + ttl : 0 }
@@ -163,9 +163,10 @@ function onMsg(d) {
 }
 
 /**
+ * @param {object} _ коллекция (EmitterMixin первым аргументом передаёт источник)
  * @param {object} model участник звонка
  */
-function onLeave(model) {
+function onLeave(_, model) {
 	const sid = model?.attributes?.peerId
 	sid && dropPeer(sid)
 	buckets.delete(sid)

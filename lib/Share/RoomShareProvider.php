@@ -1131,11 +1131,13 @@ class RoomShareProvider implements IShareProvider, IPartialShareProvider, IShare
 		}
 
 		$participant = $this->getCurrentParticipant($room);
-		if ($room->getType() !== Room::TYPE_PUBLIC && $participant === null) {
+		if ($participant === null) {
+			// ket4tec (NAS_CLOUD#110 А4): и в публичной комнате файл по ссылке — только участнику (в исходной версии — любому со ссылкой)
+			// ponytail: участник через федерацию (другой сервер) файл по ссылке не откроет; федерация у нас выключена — включим, проверять federated-участника
 			throw new ShareNotFound();
 		}
 
-		if ($participant !== null && $participant->cannotSeeChat()) {
+		if ($participant->cannotSeeChat()) {
 			// ket4tec #55: checked on every resolution, so it also covers chat revoked after the share was opened
 			throw new ShareNotFound();
 		}

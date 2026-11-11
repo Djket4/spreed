@@ -46,7 +46,7 @@ const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
 function ser(s, m) {
 	const id = identity(m.by)
 	const o = { t: 'mark', key: m.key, tool: m.tool, name: id.name, mine: m.by === myId() || m.by === s.presenter, done: m.done, ttl: m.ttl || 0 }
-	o.color = PALETTE[s.cols[m.by] ?? hash(String(id.key || 'Гость')) % PALETTE.length]
+	o.color = m.col || PALETTE[s.cols[m.by] ?? hash(String(id.key || 'Гость')) % PALETTE.length] // выбранный автором цвет важнее авто (NAS_CLOUD#110 В8)
 	if (m.tool === 'text') {
 		Object.assign(o, { x: m.x, y: m.y, size: m.size, text: m.text })
 	} else {

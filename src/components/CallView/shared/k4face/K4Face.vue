@@ -47,6 +47,7 @@ export default {
 		this.src = null
 		this.vis = true
 		this.last = 0
+		this.n = 0
 		join(this.seed)
 		this.attach()
 		this.ro = new ResizeObserver(() => this.size())
@@ -74,6 +75,7 @@ export default {
 			this.src?.stop()
 			try {
 				this.src = probe(this.stream)
+				this.aid = this.stream?.getAudioTracks?.()[0]?.id
 			} catch (e) {
 				this.src = null // нет WebAudio — облако без звука
 			}
@@ -99,6 +101,10 @@ export default {
 				const dt = Math.min(0.1, (t - this.last) / 1000)
 				if (dt >= 1 / 25) { // ~24 кадра в секунду на плитку: камеры не должны дёргаться из-за облаков
 					this.last = t
+					// NAS_CLOUD#110 Б4: микрофон сменили внутри того же потока — watch не сработает, сверяем дорожку раз в ~2 с
+					if (!(this.n = (this.n + 1) % 50) && this.stream?.getAudioTracks?.()[0]?.id !== this.aid) {
+						this.attach()
+					}
 					const cv = this.$refs.cv
 					draw(cv.getContext('2d'), cv.width, cv.height, this.f, this.src, this.on, dt)
 					if (this.color !== this.f.color) {

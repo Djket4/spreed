@@ -482,9 +482,10 @@ export const useDevices = createSharedComposable(function() {
 		mediaDevicesManager.getUserMedia({ audio: true })
 			.then((stream) => {
 				audioStreamError.value = null
-				if (!initialized) {
+				if (!initialized || !streamsWanted()) {
 					// The promise was fulfilled once the stream is no
 					// longer needed, so just discard it.
+					// ket4tec: и когда шторку устройств закрыли, а в звонке остались только пассивные подписчики
 					stream.getTracks().forEach((track) => track.stop())
 				} else {
 					setAudioStream(stream)
@@ -589,9 +590,10 @@ export const useDevices = createSharedComposable(function() {
 						cameraNotice.value = null
 					}, 4000)
 				}
-				if (!initialized) {
+				if (!initialized || !streamsWanted()) {
 					// The promise was fulfilled once the stream is no
 					// longer needed, so just discard it.
+					// ket4tec: и когда шторку устройств закрыли, а в звонке остались только пассивные подписчики
 					stream.getTracks().forEach((track) => track.stop())
 				} else {
 					setVideoStream(stream)

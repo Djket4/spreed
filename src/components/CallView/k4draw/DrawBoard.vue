@@ -173,8 +173,8 @@ watch(() => callParticipantCollection.callParticipantModels.length, hold, { imme
  * @param {boolean} yes сохранить снимок перед закрытием
  */
 async function answer(yes) {
-	if (yes) {
-		await shoot(token.value)
+	if (yes && !(await shoot(token.value))) {
+		return // не сохранилось (ошибку показал shoot): доска и вопрос остаются, рисунок цел
 	}
 	state.ask = false
 	closeBoard()

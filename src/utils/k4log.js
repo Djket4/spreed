@@ -8,6 +8,7 @@ import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
 
 const MAX_BUF = 500
+const MAX_POST = 300 // сервер принимает до 300 событий за запрос (K4DrawController::log)
 const FLUSH_MS = 4000
 const tab = Math.random().toString(36).slice(2, 8)
 
@@ -43,10 +44,11 @@ function flush() {
 	if (!token || !buf.length) {
 		return
 	}
-	const ev = buf
-	buf = []
-	axios.post(url(), { s: tab, ev }).catch(() => {
-		buf = ev.concat(buf).slice(-MAX_BUF)
+	const ev = buf.splice(0, MAX_POST)
+	const room = token
+	axios.post(url(), { s: tab, ev }).catch((e) => {
+		// вернуть в очередь — только при обрыве сети и только в ту же комнату (в событиях имена участников)
+		!e.response && room === token && (buf = ev.concat(buf).slice(-MAX_BUF))
 	})
 }
 
@@ -57,17 +59,18 @@ function flushBeacon() {
 	if (!token || !buf.length) {
 		return
 	}
-	const ev = buf
-	buf = []
-	try {
-		fetch(url(), {
-			method: 'POST',
-			keepalive: true,
-			headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
-			body: JSON.stringify({ s: tab, ev }),
-		}).catch(() => {})
-	} catch (e) {
-		// ignore
+	// весь буфер пачками по MAX_POST, свежие первыми (у keepalive-запросов общий предел ~64 КБ: если не влезет, пропадут старые)
+	for (let ev; (ev = buf.splice(-MAX_POST)).length;) {
+		try {
+			fetch(url(), {
+				method: 'POST',
+				keepalive: true,
+				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
+				body: JSON.stringify({ s: tab, ev }),
+			}).catch(() => {})
+		} catch (e) {
+			// ignore
+		}
 	}
 }
 
@@ -179,7 +182,10 @@ export function stopK4Log() {
 		return
 	}
 	push({ t: Date.now(), k: 'stop' })
-	flush()
+	while (buf.length) {
+		flush() // весь буфер пачками по MAX_POST, `stop` — последним
+	}
+	buf = [] // остаток не уходит в журнал следующей комнаты
 	listeners.forEach(([t, n, f, c]) => t.removeEventListener(n, f, c))
 	clearInterval(timer)
 	timer = null
