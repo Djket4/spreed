@@ -213,6 +213,8 @@ import { useWakeLock } from './useWakeLock.ts'
 
 const serverVersion = loadState('core', 'config', {}).version ?? '29.0.0.0'
 
+const isTouchDevice = () => window.matchMedia?.('(hover: none)').matches // ket4tec (NAS_CLOUD#153)
+
 export default {
 	name: 'CallView',
 
@@ -656,7 +658,7 @@ export default {
 		hasLocalVideo(newValue) {
 			if (this.selectedVideoPeerId === 'local') {
 				if (!newValue) {
-					this.callViewStore.setSelectedVideoPeerId(null)
+					this.unpin()
 				}
 			}
 		},
@@ -689,6 +691,7 @@ export default {
 		callParticipantCollection.on('remove', this._lowerHandWhenParticipantLeaves)
 
 		subscribe('switch-screen-to-id', this._switchScreenToId)
+		subscribe('k4-unpin-video', this.unpin) // ket4tec (NAS_CLOUD#153)
 
 		if (OC.debug) {
 			setUpSpeakerSimulation(this.token)
@@ -732,6 +735,7 @@ export default {
 		callParticipantCollection.off('remove', this._lowerHandWhenParticipantLeaves)
 
 		unsubscribe('switch-screen-to-id', this._switchScreenToId)
+		unsubscribe('k4-unpin-video', this.unpin)
 
 		if (this.showVideoOverlayTimer !== null) {
 			clearTimeout(this.showVideoOverlayTimer)
@@ -962,10 +966,15 @@ export default {
 			this.sharedDatas[this.screens[0]].screenVisible = true
 		},
 
-		// ket4tec (NAS_CLOUD#153): клик по закреплённой плитке (не по её кнопкам) снимает закрепление
+		// ket4tec (NAS_CLOUD#153): единственный путь открепления (кнопка, клик, камера выключена)
+		unpin() {
+			this.callViewStore.unpinVideo(this.token, this.screens.length > 0)
+		},
+
+		// клик по закреплённой плитке (не по её кнопкам) снимает закрепление; на тач-устройствах только кнопка «Открепить»
 		handleClickPinned(event) {
-			if (!event?.target?.closest?.('button')) {
-				this.callViewStore.unpinVideo(this.token)
+			if (!isTouchDevice() && !event?.target?.closest?.('button')) {
+				this.unpin()
 			}
 		},
 
@@ -974,7 +983,9 @@ export default {
 				return
 			}
 			if (peerId === this.selectedVideoPeerId) {
-				this.callViewStore.unpinVideo(this.token)
+				if (!isTouchDevice()) {
+					this.unpin()
+				}
 				return
 			}
 			this.callViewStore.setSelectedVideoPeerId(peerId)
@@ -992,7 +1003,9 @@ export default {
 				return
 			}
 			if (this.selectedVideoPeerId === 'local') {
-				this.callViewStore.unpinVideo(this.token) // ket4tec (NAS_CLOUD#153)
+				if (!isTouchDevice()) {
+					this.unpin() // ket4tec (NAS_CLOUD#153)
+				}
 				return
 			}
 			this.callViewStore.setSelectedVideoPeerId('local')

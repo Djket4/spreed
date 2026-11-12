@@ -91,12 +91,18 @@ export const useCallViewStore = defineStore('callView', {
 		},
 
 		/**
-		 * ket4tec (NAS_CLOUD#153): снять закрепление и вернуть вид, который был до него.
+		 * ket4tec (NAS_CLOUD#153): снять закрепление; без идущего показа экрана — закончить показ
+		 * и вернуть вид, который был до закрепления. С экраном остаёмся в виде докладчика.
 		 *
-		 * @param token current conversation token.
+		 * @param token current conversation token;
+		 * @param hasScreens идёт показ экрана (свой или чужой).
 		 */
-		unpinVideo(token: string) {
+		unpinVideo(token: string, hasScreens = false) {
 			this.selectedVideoPeerId = null
+			if (hasScreens) {
+				return
+			}
+			this.stopPresentation(token)
 			if (this.gridBeforePin) {
 				this.setCallViewMode({ token, isGrid: true, clearLast: false })
 			}
@@ -112,9 +118,8 @@ export const useCallViewStore = defineStore('callView', {
 			// ket4tec: каждый звонок начинается с сетки (все крупными плитками, своя тоже), и вдвоём тоже.
 			// Сохранённое «докладчик» не берём: его пишет и автоматика показа экрана. Переключатель вида остаётся.
 			const isGrid = true
-			// Speaker view shows a single speaker unless multi-speaker was picked before
-			const isMultiSpeaker = BrowserStorage.getItem(`callprefs-${conversation.token}-multispeaker`) === 'true'
-			this.setCallViewMode({ token: conversation.token, isGrid, isMultiSpeaker, isStripeOpen: true })
+			// ket4tec (NAS_CLOUD#153): режима «несколько говорящих» нет, сохранённую настройку не читаем
+			this.setCallViewMode({ token: conversation.token, isGrid, isMultiSpeaker: false, isStripeOpen: true })
 		},
 
 		/**

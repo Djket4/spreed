@@ -120,19 +120,15 @@ describe('callViewStore', () => {
 			expect(callViewStore.isMultiSpeaker).toBeTruthy()
 		})
 
-		it('restores multi-speaker state from BrowserStorage when joining call', () => {
-			// Arrange
+		it('ignores saved multi-speaker state when joining call (NAS_CLOUD#153)', () => {
 			const conversation = { token: TOKEN, type: CONVERSATION.TYPE.GROUP }
 			vuexStore.commit('addConversation', conversation)
-			// ket4tec: сохранённая сетка больше не читается, первым читается multi-speaker
-			BrowserStorage.getItem.mockReturnValueOnce('true')
+			BrowserStorage.getItem.mockReturnValue('true')
 
-			// Act
 			callViewStore.handleJoinCall(conversation)
 
-			// Assert
-			expect(BrowserStorage.getItem).toHaveBeenCalledWith(BROWSER_STORAGE_KEY_MULTISPEAKER)
-			expect(callViewStore.isMultiSpeaker).toBeTruthy()
+			expect(callViewStore.isMultiSpeaker).toBe(false)
+			BrowserStorage.getItem.mockReset()
 		})
 
 		it('start presentation switches off grid view and restores when it ends', () => {
@@ -270,6 +266,26 @@ describe('callViewStore', () => {
 			callViewStore.unpinVideo(TOKEN)
 			expect(callViewStore.selectedVideoPeerId).toBe(null)
 			expect(callViewStore.isGrid).toBe(false)
+		})
+	})
+
+	describe('unpin with screens and presentation (NAS_CLOUD#153)', () => {
+		it('unpin during screen share keeps speaker view', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.setSelectedVideoPeerId('peer')
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+			callViewStore.unpinVideo(TOKEN, true)
+			expect(callViewStore.selectedVideoPeerId).toBe(null)
+			expect(callViewStore.isGrid).toBe(false)
+		})
+
+		it('unpin resets presentationStarted', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			callViewStore.setSelectedVideoPeerId('peer')
+			expect(callViewStore.presentationStarted).toBe(true)
+			callViewStore.unpinVideo(TOKEN, false)
+			expect(callViewStore.presentationStarted).toBe(false)
 		})
 	})
 
