@@ -1,0 +1,30 @@
+# Автосборка форка KET4TEC (Djket4/spreed#139, п.1). Раннер: свой, S22 (WSL), метки self-hosted,s22,talk.
+# Унаследованные workflow отключены через `gh workflow disable` (файлы не удалены).
+name: ket4tec-ci
+on:
+  push:
+    branches: ['ket4tec/**']
+  pull_request:
+    branches: ['ket4tec/**']
+concurrency:
+  group: ket4tec-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: [self-hosted, s22, talk]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: bash -n
+        run: git ls-files -z 'ket4tec-*.sh' | xargs -0 -n1 bash -n
+      - name: php -l lib
+        run: git ls-files -z 'lib/*.php' | xargs -0 -n1 php -l >/dev/null
+      - name: npm ci
+        run: /usr/bin/time -f 'npm ci %es, пик %M КБ' npm ci --no-audit --no-fund
+      - name: npm run build (как в ket4tec-deploy.sh)
+        run: /usr/bin/time -f 'build %es, пик %M КБ' npm run build
+      - name: Тесты (vitest)
+        run: /usr/bin/time -f 'vitest %es, пик %M КБ' npx vitest run
