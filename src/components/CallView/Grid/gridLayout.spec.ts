@@ -5,32 +5,20 @@
 
 import { describe, expect, test } from 'vitest'
 import {
-	computeGridDimensions,
 	computeRowDistribution,
+	computeSquareLayout,
 	computeTilePlacements,
 	getHalfColumnCount,
-	getHalfColumnMaxWidth,
 	getHalfColumnMinWidth,
 	getJustifyContent,
 	getMinTileHeight,
 	getMinTileWidth,
 	GRID_GAP,
+	MIN_TILE_SIDE,
 	STRIPE_HEIGHT,
 	TARGET_ASPECT_RATIO,
 	TILE_COLUMN_SPAN,
 } from './gridLayout.ts'
-
-/**
- * Number of usable tile slots for a given layout, mirroring the production
- * helper (the full grid reserves one slot for the local video).
- *
- * @param columns - number of columns
- * @param rows - number of rows
- * @param isStripe - whether the grid is shown as a stripe
- */
-function slotsFor(columns: number, rows: number, isStripe: boolean): number {
-	return isStripe ? columns * rows : columns * rows - 1
-}
 
 describe('gridLayout', () => {
 	describe('tile size helpers', () => {
@@ -50,144 +38,37 @@ describe('gridLayout', () => {
 		})
 	})
 
-	describe('computeGridDimensions', () => {
-		// Common full-grid layout on a 1920x1080 viewport
-		const fullGrid = {
-			gridWidth: 1920,
-			gridHeight: 1080,
-			targetAspectRatio: 1.5,
-			minWidth: 320,
-			minHeight: 240,
-			noLocalVideoReserve: false,
-		}
-
-		test('keeps a tile for the local video when there is nothing else to lay out', () => {
-			// The local video takes a tile of its own, which needs a column of
-			// the grid: an implicit, content sized column would collapse to
-			// nothing as soon as the camera is off
-			expect(computeGridDimensions({ ...fullGrid, videoCount: 0 }))
-				.toEqual({ columns: 1, rows: 1 })
+	describe('computeSquareLayout', () => {
+		test('lays out square tiles that fit the area', () => {
+			const { columns, rows, side } = computeSquareLayout({ gridWidth: 1920, gridHeight: 1080, total: 4 })
+			expect(columns * rows).toBeGreaterThanOrEqual(4)
+			expect(side).toBeLessThanOrEqual(1080)
+			expect(columns * side + (columns - 1) * GRID_GAP).toBeLessThanOrEqual(1920)
+			expect(rows * side + (rows - 1) * GRID_GAP).toBeLessThanOrEqual(1080)
 		})
 
-		test('returns no columns or rows when there is no tile at all', () => {
-			expect(computeGridDimensions({ ...fullGrid, noLocalVideoReserve: true, videoCount: 0 }))
-				.toEqual({ columns: 0, rows: 0 })
+		test('keeps one tile for an empty call', () => {
+			expect(computeSquareLayout({ gridWidth: 1920, gridHeight: 1080, total: 0 }).columns).toBe(1)
 		})
 
-		test('keeps at least one column and one row when the grid has not been measured yet', () => {
-			// Columns and rows are floored at 1 while tiles are present, so the
-			// slot count derived from them never goes negative on a transient
-			// zero-size measurement (hidden or mid-transition element).
-			for (const zeroSize of [{ gridWidth: 0 }, { gridHeight: 0 }, { gridWidth: 0, gridHeight: 0 }]) {
-				const { columns, rows } = computeGridDimensions({ ...fullGrid, ...zeroSize, videoCount: 4 })
-				expect(columns).toBeGreaterThanOrEqual(1)
-				expect(rows).toBeGreaterThanOrEqual(1)
-			}
+		test('uses the biggest side when the tiles overflow into pages', () => {
+			const { columns, rows, side } = computeSquareLayout({ gridWidth: 1920, gridHeight: 1080, total: 100 })
+			expect(side).toBeGreaterThanOrEqual(MIN_TILE_SIDE)
+			expect(columns * rows).toBeLessThan(100)
 		})
 
-		test('fills the maximum grid when tiles populate every slot', () => {
-			// 1920x1080 fits 6 columns and 4 rows (23 slots once the local video is reserved)
-			expect(computeGridDimensions({ ...fullGrid, videoCount: 23 }))
-				.toEqual({ columns: 6, rows: 4 })
+		test('leaves room for the local tile and one participant in a tiny area (NAS_CLOUD#159)', () => {
+			// 300x250 fits a single minimal square, but 2 tiles (local + 1 participant) must be shown
+			const { columns, rows, side } = computeSquareLayout({ gridWidth: 300, gridHeight: 250, total: 2 })
+			expect(columns * rows - 1).toBeGreaterThanOrEqual(1)
+			expect(side).toBeGreaterThan(0)
+			expect(columns * side + (columns - 1) * GRID_GAP).toBeLessThanOrEqual(300)
+			expect(rows * side + (rows - 1) * GRID_GAP).toBeLessThanOrEqual(250)
 		})
 
-		test('does not grow beyond the maximum grid when tiles overflow', () => {
-			// Overflowing tiles are paginated, the layout stays at its maximum
-			expect(computeGridDimensions({ ...fullGrid, videoCount: 100 }))
-				.toEqual({ columns: 6, rows: 4 })
-		})
-
-		test('shrinks the grid to fit a small number of tiles', () => {
-			// Two tiles plus the reserved local-video slot fit best in a 2x2 grid
-			expect(computeGridDimensions({ ...fullGrid, videoCount: 2 }))
-				.toEqual({ columns: 2, rows: 2 })
-		})
-
-		test('keeps a single row for the stripe and never reserves a local slot', () => {
-			const result = computeGridDimensions({
-				gridWidth: 1000,
-				gridHeight: 150,
-				videoCount: 10,
-				targetAspectRatio: 1,
-				minWidth: 200,
-				minHeight: 150,
-				noLocalVideoReserve: true,
-			})
-			expect(result).toEqual({ columns: 5, rows: 1 })
-		})
-
-		test('shrinks a single row grid down to the tiles it holds', () => {
-			// A single row cannot be shrunk any further, so the columns are the
-			// only thing left to remove: a lone participant and the local video
-			// take 2 columns of a stripe which could hold 7 of them
-			expect(computeGridDimensions({
-				gridWidth: 1440,
-				gridHeight: 142,
-				videoCount: 1,
-				targetAspectRatio: TARGET_ASPECT_RATIO,
-				minWidth: 200,
-				minHeight: 134,
-				noLocalVideoReserve: false,
-			})).toEqual({ columns: 2, rows: 1 })
-		})
-
-		test('applies hysteresis on the current column count to avoid flickering', () => {
-			// 976px fits exactly 3 columns of 320px with two 8px gaps. Whether a
-			// fourth column is offered depends on the current column count.
-			const base = {
-				gridWidth: 976,
-				gridHeight: 240,
-				videoCount: 100,
-				targetAspectRatio: 1.5,
-				minWidth: 320,
-				minHeight: 240,
-				noLocalVideoReserve: false,
-			}
-			expect(computeGridDimensions({ ...base, currentColumns: 3, currentRows: 1 }))
-				.toEqual({ columns: 3, rows: 1 })
-			expect(computeGridDimensions({ ...base, currentColumns: 4, currentRows: 1 }))
-				.toEqual({ columns: 2, rows: 1 })
-		})
-
-		test('fits every tile that the grid can hold and never grows past its maximum', () => {
-			const widths = [400, 800, 1280, 1920, 2560]
-			const heights = [300, 600, 1080, 1440]
-			const counts = [1, 2, 3, 5, 8, 12, 20]
-
-			for (const gridWidth of widths) {
-				for (const gridHeight of heights) {
-					for (const isStripe of [false, true]) {
-						const layout = {
-							gridWidth,
-							gridHeight,
-							targetAspectRatio: TARGET_ASPECT_RATIO,
-							minWidth: getMinTileWidth(isStripe),
-							minHeight: getMinTileHeight(isStripe),
-							noLocalVideoReserve: isStripe,
-						}
-						// The maximum grid is what we get when there is no overflow to shrink away
-						const max = computeGridDimensions({ ...layout, videoCount: 10000 })
-						const maxSlots = slotsFor(max.columns, max.rows, isStripe)
-
-						for (const videoCount of counts) {
-							const { columns, rows } = computeGridDimensions({ ...layout, videoCount })
-
-							expect(columns).toBeGreaterThanOrEqual(1)
-							expect(rows).toBeGreaterThanOrEqual(1)
-							// Never larger than the maximum grid for this viewport
-							expect(columns).toBeLessThanOrEqual(max.columns)
-							expect(rows).toBeLessThanOrEqual(max.rows)
-							// Every tile that the grid can hold is given a slot
-							if (videoCount <= maxSlots) {
-								expect(slotsFor(columns, rows, isStripe)).toBeGreaterThanOrEqual(videoCount)
-							} else {
-								// Overflowing tiles are paginated on the maximum grid
-								expect({ columns, rows }).toEqual(max)
-							}
-						}
-					}
-				}
-			}
+		test('does not force a second cell when only the local tile is laid out', () => {
+			const { columns, rows } = computeSquareLayout({ gridWidth: 300, gridHeight: 250, total: 1 })
+			expect(columns * rows).toBe(1)
 		})
 	})
 
@@ -243,17 +124,6 @@ describe('gridLayout', () => {
 
 		test('never returns a negative half column width', () => {
 			expect(getHalfColumnMinWidth(0)).toBe(0)
-		})
-
-		test('caps a half column so that a tile spanning two keeps the target aspect ratio', () => {
-			// A 142px tall tile targeting 1.5 is at most 213px wide
-			expect(getHalfColumnMaxWidth(142, 1.5, 0) * 2 + GRID_GAP).toBe(142 * 1.5)
-		})
-
-		test('never caps a half column below its minimum width', () => {
-			const minWidth = getHalfColumnMinWidth(320)
-			// A tile too short to be 320px wide at the target aspect ratio
-			expect(getHalfColumnMaxWidth(100, 1.5, minWidth)).toBe(minWidth)
 		})
 	})
 

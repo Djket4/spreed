@@ -498,6 +498,7 @@ function setCallLayout(layout: CallLayout) {
 		// Picking the grid says nothing about how speaker view should look, so
 		// the preference is kept for when it is picked again
 		clearLast: false,
+		manual: true,
 	})
 	callViewStore.setSelectedVideoPeerId(null)
 }

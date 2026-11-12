@@ -37,6 +37,8 @@ type CallViewModePayload = {
 	isMultiSpeaker?: boolean | null
 	isStripeOpen?: boolean | null
 	clearLast?: boolean
+	/** ручной выбор вида человеком: возврат вида после показа экрана отменяется */
+	manual?: boolean
 }
 
 export const useCallViewStore = defineStore('callView', {
@@ -134,8 +136,13 @@ export const useCallViewStore = defineStore('callView', {
 		 * @param data.isMultiSpeaker true to promote several speakers at once in speaker view;
 		 * @param data.isStripeOpen true for visible striped mode, false for speaker view;
 		 * @param data.clearLast set false to not reset last temporary remembered state;
+		 * @param data.manual true when the person picked the view by hand;
 		 */
-		setCallViewMode({ token, isGrid = null, isMultiSpeaker = null, isStripeOpen = null, clearLast = true }: CallViewModePayload) {
+		setCallViewMode({ token, isGrid = null, isMultiSpeaker = null, isStripeOpen = null, clearLast = true, manual = false }: CallViewModePayload) {
+			// ket4tec (NAS_CLOUD#159): человек сам выбрал вид во время показа - по окончании не возвращаем старый
+			if (manual) {
+				this.gridBeforePresentation = null
+			}
 			if (clearLast) {
 				this.lastIsGrid = null
 				this.lastIsStripeOpen = null

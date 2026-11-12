@@ -654,9 +654,10 @@ export default {
 			}
 		},
 
-		showLocalScreen(showLocalScreen) {
+		// ket4tec (NAS_CLOUD#159): начало показа - по наличию потока экрана, а не по плитке (при закреплённой камере showLocalScreen false)
+		hasLocalScreen(hasLocalScreen) {
 			// Everytime the local screen is shared, switch to promoted view
-			if (showLocalScreen) {
+			if (hasLocalScreen) {
 				this.callViewStore.startPresentation(this.token)
 			} else if (this.callParticipantModelsWithScreen.length === 0 && !this.selectedVideoPeerId) {
 				// last screen share stopped and no selected video, restoring previous state

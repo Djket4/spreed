@@ -152,6 +152,23 @@ describe('callViewStore', () => {
 			})
 		})
 
+		it('manual view pick during presentation is not overridden when it ends (NAS_CLOUD#159)', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			// person picks speaker view by hand
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false, manual: true })
+			callViewStore.stopPresentation(TOKEN)
+			expect(callViewStore.isGrid).toBe(false)
+		})
+
+		it('automatic switch during presentation still restores grid when it ends', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+			callViewStore.stopPresentation(TOKEN)
+			expect(callViewStore.isGrid).toBe(true)
+		})
+
 		it('switching modes during presentation does not resets it after it ends', () => {
 			callViewStore.setCallViewMode({
 				token: TOKEN,
