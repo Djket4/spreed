@@ -497,7 +497,6 @@ function setCallLayout(layout: CallLayout) {
 		isGrid: layout === CALL_LAYOUT.GRID,
 		// Picking the grid says nothing about how speaker view should look, so
 		// the preference is kept for when it is picked again
-		isMultiSpeaker: layout === CALL_LAYOUT.GRID ? null : false, // ket4tec (NAS_CLOUD#153): меню из двух пунктов, несколько говорящих не предлагается
 		clearLast: false,
 	})
 	callViewStore.setSelectedVideoPeerId(null)

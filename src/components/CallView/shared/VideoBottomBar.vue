@@ -315,8 +315,7 @@ export default {
 		},
 
 		handleStopFollowing() {
-			this.callViewStore.stopPresentation(this.token)
-			this.callViewStore.unpinVideo(this.token) // ket4tec (NAS_CLOUD#153)
+			emit('k4-unpin-video') // ket4tec (NAS_CLOUD#153): единый путь в CallView
 		},
 	},
 }
