@@ -210,21 +210,7 @@
 					<!-- Guest display name setting-->
 					<SetGuestUsername v-if="isGuest" compact />
 
-					<!-- Moderator options before starting a call-->
-					<NcCheckboxRadioSwitch
-						v-if="showStartRecordingOption"
-						v-model="isRecordingFromStart"
-						type="switch"
-						class="checkbox">
-						{{ t('spreed', 'Start recording immediately with the call') }}
-					</NcCheckboxRadioSwitch>
-					<NcCheckboxRadioSwitch
-						v-else-if="hintRecordingOption"
-						:description="t('spreed', 'Recording backend is not installed')"
-						disabled
-						class="checkbox">
-						{{ t('spreed', 'Start recording immediately with the call') }}
-					</NcCheckboxRadioSwitch>
+					<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
 					<!-- Notify call option-->
 					<NcCheckboxRadioSwitch
 						v-if="false && showNotifyCallOption /* ket4tec v7: без «Уведомить всех» */"
