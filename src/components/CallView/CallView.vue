@@ -1109,6 +1109,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+@use '../../assets/variables.scss' as *;
+
 .k4-ask-unmute { // ket4tec (NAS_CLOUD#154)
 	position: fixed;
 	top: 70px;
@@ -1134,8 +1136,6 @@ export default {
 		cursor: pointer;
 	}
 }
-
-@use '../../assets/variables.scss' as *;
 
 #call-container {
 	width: 100%;
