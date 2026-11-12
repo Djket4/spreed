@@ -4,6 +4,7 @@
  */
 
 import { FaceDetector } from '@mediapipe/tasks-vision'
+import { showWarning } from '@nextcloud/dialogs'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
 import TrackSinkSource from './TrackSinkSource.js'
@@ -244,7 +245,11 @@ export default class FaceFrame extends TrackSinkSource {
 		if (this._digital?.input !== input) {
 			this._setOutput(input)
 		}
-		this._startDigital(input)
+		try {
+			this._startDigital(input)
+		} catch (e) {
+			this._fallback({ input, stopped: false }, 'запуск конвейера: ' + e.message)
+		}
 	}
 
 	async _setHardwareZoom(track, zoom) {
@@ -285,6 +290,9 @@ export default class FaceFrame extends TrackSinkSource {
 		video.srcObject = new MediaStream([input])
 		document.body.appendChild(video)
 		const canvas = document.createElement('canvas')
+		// Safari (предположение): captureStream отложенного от DOM канваса может отдавать чёрные кадры
+		canvas.style.cssText = video.style.cssText
+		document.body.appendChild(canvas)
 		const ctx = canvas.getContext('2d')
 		const t0 = performance.now()
 		const d = {
@@ -386,7 +394,9 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		if (!d.published) {
 			if (now - d.startedAt > NO_FRAMES_MS) {
-				this._fallback(d, `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
+				this._fallback(d, d.frames >= MIN_FRAMES
+					? `выходной трек не отдаёт кадры за ${NO_FRAMES_MS} мс`
+					: `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
 			}
 			return
 		}
@@ -405,7 +415,6 @@ export default class FaceFrame extends TrackSinkSource {
 		if (d.stopped) {
 			return
 		}
-		console.warn('FaceFrame: кадр по лицу отключён —', reason)
 		const input = d.input
 		this._stopDigital()
 		setFaceFrameLevel('off')
@@ -414,6 +423,8 @@ export default class FaceFrame extends TrackSinkSource {
 		if (window.__k4ffStats) {
 			window.__k4ffStats.path = 'fallback'
 		}
+		console.error('FaceFrame: кадр по лицу отключён —', reason)
+		showWarning('Кадр по лицу недоступен в этом браузере, камера работает без него')
 	}
 
 	_detectBoxes(d, source, W, H, now) {
@@ -511,19 +522,49 @@ export default class FaceFrame extends TrackSinkSource {
 				if (!d.output) {
 					throw new Error('captureStream без видеотрека')
 				}
+				// проба: <video> на выходном треке, должен отдать кадр до подмены камеры
+				const probe = document.createElement('video')
+				probe.muted = true
+				probe.playsInline = true
+				probe.setAttribute('playsinline', '')
+				probe.style.cssText = d.video.style.cssText
+				probe.srcObject = new MediaStream([d.output])
+				document.body.appendChild(probe)
+				d.probe = probe
+				probe.play?.()?.catch?.(() => {})
 			} catch (e) {
 				this._fallback(d, 'canvas.captureStream недоступен: ' + e.message)
 				return
 			}
 		}
 		// пока канвас не дал 3 кадров, на выходе остаётся исходный трек
-		if (!d.published && d.frames >= MIN_FRAMES) {
+		if (!d.published && d.frames >= MIN_FRAMES && this._probeOk(d)) {
 			d.published = true
 			this._setOutput(d.output)
 		}
 
 		// детекция после отрисовки: кадр от неё не зависит
 		this._maybeDetect(d, now, lvl)
+	}
+
+	// выходной трек реально отдаёт кадры, и они не чёрные при нечёрном источнике
+	_probeOk(d) {
+		const p = d.probe
+		if (!p || !p.videoWidth || p.readyState < 2) {
+			return false
+		}
+		try {
+			const px = (el) => {
+				const c = document.createElement('canvas')
+				c.width = c.height = 8
+				const x = c.getContext('2d')
+				x.drawImage(el, 0, 0, 8, 8)
+				return x.getImageData(0, 0, 8, 8).data.some((v, i) => i % 4 !== 3 && v > 0)
+			}
+			return px(p) || !px(d.video)
+		} catch (e) {
+			return true
+		}
 	}
 
 	_stopDigital() {
@@ -536,6 +577,11 @@ export default class FaceFrame extends TrackSinkSource {
 		clearInterval(d.watch)
 		d.video.srcObject = null
 		d.video.remove()
+		d.canvas.remove()
+		if (d.probe) {
+			d.probe.srcObject = null
+			d.probe.remove()
+		}
 		if (d.output) {
 			this._disableRemoveTrackWhenEnded(d.output)
 			// останавливаем уже после того, как получатели переключились на новый
