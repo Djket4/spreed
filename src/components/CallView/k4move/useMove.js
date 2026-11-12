@@ -179,7 +179,7 @@ export function headerLinkToOpen(e, origin, here, appPath) {
 	} catch (err) {
 		return null
 	}
-	if (u.origin !== origin || u.pathname.startsWith(appPath) || (u.pathname + u.search) === here) {
+	if (u.origin === origin && (u.pathname.startsWith(appPath) || (u.pathname + u.search) === here)) { // чужой сайт (фото) — тоже в новую вкладку
 		return null
 	}
 	return u.href
@@ -191,11 +191,10 @@ export function headerLinkToOpen(e, origin, here, appPath) {
  * @return {Function} отписка
  */
 export function watchHeaderLinks() {
-	const header = document.getElementById('header')
-	if (!header) {
-		return () => {}
-	}
 	const onClick = (e) => {
+		if (!e.target?.closest?.('#header, .k7-hdr')) { // .k7-hdr — наша шапка, #header — штатная
+			return
+		}
 		const here = location.pathname + location.search
 		const href = headerLinkToOpen(e, location.origin, here, generateUrl('/apps/spreed'))
 		if (href) {
@@ -205,6 +204,6 @@ export function watchHeaderLinks() {
 			showInfo('Звонок остался в этой вкладке')
 		}
 	}
-	header.addEventListener('click', onClick, true)
-	return () => header.removeEventListener('click', onClick, true)
+	document.addEventListener('click', onClick, true)
+	return () => document.removeEventListener('click', onClick, true)
 }

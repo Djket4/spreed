@@ -45,12 +45,12 @@ describe('ссылки шапки', () => {
 	const app = '/index.php/apps/spreed'
 	it('другое приложение — в новую вкладку', () => {
 		expect(headerLinkToOpen(mk('/index.php/apps/files/'), O, here, app)).toBe(O + '/index.php/apps/files/')
+		expect(headerLinkToOpen(mk('https://ext.test/'), O, here, app)).toBe('https://ext.test/')
 	})
-	it('не трогает приложение звонков, якорь, ctrl, среднюю кнопку, чужой сайт', () => {
+	it('не трогает приложение звонков, якорь, ctrl, среднюю кнопку', () => {
 		expect(headerLinkToOpen(mk('/index.php/apps/spreed/'), O, here, app)).toBeNull()
 		expect(headerLinkToOpen(mk('#x'), O, here, app)).toBeNull()
 		expect(headerLinkToOpen(mk('/index.php/apps/files/', { ctrlKey: true }), O, here, app)).toBeNull()
 		expect(headerLinkToOpen(mk('/index.php/apps/files/', { button: 1 }), O, here, app)).toBeNull()
-		expect(headerLinkToOpen(mk('https://ext.test/'), O, here, app)).toBeNull()
 	})
 })
