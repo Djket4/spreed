@@ -105,6 +105,7 @@ function createModel(index: number) {
 		on: () => {},
 		off: () => {},
 		forceMute: () => {},
+		askUnmute: () => {},
 		setVideoBlocked: () => {},
 		setSimulcastVideoQuality: () => {},
 		getWebRtc: () => ({ connection: { getSendVideoIfAvailable: () => {} } }),

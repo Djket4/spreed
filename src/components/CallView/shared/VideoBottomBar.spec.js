@@ -40,7 +40,7 @@ describe('VideoBottomBar.vue', () => {
 	let conversationProps
 	let actorStore
 
-	const audioIndicatorAriaLabels = [t('spreed', 'Mute'), t('spreed', 'Muted')]
+	const audioIndicatorAriaLabels = [t('spreed', 'Mute'), t('spreed', 'Muted'), t('spreed', 'Mute microphone'), t('spreed', 'Ask to unmute microphone')]
 	const videoIndicatorAriaLabels = [t('spreed', 'Disable video'), t('spreed', 'Enable video')]
 	const screenSharingAriaLabel = t('spreed', 'Show screen')
 	const followingButtonAriaLabel = t('spreed', 'Stop following')
@@ -73,6 +73,7 @@ describe('VideoBottomBar.vue', () => {
 					peerId: PEER_ID,
 				},
 				forceMute: vi.fn(),
+				askUnmute: vi.fn(),
 			},
 			participantName: PARTICIPANT_NAME,
 			sharedData: {
@@ -260,11 +261,13 @@ describe('VideoBottomBar.vue', () => {
 					expect(audioIndicator.attributes('disabled')).toBeUndefined()
 				})
 
-				test('button is disabled when audio is unavailable', () => {
+				test('click asks to unmute when audio is unavailable', async () => {
 					componentProps.model.attributes.audioAvailable = false
 					const wrapper = mountVideoBottomBar(componentProps)
 					const audioIndicator = findNcButton(wrapper, audioIndicatorAriaLabels)
-					expect(audioIndicator.attributes('disabled')).toBeDefined()
+					expect(audioIndicator.attributes('disabled')).toBeUndefined()
+					await audioIndicator.trigger('click')
+					expect(wrapper.vm.$props.model.askUnmute).toHaveBeenCalled()
 				})
 
 				test('method is called after click', async () => {

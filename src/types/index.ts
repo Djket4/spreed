@@ -277,6 +277,7 @@ export interface CallParticipantModel extends SuperEmittedMixin<CallParticipantM
 
 	destroy(): void
 	forceMute(): void
+	askUnmute(): void
 	setPeer(peer: unknown | null): void
 	setScreenPeer(screenPeer: unknown | null): void
 	setActor(actor: string | null): void

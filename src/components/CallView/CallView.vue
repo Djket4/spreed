@@ -169,6 +169,17 @@
 
 			<BottomBar v-if="!isRecording" :isSidebar="isSidebar" />
 		</template>
+
+		<!-- ket4tec (NAS_CLOUD#154): просьба организатора включить микрофон -->
+		<div
+			v-if="showAskUnmute"
+			class="k4-ask-unmute"
+			role="alert">
+			<span>{{ t('spreed', 'The organizer asks you to unmute your microphone') }}</span>
+			<button type="button" @click="acceptAskUnmute">
+				{{ t('spreed', 'Unmute') }}
+			</button>
+		</div>
 	</div>
 </template>
 
@@ -324,6 +335,10 @@ export default {
 	},
 
 	computed: {
+		showAskUnmute() { // ket4tec (NAS_CLOUD#154)
+			return !this.isSidebar && this.localCallParticipantModel.attributes.askUnmute && !this.localMediaModel.attributes.audioEnabled
+		},
+
 		promotedParticipantModel() {
 			// Ensure at least one participant is always promoted to show in autopilot
 			return this.forcePromotedModel
@@ -741,6 +756,10 @@ export default {
 
 	methods: {
 		t,
+		acceptAskUnmute() { // ket4tec (NAS_CLOUD#154)
+			localMediaModel.enableAudio()
+			localCallParticipantModel.set('askUnmute', false)
+		},
 		// Placeholder data for devMode and screenshotMode
 		placeholderImage,
 		placeholderName,
@@ -1090,6 +1109,32 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.k4-ask-unmute { // ket4tec (NAS_CLOUD#154)
+	position: fixed;
+	top: 70px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10000;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	max-width: calc(100vw - 24px);
+	padding: 10px 14px;
+	border-radius: 12px;
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	box-shadow: 0 2px 16px rgba(0, 0, 0, .5);
+	button {
+		padding: 8px 16px;
+		border: 0;
+		border-radius: 8px;
+		background: var(--color-primary-element);
+		color: var(--color-primary-element-text);
+		font-weight: bold;
+		cursor: pointer;
+	}
+}
+
 @use '../../assets/variables.scss' as *;
 
 #call-container {

@@ -192,6 +192,18 @@ CallParticipantModel.prototype = {
 		this._handleMute({ id: this.get('peer').id })
 	},
 
+	// ket4tec (NAS_CLOUD#154): просьба включить микрофон, тот же канал «control», что у forceMute
+	askUnmute() {
+		if (!this.get('peer')) {
+			return
+		}
+
+		this._webRtc.sendToAll('control', {
+			action: 'askUnmute',
+			peerId: this.get('peer').id,
+		})
+	},
+
 	_handleUnmute(data) {
 		if (!this.get('peer') || this.get('peer').id !== data.id) {
 			return

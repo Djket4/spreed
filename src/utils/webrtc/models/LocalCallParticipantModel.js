@@ -24,9 +24,11 @@ export function LocalCallParticipantModel() {
 		name: null,
 		peerNeeded: false,
 		connectionState: null,
+		askUnmute: false, // ket4tec (NAS_CLOUD#154)
 	})
 
 	this._handleForcedMuteBound = this._handleForcedMute.bind(this)
+	this._handleAskUnmuteBound = () => this.set('askUnmute', true)
 	this._handleExtendedIceConnectionStateChangeBound = this._handleExtendedIceConnectionStateChange.bind(this)
 }
 
@@ -49,6 +51,7 @@ LocalCallParticipantModel.prototype = {
 	setWebRtc(webRtc) {
 		if (this._webRtc) {
 			this._webRtc.off('forcedMute', this._handleForcedMuteBound)
+			this._webRtc.off('askUnmute', this._handleAskUnmuteBound)
 			this._unwatchDisplayNameChange()
 		}
 
@@ -58,6 +61,7 @@ LocalCallParticipantModel.prototype = {
 		this.set('name', actorStore.displayName)
 
 		this._webRtc.on('forcedMute', this._handleForcedMuteBound)
+		this._webRtc.on('askUnmute', this._handleAskUnmuteBound)
 		this._unwatchDisplayNameChange = watch(
 			() => actorStore.displayName,
 			this.setName.bind(this),
