@@ -1168,6 +1168,7 @@ OC.L10N.register(
     "Mute audio" : "Выключить микрофон",
     "Unmute" : "Включить",
     "The organizer asks you to unmute your microphone" : "Организатор просит включить микрофон",
+    "Not now" : "Не сейчас",
     "Ask to unmute microphone" : "Попросить включить микрофон",
     "Mute microphone" : "Выключить микрофон",
     "Mute audio (M)" : "Выключить микрофон (M)",

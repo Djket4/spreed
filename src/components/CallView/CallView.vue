@@ -177,7 +177,7 @@
 				{{ t('spreed', 'Unmute') }}
 			</button>
 			<button type="button" @click="declineAskUnmute">
-				{{ t('spreed', 'Dismiss') }}
+				{{ t('spreed', 'Not now') }}
 			</button>
 		</div>
 	</div>
