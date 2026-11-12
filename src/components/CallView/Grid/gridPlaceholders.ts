@@ -64,6 +64,7 @@ export function placeholderModel(i: number) {
 			},
 		},
 		forceMute: () => {},
+		askUnmute: () => {},
 		on: () => {},
 		off: () => {},
 		getWebRtc: () => {
