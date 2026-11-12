@@ -67,7 +67,6 @@ export const state = reactive({
 	undo: 0, // сколько своих пометок можно отменить в крупном показе
 	board: null, // sessionId того, кто открыл доску (одна на звонок; открыта — у всех, локально не сворачивается)
 	bg: null, // фон доски «Показать всем»: { t: 's' снимок | 'm' картинка из беседы, id }
-	ask: false, // «Сохранить рисунок?» перед закрытием доски
 	gd: true, // гости рисуют (переключает модератор)
 	col: PALETTE.includes(ls('col')) ? ls('col') : '', // свой цвет пометок ('' = цвет автора, назначенный автоматически)
 	sz: WSZ.includes(+ls('sz')) ? +ls('sz') : 1, // своя толщина
@@ -121,7 +120,16 @@ if (typeof window !== 'undefined') {
 	window.__k4draw = { state, shows } // только для проверок
 }
 const listeners = new Set()
-const emit = (ev) => listeners.forEach((f) => f(ev))
+// ket4tec (NAS_CLOUD#114): любое изменение рисунка поднимает show.dirty; сбрасывает успешный снимок (sendSnap)
+const INK = new Set(['add', 'upd', 'del', 'pts', 'end'])
+/**
+ *
+ * @param ev
+ */
+function emit(ev) {
+	INK.has(ev.t) && ev.show && (ev.show.dirty = true)
+	listeners.forEach((f) => f(ev))
+}
 /**
  * @param {Function} fn слушатель событий {t, ...}
  */
@@ -1038,9 +1046,15 @@ export function startShow() {
 /**
  *
  */
-export function endShow() {
+export async function endShow() {
 	if (!myK || isBoard(myK)) {
 		return
+	}
+	// ket4tec (NAS_CLOUD#114): пометки изменились после последнего снимка — снимок, пока они не пропали
+	const k = myK
+	await snapIfDirty(myShow())
+	if (myK !== k) {
+		return // пока ждали, показ сменился
 	}
 	hpb() && wire({ op: 'H', k: myK }) // остальным: экран больше не показываю, доску мне передавать можно
 	dropShow(me())
@@ -1360,14 +1374,21 @@ export function openBoard(ar, bg = null) {
 	state.mode = canDraw()
 }
 
-/** Закрыть доску у всех; с рисунком — сначала «Сохранить рисунок?» (снимок делает тот, кто закрывает). */
-export function requestCloseBoard() {
-	const s = showOf(state.board)
-	if (s && isBoard(s.k) && s.perm > 0) {
-		state.ask = true
-	} else {
-		closeBoard()
+/**
+ * ket4tec (NAS_CLOUD#114): тихий снимок, если на показе есть рисунок и он менялся после последнего снимка; ждём до 4 с.
+ *
+ * @param s показ
+ */
+async function snapIfDirty(s) {
+	if (s && s.perm > 0 && s.dirty) {
+		await Promise.race([autoSnap?.(), new Promise((r) => setTimeout(r, 4000))]).catch(() => {})
 	}
+}
+
+/** Закрыть доску у всех; с изменённым рисунком — сначала тихий снимок (делает тот, кто закрывает). */
+export async function requestCloseBoard() {
+	await snapIfDirty(showOf(state.board))
+	closeBoard()
 }
 
 /**
@@ -1479,11 +1500,11 @@ let snapped = false // автоснимок уже сделан при выхо�
 // До выхода из звонка (список участников и холст ещё целы): последний на доске с рисунком снимает её в Файлы, ждём до 4 с
 beforeLeaveCall.fn = async () => {
 	const s = myShow()
-	if (!s || !isBoard(s.k) || s.perm <= 0 || snapped || callParticipantCollection.callParticipantModels.length) {
+	if (!s || !isBoard(s.k) || s.perm <= 0 || !s.dirty || snapped || callParticipantCollection.callParticipantModels.length) {
 		return
 	}
 	snapped = true
-	await Promise.race([autoSnap?.(), new Promise((r) => setTimeout(r, 4000))]).catch(() => {})
+	await snapIfDirty(s)
 }
 let gdRoom = '' // комната, к которой относится state.gd
 let gdOk = '' // ключ доски гостя, открытой до запрета: её `h` принимаем и при запрете (сообщает модератор)
@@ -1507,7 +1528,7 @@ function leaveBoard() {
 	// ponytail: запрет живёт в памяти вкладки — перезагрузка страницы единственного модератора его снимает; хранить в комнате на сервере, если понадобится
 	amMod() || (gdOk = '')
 	sharers.clear() // пропущу чужой `H` — вернувшись, спрошу `q`, показывающие объявят показ заново
-	Object.assign(state, { board: null, bg: null, ask: false, gd: amMod() ? state.gd : true })
+	Object.assign(state, { board: null, bg: null, gd: amMod() ? state.gd : true })
 }
 
 /**
@@ -1522,7 +1543,6 @@ export function boardGone(sid) {
 	if (state.board === sid) {
 		k4log('board.state', { board: null, gone: sid })
 		state.board = null
-		state.ask = false
 		state.bg = null
 	}
 	if (state.big === sid) {
@@ -1672,7 +1692,7 @@ export function watchCall() {
 			others = Math.max(others, callParticipantCollection.callParticipantModels.length)
 			// некому передать доску: снимок рисунка в Файлы, пока холст ещё в DOM
 			const s = myShow()
-			s && isBoard(s.k) && s.perm > 0 && !others && !snapped && autoSnap?.() // запасной путь
+			s && isBoard(s.k) && s.perm > 0 && s.dirty && !others && !snapped && autoSnap?.() // запасной путь
 		}
 		// звонок ушёл (а не перерисовка вида звонка): доска переходит дальше по звонку или, если никого нет, закрывается
 		setTimeout(() => views || leaveBoard(), 1500)
@@ -1686,7 +1706,10 @@ export function watchCall() {
  */
 export function sendSnap(n) {
 	const show = showOf(state.big)
-	show && local(show, { op: 'S', n })
+	if (show) {
+		show.dirty = false // снимок сохранён
+		local(show, { op: 'S', n })
+	}
 }
 
 export const isPresenter = () => !!state.big && state.big === me()

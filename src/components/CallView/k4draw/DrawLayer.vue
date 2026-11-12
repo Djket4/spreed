@@ -831,7 +831,7 @@ function cancelCur() {
  * @param e
  */
 function onDown(e) {
-	if (!state.mode && props.board && !state.ask && canDraw()) {
+	if (!state.mode && props.board && canDraw()) {
 		state.mode = true // доска — сама поверхность для рисования: касание сразу рисует (п.49)
 	}
 	if (!state.mode || !W || !show() || !canDraw()) {

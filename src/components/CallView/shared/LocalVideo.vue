@@ -212,6 +212,7 @@ export default {
 				'presenter-overlay': this.isPresenterOverlay,
 				'hover-shadow': this.isSelectable && this.mouseover,
 				speaking: this.localMediaModel.attributes.speaking,
+				'k4-nomic': !this.localMediaModel.attributes.audioEnabled && !this.isBig, // ket4tec: красная рамка «микрофон выключен»
 			}
 		},
 

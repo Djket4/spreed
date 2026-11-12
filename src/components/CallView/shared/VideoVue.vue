@@ -341,6 +341,7 @@ export default {
 				'videoContainer-dummy': this.placeholderForPromoted,
 				'not-connected': !this.placeholderForPromoted && !this.isConnected,
 				speaking: !this.placeholderForPromoted && this.isSpeaking && !this.isBig,
+				'k4-nomic': !this.placeholderForPromoted && this.model.attributes.audioAvailable === false && !this.isBig, // ket4tec: красная рамка «микрофон выключен»
 				hover: this.mouseover && !this.unSelectable && !this.isBig,
 				promoted: !this.placeholderForPromoted && this.sharedData.promoted && !this.isGrid,
 				presenter: this.isPresenterOverlay && this.mouseover,

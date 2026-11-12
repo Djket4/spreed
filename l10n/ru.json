@@ -2396,7 +2396,7 @@
     "Not enough free space to upload file \"{fileName}\"" : "Недостаточно свободного места для загрузки файла «{fileName}»",
     "You are not allowed to share files" : "Вам не разрешено публиковать файлы",
     "Error while sharing file" : "Не удалось поделиться файлом",
-    "The browser you're using is not fully supported by Nextcloud Talk. Please use the latest version of Mozilla Firefox, Microsoft Edge, Google Chrome, Opera or Apple Safari." : "Используемый браузер не полностью поддерживается приложением «Конференции». Используйте последнюю версию Mozilla Firefox, Microsoft Edge, Google Chrome, Opera или Apple Safari.",
+    "The browser you're using is not fully supported by Nextcloud Talk. Please use the latest version of Mozilla Firefox, Microsoft Edge, Google Chrome, Opera or Apple Safari." : "Этот браузер подходит не полностью. Звонок может работать с ошибками — откройте его в свежем Chrome, Safari, Edge или Firefox.",
     "_%n second_::_%n seconds_" : ["%n секунда","%n секунды","%n секунд","%n секунды"],
     "_In %n hour_::_In %n hours_" : ["Через %n час","Через %n часа","Через %n часов","Через %n часа"],
     "_%n minute _::_%n minutes_" : ["%n минуту ","%n минуты ","%n минут ","%n минуты "],
