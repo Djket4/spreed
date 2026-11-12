@@ -7,7 +7,7 @@ on:
   pull_request:
     branches: ['ket4tec/**']
 concurrency:
-  group: ket4tec-ci-${{ github.ref }}
+  group: ket4tec-ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
   build:
