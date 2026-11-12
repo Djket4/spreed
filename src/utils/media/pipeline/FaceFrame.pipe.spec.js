@@ -7,6 +7,8 @@ import { beforeAll, describe, expect, test, vi } from 'vitest'
 import FaceFrame, { getFaceFrameLevel, setFaceFrameLevel } from './FaceFrame.js'
 import TrackToStream from './TrackToStream.js'
 
+const showWarning = vi.hoisted(() => vi.fn())
+vi.mock('@nextcloud/dialogs', () => ({ showWarning }))
 vi.mock('@mediapipe/tasks-vision', () => ({}))
 vi.mock('../effects/virtual-background/VideoStreamBackgroundEffect.js', () => ({ getWasmFileset: () => new Promise(() => {}) }))
 
@@ -50,7 +52,7 @@ describe('FaceFrame в цепочке превью', () => {
 			this.getTracks = () => this._tracks
 		}
 		window.HTMLMediaElement.prototype.play = () => Promise.resolve()
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+		const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
 		const ff = new FaceFrame()
 		const track = { id: 'v2', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
 		setFaceFrameLevel('auto')
@@ -64,6 +66,55 @@ describe('FaceFrame в цепочке превью', () => {
 			expect(getFaceFrameLevel()).toBe('off')
 			expect(warn).toHaveBeenCalled()
 			expect(document.querySelector('video')).toBeNull()
+			vi.useRealTimers()
+		})
+	})
+	test('защита: конвейер упал при запуске -> исходный трек, «Выкл», сообщение', () => {
+		window.MediaStream = function() {
+			throw new Error('не поддерживается')
+		}
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+		showWarning.mockClear()
+		const ff = new FaceFrame()
+		const track = { id: 'v4', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
+		setFaceFrameLevel('auto')
+		ff._setInputTrack('default', track)
+		return Promise.resolve().then(() => {
+			expect(ff.getOutputTrack()).toBe(track)
+			expect(getFaceFrameLevel()).toBe('off')
+			expect(err).toHaveBeenCalled()
+			expect(showWarning).toHaveBeenCalledTimes(1)
+		})
+	})
+	test('защита: канвас рисует, а выходной трек пуст (проба без кадров) -> откат за 3 с', () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
+		window.MediaStream = function(tracks = []) {
+			this.getTracks = () => tracks
+		}
+		const out = { stop() {}, addEventListener() {}, removeEventListener() {} }
+		const proto = window.HTMLCanvasElement.prototype
+		proto.captureStream = () => ({ getVideoTracks: () => [out] })
+		proto.getContext = () => ({ drawImage() {} })
+		const vw = Object.getOwnPropertyDescriptor(window.HTMLVideoElement.prototype, 'videoWidth')
+		Object.defineProperty(window.HTMLVideoElement.prototype, 'videoWidth', {
+			configurable: true,
+			get() {
+				return this.srcObject?.getTracks()[0] === out ? 0 : 640
+			},
+		})
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		showWarning.mockClear()
+		setFaceFrameLevel('auto')
+		const ff = new FaceFrame()
+		const track = { id: 'v5', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
+		ff._setInputTrack('default', track)
+		return vi.advanceTimersByTimeAsync(3000).then(() => {
+			expect(ff.getOutputTrack()).toBe(track)
+			expect(getFaceFrameLevel()).toBe('off')
+			expect(showWarning).toHaveBeenCalledTimes(1)
+			if (vw) {
+				Object.defineProperty(window.HTMLVideoElement.prototype, 'videoWidth', vw)
+			}
 			vi.useRealTimers()
 		})
 	})
