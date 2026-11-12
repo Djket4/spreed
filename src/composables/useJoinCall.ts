@@ -72,7 +72,7 @@ export function useJoinCall() {
 		}
 
 		// ket4tec (NAS_CLOUD#113): мой аккаунт уже в этом звонке в другой вкладке — спросить, а не входить второй раз
-		if (!k4take && moveGate(token, () => joinCall(token, { silent, recordingConsent, shouldStartRecording, directCall, k4take: true }))) {
+		if (!k4take && await moveGate(token, () => joinCall(token, { silent, recordingConsent, shouldStartRecording, directCall, k4take: true }))) {
 			return
 		}
 

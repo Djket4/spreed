@@ -25,6 +25,7 @@ describe('другая сессия в звонке', () => {
 	it('находит только свою, в этой комнате, в звонке', () => {
 		expect(otherSessionsInCall(S, 't', 1, 'me')).toEqual(['old'])
 		expect(otherSessionsInCall(S, 't', 3, 'me')).toEqual([])
+		expect(otherSessionsInCall(S, 't', 1, 'me', true)).toEqual(['old', 'idle']) // сервер сказал «в звонке» — все мои другие сессии
 	})
 	it('take доверяем только от своей сессии и не гостю', () => {
 		expect(isTrustedTake(S[1], 1, 'users', 't')).toBe(true)

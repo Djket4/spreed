@@ -3,8 +3,9 @@
  */
 // ket4tec (NAS_CLOUD#113): тот же пользователь открыл звонок второй раз (вкладка/устройство): спросить и перенести звонок.
 // Транспорт: сообщение сигналинга HPB { type:'k4move', v:1, op:'take' } конкретной сессии (recipient session).
+import axios from '@nextcloud/axios'
 import { getDialogBuilder, showInfo } from '@nextcloud/dialogs'
-import { generateUrl } from '@nextcloud/router'
+import { generateOcsUrl, generateUrl } from '@nextcloud/router'
 import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useSessionStore } from '../../../stores/session.ts'
@@ -18,14 +19,15 @@ import { k4drawSignaling } from '../../../utils/webrtc/index.js'
  * @param {string} token комната
  * @param {number} attendeeId мой attendeeId
  * @param {string} mySid мой signalingSessionId
+ * @param {boolean} any участник точно в звонке (свежий ответ сервера) — брать все его другие сессии: у не вошедшей вкладки inCall сессий в хранилище устаревший (0)
  * @return {string[]} signalingSessionId
  */
-export function otherSessionsInCall(sessions, token, attendeeId, mySid) {
+export function otherSessionsInCall(sessions, token, attendeeId, mySid, any = false) {
 	if (!attendeeId) {
 		return []
 	}
 	return sessions
-		.filter((s) => s.token === token && s.attendeeId === attendeeId && s.signalingSessionId !== mySid && (s.inCall ?? 0) > 0)
+		.filter((s) => s.token === token && s.attendeeId === attendeeId && s.signalingSessionId !== mySid && (any || (s.inCall ?? 0) > 0))
 		.map((s) => s.signalingSessionId)
 }
 
@@ -81,18 +83,27 @@ function ask(name, text, buttons) {
  *
  * @param {string} token комната
  * @param {Function} join войти здесь без проверки
- * @return {boolean} true — вход отложен диалогом
+ * @return {Promise<boolean>} true — вход отложен диалогом
  */
-export function moveGate(token, join) {
+export async function moveGate(token, join) {
 	const s = hpb()
 	const actor = useActorStore()
 	if (!s || actor.actorType !== 'users') {
 		return false
 	}
-	const others = otherSessionsInCall(Object.values(useSessionStore().sessions), token, actor.participantIdentifier.attendeeId, s.getSessionId())
-	if (!others.length) {
+	const att = actor.participantIdentifier.attendeeId
+	// я сам ещё не в звонке: если сервер говорит, что мой участник в звонке, — это другая моя вкладка или устройство
+	let busy = false
+	try {
+		const list = (await axios.get(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants', { token }))).data.ocs.data
+		busy = (list.find((p) => p.attendeeId === att)?.inCall ?? 0) > 0
+	} catch (e) {
+		return false // не узнали — входим как раньше
+	}
+	if (!busy) {
 		return false
 	}
+	const others = otherSessionsInCall(Object.values(useSessionStore().sessions), token, att, s.getSessionId(), true)
 	ask('Вы уже в этом звонке', 'Звонок открыт в другой вкладке или на другом устройстве.', [
 		{ label: 'Остаться там', callback: () => {} },
 		{ label: 'Перенести звонок сюда', type: 'primary', callback: () => {
