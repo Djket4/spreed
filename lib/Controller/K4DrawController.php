@@ -457,7 +457,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 				'sess' => substr($s, 0, 6),
 				'ty' => $this->participant->getAttendee()->getActorType() === 'users' ? 'users' : 'guests',
 				'k' => $e['k'],
-				'd' => $d,
+				'd' => (object)$d,
 			], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
 		}
 		if ($out !== '') {
