@@ -118,4 +118,70 @@ describe('FaceFrame в цепочке превью', () => {
 			vi.useRealTimers()
 		})
 	})
+	// проба готова: у <video> на выходном треке есть кадр
+	const setup = (out, probeReady) => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
+		window.MediaStream = function(tracks = []) {
+			this.getTracks = () => tracks
+		}
+		const proto = window.HTMLCanvasElement.prototype
+		proto.captureStream = () => ({ getVideoTracks: () => [out] })
+		proto.getContext = () => ({ drawImage() {} })
+		const isProbe = (el) => el.srcObject?.getTracks()[0] === out
+		const vproto = window.HTMLVideoElement.prototype
+		const vw = Object.getOwnPropertyDescriptor(vproto, 'videoWidth')
+		const rs = Object.getOwnPropertyDescriptor(vproto, 'readyState')
+		Object.defineProperty(vproto, 'videoWidth', { configurable: true, get() { return isProbe(this) && !probeReady ? 0 : 640 } })
+		Object.defineProperty(vproto, 'readyState', { configurable: true, get() { return isProbe(this) && !probeReady ? 0 : 4 } })
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		showWarning.mockClear()
+		setFaceFrameLevel('auto')
+		const ff = new FaceFrame()
+		const track = { id: 'vp', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
+		ff._setInputTrack('default', track)
+		const restore = () => {
+			for (const [k, dsc] of [['videoWidth', vw], ['readyState', rs]]) {
+				if (dsc) {
+					Object.defineProperty(vproto, k, dsc)
+				} else {
+					delete vproto[k]
+				}
+			}
+			vi.useRealTimers()
+		}
+		return { ff, track, restore }
+	}
+
+	test('проба создаётся вместе с выходом, после готовности выход публикуется', async () => {
+		const out = { stop() {}, addEventListener() {}, removeEventListener() {} }
+		const { ff, restore } = setup(out, true)
+		try {
+			await vi.advanceTimersByTimeAsync(1500)
+			const probe = ff._digital.probe
+			expect(probe.srcObject.getTracks()[0]).toBe(out)
+			expect(document.body.contains(probe)).toBe(true)
+			expect(ff.getOutputTrack()).toBe(out)
+			expect(showWarning).not.toHaveBeenCalled()
+			ff.destroy()
+			expect(document.body.contains(probe)).toBe(false)
+		} finally {
+			restore()
+		}
+	})
+	test('проба не готова -> откат по таймауту, сообщение про выходной трек, пробы в DOM нет', async () => {
+		const out = { stop() {}, addEventListener() {}, removeEventListener() {} }
+		const { ff, track, restore } = setup(out, false)
+		let probe
+		try {
+			await vi.advanceTimersByTimeAsync(500)
+			probe = ff._digital.probe
+			expect(document.body.contains(probe)).toBe(true)
+			await vi.advanceTimersByTimeAsync(2500)
+			expect(ff.getOutputTrack()).toBe(track)
+			expect(console.error.mock.calls.some((c) => String(c[1]).includes('выходной трек не отдаёт кадры'))).toBe(true)
+			expect(document.body.contains(probe)).toBe(false)
+		} finally {
+			restore()
+		}
+	})
 })

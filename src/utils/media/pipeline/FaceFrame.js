@@ -394,7 +394,9 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		if (!d.published) {
 			if (now - d.startedAt > NO_FRAMES_MS) {
-				this._fallback(d, `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
+				this._fallback(d, d.frames >= MIN_FRAMES
+					? `выходной трек не отдаёт кадры за ${NO_FRAMES_MS} мс`
+					: `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
 			}
 			return
 		}
@@ -520,6 +522,16 @@ export default class FaceFrame extends TrackSinkSource {
 				if (!d.output) {
 					throw new Error('captureStream без видеотрека')
 				}
+				// проба: <video> на выходном треке, должен отдать кадр до подмены камеры
+				const probe = document.createElement('video')
+				probe.muted = true
+				probe.playsInline = true
+				probe.setAttribute('playsinline', '')
+				probe.style.cssText = d.video.style.cssText
+				probe.srcObject = new MediaStream([d.output])
+				document.body.appendChild(probe)
+				d.probe = probe
+				probe.play?.()?.catch?.(() => {})
 			} catch (e) {
 				this._fallback(d, 'canvas.captureStream недоступен: ' + e.message)
 				return
