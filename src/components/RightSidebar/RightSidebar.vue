@@ -492,7 +492,8 @@ export default {
 				this.activeTab = this.inCallTab()
 				// ket4tec v7: в звонке список участников открыт (владелец 11.11, NAS_CLOUD#109 п.30); на телефоне панель во весь экран — закрыта. После звонка — как была
 				this.k7reopen = this.sidebarStore.show
-				if (window.innerWidth < 512) {
+				// гостю (нет ни «Участников», ни «Файлов») панель сама не открывается — в ней только «Гифки», по кнопке (владелец 12.11, NAS_CLOUD#149)
+				if (window.innerWidth < 512 || !(this.showParticipantsTab || this.showSharedItemsTab)) {
 					this.sidebarStore.hideSidebar({ cache: false })
 				} else {
 					this.sidebarStore.showSidebar({ cache: false })

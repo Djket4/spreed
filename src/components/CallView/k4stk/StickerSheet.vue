@@ -135,7 +135,8 @@
 			</template>
 		</div>
 
-		<footer class="k4stk-foot">
+		<!-- div, не footer: у гостя ядро (#body-public footer) делает footer плавающим на всю ширину окна (NAS_CLOUD#149) -->
+		<div class="k4stk-foot">
 			<!-- п.20: «Держать» без контекста непонятно -->
 			<span class="k4stk-cap">Сколько показывать на плитке</span>
 			<div class="k4stk-ttl">
@@ -150,7 +151,7 @@
 					{{ t.name }}
 				</button>
 			</div>
-		</footer>
+		</div>
 	</section>
 </template>
 
