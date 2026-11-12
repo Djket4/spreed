@@ -12,7 +12,7 @@
 		:class="[containerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo')">
+		@click="$emit('clickVideo', $event)">
 		<div
 			v-show="showVideo"
 			:class="videoWrapperClass"

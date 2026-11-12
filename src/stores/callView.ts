@@ -24,6 +24,7 @@ type State = {
 	lastIsStripeOpen: boolean | null
 	presentationStarted: boolean
 	selectedVideoPeerId: string | null
+	gridBeforePin: boolean
 	callEndedTimeout: ReturnType<typeof setTimeout> | undefined
 	isLiveTranscriptionEnabled: boolean
 	externalCallServiceUrl: string | null
@@ -49,6 +50,7 @@ export const useCallViewStore = defineStore('callView', {
 		lastIsStripeOpen: null,
 		presentationStarted: false,
 		selectedVideoPeerId: null,
+		gridBeforePin: false,
 		callEndedTimeout: undefined,
 		isLiveTranscriptionEnabled: false,
 		externalCallServiceUrl: null,
@@ -81,7 +83,23 @@ export const useCallViewStore = defineStore('callView', {
 		},
 
 		setSelectedVideoPeerId(value: string | null) {
+			// ket4tec (NAS_CLOUD#153): запоминаем вид до закрепления, чтобы «Открепить» вернул его
+			if (value !== null && this.selectedVideoPeerId === null) {
+				this.gridBeforePin = this.isGrid
+			}
 			this.selectedVideoPeerId = value
+		},
+
+		/**
+		 * ket4tec (NAS_CLOUD#153): снять закрепление и вернуть вид, который был до него.
+		 *
+		 * @param token current conversation token.
+		 */
+		unpinVideo(token: string) {
+			this.selectedVideoPeerId = null
+			if (this.gridBeforePin) {
+				this.setCallViewMode({ token, isGrid: true, clearLast: false })
+			}
 		},
 
 		handleJoinCall(conversation: Conversation) {

@@ -10,7 +10,7 @@
 		:class="[videoContainerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo')">
+		@click="$emit('clickVideo', $event)">
 		<img
 			v-if="screenshotModeUrl"
 			class="dev-mode-video--self videoWrapper"
@@ -368,7 +368,7 @@ export default {
 		},
 
 		handleStopFollowing() {
-			this.callViewStore.setSelectedVideoPeerId(null)
+			this.callViewStore.unpinVideo(this.token) // ket4tec (NAS_CLOUD#153)
 			this.callViewStore.stopPresentation(this.token)
 		},
 

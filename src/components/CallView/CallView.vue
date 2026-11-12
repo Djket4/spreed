@@ -38,7 +38,8 @@
 						:isFullPage="showFullPage"
 						isGrid
 						isBig
-						fitVideo />
+						fitVideo
+						@clickVideo="handleClickPinned" />
 
 					<!-- Local Video Override mode (following own video) -->
 					<LocalVideo
@@ -50,7 +51,8 @@
 						:isStripe="false"
 						:isSidebar="false"
 						isBig
-						fitVideo />
+						fitVideo
+						@clickVideo="handleClickPinned" />
 
 					<!-- Screens -->
 					<!-- Local screen -->
@@ -960,8 +962,19 @@ export default {
 			this.sharedDatas[this.screens[0]].screenVisible = true
 		},
 
+		// ket4tec (NAS_CLOUD#153): клик по закреплённой плитке (не по её кнопкам) снимает закрепление
+		handleClickPinned(event) {
+			if (!event?.target?.closest?.('button')) {
+				this.callViewStore.unpinVideo(this.token)
+			}
+		},
+
 		handleSelectVideo(peerId) {
 			if (this.isSidebar) {
+				return
+			}
+			if (peerId === this.selectedVideoPeerId) {
+				this.callViewStore.unpinVideo(this.token)
 				return
 			}
 			this.callViewStore.setSelectedVideoPeerId(peerId)
@@ -978,7 +991,10 @@ export default {
 			if (!this.hasLocalVideo || this.isSidebar) {
 				return
 			}
-			// Deselect possible selected video
+			if (this.selectedVideoPeerId === 'local') {
+				this.callViewStore.unpinVideo(this.token) // ket4tec (NAS_CLOUD#153)
+				return
+			}
 			this.callViewStore.setSelectedVideoPeerId('local')
 			this.callViewStore.setCallViewMode({
 				token: this.token,

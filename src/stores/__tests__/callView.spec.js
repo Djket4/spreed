@@ -256,6 +256,23 @@ describe('callViewStore', () => {
 		})
 	})
 
+	describe('pinned video (NAS_CLOUD#153)', () => {
+		it('unpin from grid returns to grid, unpin from speaker view stays in speaker view', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.setSelectedVideoPeerId('peer')
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+			callViewStore.unpinVideo(TOKEN)
+			expect(callViewStore.selectedVideoPeerId).toBe(null)
+			expect(callViewStore.isGrid).toBe(true)
+
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false })
+			callViewStore.setSelectedVideoPeerId('peer')
+			callViewStore.unpinVideo(TOKEN)
+			expect(callViewStore.selectedVideoPeerId).toBe(null)
+			expect(callViewStore.isGrid).toBe(false)
+		})
+	})
+
 	describe('other actions', () => {
 		it('sets value on forceCallView', () => {
 			expect(callViewStore.forceCallView).toBeFalsy()

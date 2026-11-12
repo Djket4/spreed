@@ -307,7 +307,7 @@ export default {
 
 		handleStopFollowing() {
 			this.callViewStore.stopPresentation(this.token)
-			this.callViewStore.setSelectedVideoPeerId(null)
+			this.callViewStore.unpinVideo(this.token) // ket4tec (NAS_CLOUD#153)
 		},
 	},
 }
