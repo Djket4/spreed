@@ -145,12 +145,28 @@ describe('callViewStore', () => {
 
 				callViewStore.startPresentation(TOKEN)
 				expect(callViewStore.isGrid).toBeFalsy()
-				expect(callViewStore.isStripeOpen).toBeFalsy()
+				expect(callViewStore.isStripeOpen).toBeTruthy() // ket4tec (#108): полоса не закрывается
 
 				callViewStore.stopPresentation(TOKEN)
-				expect(callViewStore.isGrid).toEqual(testState.isGrid)
-				expect(callViewStore.isStripeOpen).toEqual(testState.isStripeOpen)
+				expect(callViewStore.isGrid).toEqual(testState.isGrid) // ket4tec (#159): вид до показа
 			})
+		})
+
+		it('manual view pick during presentation is not overridden when it ends (NAS_CLOUD#159)', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			// person picks speaker view by hand
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false, manual: true })
+			callViewStore.stopPresentation(TOKEN)
+			expect(callViewStore.isGrid).toBe(false)
+		})
+
+		it('automatic switch during presentation still restores grid when it ends', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+			callViewStore.stopPresentation(TOKEN)
+			expect(callViewStore.isGrid).toBe(true)
 		})
 
 		it('switching modes during presentation does not resets it after it ends', () => {

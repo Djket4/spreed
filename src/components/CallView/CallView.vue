@@ -38,7 +38,6 @@
 						:isFullPage="showFullPage"
 						isGrid
 						isBig
-						fitVideo
 						@clickVideo="handleClickPinned" />
 
 					<!-- Local Video Override mode (following own video) -->
@@ -51,7 +50,6 @@
 						:isStripe="false"
 						:isSidebar="false"
 						isBig
-						fitVideo
 						@clickVideo="handleClickPinned" />
 
 					<!-- Screens -->
@@ -91,7 +89,6 @@
 						:sharedData="sharedDatas[promotedParticipantModel.attributes.peerId]"
 						:showTalkingHighlight="false"
 						isGrid
-						fitVideo
 						isBig
 						:isFullPage="showFullPage"
 						:isSidebar="isSidebar"
@@ -127,7 +124,7 @@
 					:isStripe="showPromotedArea"
 					:isRecording="isRecording"
 					:token="token"
-					:isOverlap="showFullPage"
+					:isOverlap="!callParticipantModels.length"
 					:callParticipantModels="stripeParticipantModels"
 					:screens="screens"
 					:localMediaModel="localMediaModel"
@@ -180,7 +177,7 @@
 				{{ t('spreed', 'Unmute') }}
 			</button>
 			<button type="button" @click="declineAskUnmute">
-				{{ t('spreed', 'Dismiss') }}
+				{{ t('spreed', 'Not now') }}
 			</button>
 		</div>
 	</div>
@@ -487,9 +484,9 @@ export default {
 		// floating over it rather than taking room of its own. A promoted area
 		// held by a single participant is laid out that way, and so is one with
 		// nobody in it yet.
+		// ket4tec (NAS_CLOUD#159): плавающей полосы поверх кадра больше нет, своя плитка - в общей ленте
 		showFullPage() {
-			return this.callParticipantModels.length <= 1
-				&& !(this.showLocalScreen || this.showRemoteScreen || this.showSelectedScreen)
+			return false
 		},
 
 		hasLocalVideo() {
@@ -556,15 +553,9 @@ export default {
 			})
 		},
 
+		// ket4tec (NAS_CLOUD#159): круглой камеры докладчика поверх экрана нет, его камера - квадрат в ленте
 		shouldShowPresenterOverlay() {
-			if (this.isSidebar) {
-				// Do not overload small video tile
-				return false
-			}
-
-			return (this.showLocalScreen && this.hasLocalVideo)
-				|| ((this.showRemoteScreen || this.showSelectedScreen)
-					&& (this.shownRemoteScreenCallParticipantModel?.attributes.videoAvailable || this.isModelWithVideo(this.shownRemoteScreenCallParticipantModel)))
+			return false
 		},
 
 		presenterModel() {
@@ -663,9 +654,10 @@ export default {
 			}
 		},
 
-		showLocalScreen(showLocalScreen) {
+		// ket4tec (NAS_CLOUD#159): начало показа - по наличию потока экрана, а не по плитке (при закреплённой камере showLocalScreen false)
+		hasLocalScreen(hasLocalScreen) {
 			// Everytime the local screen is shared, switch to promoted view
-			if (showLocalScreen) {
+			if (hasLocalScreen) {
 				this.callViewStore.startPresentation(this.token)
 			} else if (this.callParticipantModelsWithScreen.length === 0 && !this.selectedVideoPeerId) {
 				// last screen share stopped and no selected video, restoring previous state

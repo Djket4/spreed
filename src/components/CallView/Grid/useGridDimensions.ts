@@ -7,7 +7,7 @@ import type { Ref } from 'vue'
 
 import debounce from 'debounce'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { computeGridDimensions, getMinTileHeight, getMinTileWidth, TARGET_ASPECT_RATIO } from './gridLayout.ts'
+import { computeSquareLayout, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
 
 type UseGridDimensionsOptions = {
 	/** Element to observe for size changes (its child grid is measured) */
@@ -29,7 +29,7 @@ type UseGridDimensionsOptions = {
 /**
  * Owns the measurement of the grid element and derives the number of columns and
  * rows the grid should use. The heavy lifting is done by the pure
- * {@link computeGridDimensions}; this composable only wires it to the DOM via a
+ * {@link computeSquareLayout}; this composable only wires it to the DOM via a
  * `ResizeObserver` and the relevant reactive inputs.
  *
  * @param options - the reactive layout inputs and template refs
@@ -54,6 +54,7 @@ export function useGridDimensions({
 	const gridHeight = ref(0)
 	const columns = ref(0)
 	const rows = ref(0)
+	const side = ref(0)
 
 	const dpiFactor = computed(() => {
 		if (isStripe.value) {
@@ -108,22 +109,14 @@ export function useGridDimensions({
 		gridWidth.value = width
 		gridHeight.value = height
 
-		const dimensions = computeGridDimensions({
-			gridWidth: gridWidth.value,
-			gridHeight: gridHeight.value,
-			videoCount: videoCount.value,
-			targetAspectRatio: TARGET_ASPECT_RATIO,
-			minWidth: dpiAwareMinWidth.value,
-			minHeight: dpiAwareMinHeight.value,
-			noLocalVideoReserve: noLocalVideoReserve.value,
-			// Seed the algorithm with the current layout to keep the
-			// anti-flickering hysteresis behaviour.
-			currentColumns: columns.value,
-			currentRows: rows.value,
-		})
+		// ket4tec (NAS_CLOUD#159): квадратные плитки; полоса - одна строка, сторона = её высота
+		const dimensions = isStripe.value
+			? { columns: videoCount.value + 1, rows: 1, side: height }
+			: computeSquareLayout({ gridWidth: width, gridHeight: height, total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1) })
 
 		columns.value = dimensions.columns
 		rows.value = dimensions.rows
+		side.value = dimensions.side
 	}
 
 	const debouncedRecompute = debounce(recompute, 200)
@@ -172,6 +165,7 @@ export function useGridDimensions({
 		gridHeight,
 		columns,
 		rows,
+		side,
 		dpiFactor,
 		minWidth,
 		minHeight,
