@@ -236,7 +236,6 @@
 						v-else-if="isBeforeJoinCall"
 						class="action-button"
 						isMediaSettings
-						:isRecordingFromStart="isRecordingFromStart"
 						:disabled="disabledCallButton"
 						:recordingConsentGiven="recordingConsentGiven"
 						:silentCall="!notifyCall" />
@@ -284,10 +283,7 @@ import { useGetToken } from '../../composables/useGetToken.ts'
 import { useIsInCall } from '../../composables/useIsInCall.js'
 import { ATTENDEE, AVATAR, CALL, CONFIG, CONVERSATION, PARTICIPANT, VIRTUAL_BACKGROUND } from '../../constants.ts'
 import BrowserStorage from '../../services/BrowserStorage.js'
-import {
-	getTalkConfig,
-	showTalkFeatureHint,
-} from '../../services/CapabilitiesManager.ts'
+import { getTalkConfig } from '../../services/CapabilitiesManager.ts'
 import { useActorStore } from '../../stores/actor.ts'
 import { useGuestNameStore } from '../../stores/guestName.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
@@ -432,7 +428,6 @@ export default {
 			updatedBackground: undefined,
 			audioDeviceStateChanged: false,
 			videoDeviceStateChanged: false,
-			isRecordingFromStart: false,
 			isPublicShareAuthSidebar: false,
 			isMirrored: false,
 			skipBlurVirtualBackground: false,
@@ -528,17 +523,8 @@ export default {
 			].includes(this.conversation.callRecording)
 		},
 
-		canFullModerate() {
-			return this.conversation.participantType === PARTICIPANT.TYPE.OWNER
-				|| this.conversation.participantType === PARTICIPANT.TYPE.MODERATOR
-		},
-
 		isInLobby() {
 			return this.$store.getters.isInLobby
-		},
-
-		canModerateRecording() {
-			return this.canFullModerate && (getTalkConfig(this.token, 'call', 'recording') || false) && !this.isClassified
 		},
 
 		recordingConsent() {
@@ -565,14 +551,6 @@ export default {
 		showNotifyCallOption() {
 			return !this.hasCall && !this.isPublicShareAuthSidebar
 				&& this.isBeforeJoinCall && !this.isVoiceRoom
-		},
-
-		showStartRecordingOption() {
-			return !this.hasCall && this.canModerateRecording && this.isBeforeJoinCall
-		},
-
-		hintRecordingOption() {
-			return !this.hasCall && this.canFullModerate && !(getTalkConfig(this.token, 'call', 'recording') || false) && this.isBeforeJoinCall && showTalkFeatureHint(34) && !this.isClassified
 		},
 
 		showUpdateChangesButton() {
@@ -721,10 +699,6 @@ export default {
 			}
 		},
 
-		isRecordingFromStart(value) {
-			this.setRecordingConsentGiven(value)
-		},
-
 		isInCall(value) {
 			if (value) {
 				const virtualBackgroundEnabled = BrowserStorage.getItem('virtualBackgroundEnabled') === 'true'
@@ -853,7 +827,6 @@ export default {
 			this.videoDeviceStateChanged = false
 			this.isPublicShareAuthSidebar = false
 			this.isDeviceCheck = false
-			this.isRecordingFromStart = false
 			this.isMirrored = false
 			// Update devices preferences
 			this.updatePreferences('audioinput')

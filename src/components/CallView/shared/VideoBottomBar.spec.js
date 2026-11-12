@@ -385,8 +385,7 @@ describe('VideoBottomBar.vue', () => {
 					const followingButton = findNcButton(wrapper, followingButtonAriaLabel)
 					await followingButton.trigger('click')
 
-					expect(callViewStore.selectedVideoPeerId).toBe(null)
-					expect(callViewStore.presentationStarted).toBeFalsy()
+					expect(emit).toHaveBeenCalledWith('k4-unpin-video')
 				})
 			})
 		})

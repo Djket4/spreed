@@ -495,6 +495,8 @@ async function signalingLeaveCall(token, all = false) {
 	callParticipantsAudioPlayer.destroy()
 	callParticipantsAudioPlayer = null
 
+	localCallParticipantModel.set('askUnmute', false) // ket4tec (NAS_CLOUD#154)
+
 	if (tokensInSignaling[token]) {
 		await signaling.leaveCall(token, false, all)
 	}

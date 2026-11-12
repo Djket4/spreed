@@ -92,7 +92,7 @@ export default function SimpleWebRTC(opts) {
 			}
 			peer.handleMessage(message)
 		} else if (message.type === 'control') {
-			// ket4tec (NAS_CLOUD#154): «control» пропускает только сигналинг-сервер от модератора
+			// ket4tec (NAS_CLOUD#154): «control» пропускает только сигналинг-сервер от модератора (signaling.js отбрасывает 'control' из обычных message)
 			if (message.payload.action === 'askUnmute') {
 				if (message.payload.peerId === self.connection.getSessionId()) {
 					self.emit('askUnmute')
