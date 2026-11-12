@@ -77,4 +77,15 @@ describe('calllog', () => {
 		expect(evs.at(-1).k).toBe('pagehide')
 		expect(evs.find((e) => e.k === 'page_load').d.ua).toBeTypeOf('string')
 	})
+
+	it('reject с объектом без прототипа не бросает из обработчика', () => {
+		initCalllog()
+		const bare = Object.create(null)
+		const seen = vi.fn()
+		window.addEventListener('error', seen) // исключение из обработчика jsdom сообщает ещё одним событием error
+		window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: bare }))
+		window.dispatchEvent(Object.assign(new Event('error'), { message: bare, error: bare }))
+		window.removeEventListener('error', seen)
+		expect(seen).toHaveBeenCalledTimes(1) // только само событие error из теста
+	})
 })

@@ -110,8 +110,31 @@ export function calllogScreen(what, name) {
 	calllog('screen_' + what, name ? { name: cut(name, 60) } : undefined)
 }
 
-const onError = (e) => calllog('js_error', { name: cut(e.error?.name || 'Error', 40), msg: cut(e.message, 120) })
-const onRejection = (e) => calllog('js_error', { name: cut(e.reason?.name || 'Rejection', 40), msg: cut(e.reason?.message ?? e.reason, 120) })
+/**
+ * Ошибка страницы; тело целиком в try/catch: у объекта без прототипа String() бросает.
+ *
+ * @param {ErrorEvent} e событие
+ */
+function onError(e) {
+	try {
+		calllog('js_error', { name: cut(e.error?.name || 'Error', 40), msg: cut(e.message, 120) })
+	} catch (err) {
+		// журнал не должен ломать страницу
+	}
+}
+
+/**
+ * Необработанный reject; см. onError.
+ *
+ * @param {PromiseRejectionEvent} e событие
+ */
+function onRejection(e) {
+	try {
+		calllog('js_error', { name: cut(e.reason?.name || 'Rejection', 40), msg: cut(e.reason?.message ?? e.reason, 120) })
+	} catch (err) {
+		// журнал не должен ломать страницу
+	}
+}
 /**
  *
  */
