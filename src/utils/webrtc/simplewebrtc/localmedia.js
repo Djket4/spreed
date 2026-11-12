@@ -6,6 +6,7 @@ import mockconsole from 'mockconsole'
  */
 import util from 'util'
 import WildEmitter from 'wildemitter'
+import { calllogScreen } from '../../calllog.js'
 import BlackVideoEnforcer from '../../media/pipeline/BlackVideoEnforcer.js'
 import FaceFrame from '../../media/pipeline/FaceFrame.js'
 import MediaDevicesSource from '../../media/pipeline/MediaDevicesSource.js'
@@ -325,15 +326,18 @@ LocalMedia.prototype.startScreenShare = function(mode, constraints, cb) {
 					})
 
 					if (isAllTracksEnded) {
+						calllogScreen('stop')
 						self._removeStream(stream)
 					}
 				})
 			})
 
+			calllogScreen('start')
 			self.emit('localScreen', stream)
 		} else {
 			console.error('Error when starting screen share: ', err)
 
+			calllogScreen('denied', err?.name)
 			self.emit('localScreenRequestFailed')
 		}
 
@@ -346,6 +350,7 @@ LocalMedia.prototype.startScreenShare = function(mode, constraints, cb) {
 
 LocalMedia.prototype.stopScreenShare = function() {
 	const self = this
+	calllogScreen('stop')
 
 	this.localScreens.forEach(function(stream) {
 		stream.getTracks().forEach((track) => track.stop())

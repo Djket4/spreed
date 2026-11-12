@@ -5,6 +5,7 @@
 
 import { FaceDetector } from '@mediapipe/tasks-vision'
 import { showWarning } from '@nextcloud/dialogs'
+import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
 import TrackSinkSource from './TrackSinkSource.js'
@@ -423,6 +424,7 @@ export default class FaceFrame extends TrackSinkSource {
 		if (window.__k4ffStats) {
 			window.__k4ffStats.path = 'fallback'
 		}
+		calllog('framing_error', { reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100) })
 		console.error('FaceFrame: кадр по лицу отключён —', reason)
 		showWarning('Кадр по лицу недоступен в этом браузере, камера работает без него')
 	}
