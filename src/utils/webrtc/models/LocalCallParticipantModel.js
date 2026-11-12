@@ -6,6 +6,7 @@
 import { reactive, watch } from 'vue'
 import { useActorStore } from '../../../stores/actor.ts'
 import pinia from '../../../stores/pinia.ts'
+import { calllogRtc } from '../../calllog.js'
 import EmitterMixin from '../../EmitterMixin.js'
 import { k4log } from '../../k4log.js'
 import { ConnectionState } from './CallParticipantModel.js'
@@ -131,6 +132,7 @@ LocalCallParticipantModel.prototype = {
 
 	_handleExtendedIceConnectionStateChange(extendedIceConnectionState) {
 		k4log('ice', { id: 'local', st: extendedIceConnectionState })
+		calllogRtc('local', extendedIceConnectionState)
 		switch (extendedIceConnectionState) {
 			case 'new':
 				this.set('connectionState', ConnectionState.NEW)
