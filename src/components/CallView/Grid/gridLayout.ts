@@ -415,3 +415,36 @@ export function getJustifyContent({
 
 	return isLocalVideoAlone ? 'end' : 'start'
 }
+
+// ket4tec (NAS_CLOUD#159): плитка камеры - всегда квадрат. Сетка из квадратов: перебираем число столбцов и строк,
+// берём самую крупную сторону, при которой помещаются все (иначе - больше мест, дальше листание страниц).
+export const MIN_TILE_SIDE = 150
+
+export function computeSquareLayout({ gridWidth, gridHeight, total, minSide = MIN_TILE_SIDE }: {
+	gridWidth: number
+	gridHeight: number
+	total: number
+	minSide?: number
+}): { columns: number, rows: number, side: number } {
+	const need = Math.max(total, 1)
+	const maxColumns = Math.max(1, Math.floor((gridWidth + GRID_GAP) / (minSide + GRID_GAP)))
+	const maxRows = Math.max(1, Math.floor((gridHeight + GRID_GAP) / (minSide + GRID_GAP)))
+	let best = { columns: 1, rows: 1, side: 0 }
+	let bestKey = [-1, -1, 0]
+	for (let columns = 1; columns <= maxColumns; columns++) {
+		for (let rows = 1; rows <= maxRows; rows++) {
+			const cells = columns * rows
+			const side = Math.floor(Math.min(
+				(gridWidth - GRID_GAP * (columns - 1)) / columns,
+				(gridHeight - GRID_GAP * (rows - 1)) / rows,
+			))
+			const key = cells >= need ? [1, side, -cells] : [0, cells, side]
+			if (key[0] > bestKey[0]
+				|| (key[0] === bestKey[0] && (key[1] > bestKey[1] || (key[1] === bestKey[1] && key[2] > bestKey[2])))) {
+				best = { columns, rows, side }
+				bestKey = key
+			}
+		}
+	}
+	return best
+}

@@ -410,13 +410,29 @@ $glass: blur(24px) saturate(180%);
 	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px 96px !important; box-sizing: border-box; background: none !important; }
 	.grid-main-wrapper .stripe-controls-position { display: none !important; }
 	:is(.videos-wrapper--stripe, .stripe-wrapper, .stripe-wrapper > .grid) { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; background: none !important; overflow: visible !important; }
-	.stripe-wrapper .localVideoContainer { position: relative !important; inset: auto !important; flex: none !important; width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; aspect-ratio: 3 / 4; }
+	.grid-main-wrapper.overlap { container-type: size; }
+	// ket4tec (NAS_CLOUD#159): своя камера — квадрат по центру свободного места
+	.stripe-wrapper .grid > .localVideoContainer { position: relative !important; inset: auto !important; flex: none !important; width: min(100cqw, 100cqh) !important; height: min(100cqw, 100cqh) !important; aspect-ratio: 1 !important; margin: 0 !important; }
 }
-// по высоте свободного места; на узком экране упирается в ширину (форма чуть шире 3:4, видео без искажений — cover)
-#call-container.k7-alone .stripe-wrapper .localVideoContainer { height: 100% !important; }
-@media (orientation: landscape) { #call-container.k7-alone .stripe-wrapper .localVideoContainer { aspect-ratio: 16 / 10; } }
 
-// ket4tec (NAS_CLOUD#109 п.7): телефон, в полосе есть плитка собеседника — своя плитка той же ширины, без дыры (100 px у края из custom.css остаётся для звонка один на один)
-@media (max-width: 430px) { #call-container .stripe-wrapper .grid:has(> .video-container) > .localVideoContainer { justify-self: stretch; width: 100% !important; } }
-// ket4tec (NAS_CLOUD#109): телефон, выбранная плитка на весь экран — «Открепить» заезжало под свою плитку (100 px в углу полосы)
-@media (max-width: 430px) { #call-container .video__promoted.full-page .wrapper--big { margin: 0 116px 0 8px !important; width: calc(100% - 124px) !important; } }
+// ket4tec (NAS_CLOUD#159): камеры — квадраты (решение владельца 12.11); показ экрана и доска — в своих пропорциях
+// крупный кадр камеры (закреплённый, говорящий): квадрат по центру главной области
+#call-container .video__promoted { container-type: size; }
+#call-container .video__promoted > .video-container-big { position: absolute !important; inset: 0 !important; margin: auto !important; padding: 0 !important; width: 100cqmin !important; height: 100cqmin !important; max-width: none !important; }
+// лента (в том числе «Вы»): квадраты высотой с ленту, листается пальцем и колесом
+#call-container .grid-main-wrapper:not(.is-grid) .grid { display: flex !important; gap: var(--grid-gap); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid::-webkit-scrollbar { display: none; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid > * { flex: none !important; position: relative !important; inset: auto !important; width: auto !important; height: 100% !important; aspect-ratio: 1 !important; margin: 0 !important; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid > :first-child { margin-inline-start: auto !important; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid > :last-child { margin-inline-end: auto !important; }
+// сетка: видео — cover по центру квадрата
+#call-container :is(.video-container-grid, .localVideoContainer) video { object-fit: cover; object-position: center; }
+// подпись плитки: длинное имя — многоточие внутри плитки
+#call-container .video-container-grid, #call-container .localVideoContainer { min-width: 0; max-width: 100%; }
+// крупная плитка: подпись и «Открепить» во всю ширину квадрата (отступ под кнопку полосы больше не нужен, полоса отдельно)
+#call-container .wrapper--big { margin: 0 !important; width: 100% !important; padding-inline: 8px; }
+#call-container .wrapper--big .bottom-bar { max-width: 100%; }
+#call-container .wrapper--big .participant-name { min-width: 0; }
+// плитка ленты мала: подпись на всю ширину в своей строке, значки микрофона и камеры под ней
+#call-container .grid-main-wrapper:not(.is-grid) .wrapper:not(.wrapper--big) .bottom-bar { flex-wrap: wrap; row-gap: 2px; }
+#call-container .grid-main-wrapper:not(.is-grid) .wrapper:not(.wrapper--big) .participant-name { flex: 0 1 100%; max-width: 100%; box-sizing: border-box; }

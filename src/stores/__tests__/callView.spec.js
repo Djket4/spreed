@@ -145,11 +145,10 @@ describe('callViewStore', () => {
 
 				callViewStore.startPresentation(TOKEN)
 				expect(callViewStore.isGrid).toBeFalsy()
-				expect(callViewStore.isStripeOpen).toBeFalsy()
+				expect(callViewStore.isStripeOpen).toBeTruthy() // ket4tec (#108): полоса не закрывается
 
 				callViewStore.stopPresentation(TOKEN)
-				expect(callViewStore.isGrid).toEqual(testState.isGrid)
-				expect(callViewStore.isStripeOpen).toEqual(testState.isStripeOpen)
+				expect(callViewStore.isGrid).toEqual(testState.isGrid) // ket4tec (#159): вид до показа
 			})
 		})
 

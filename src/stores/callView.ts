@@ -25,6 +25,7 @@ type State = {
 	presentationStarted: boolean
 	selectedVideoPeerId: string | null
 	gridBeforePin: boolean
+	gridBeforePresentation: boolean | null
 	callEndedTimeout: ReturnType<typeof setTimeout> | undefined
 	isLiveTranscriptionEnabled: boolean
 	externalCallServiceUrl: string | null
@@ -51,6 +52,7 @@ export const useCallViewStore = defineStore('callView', {
 		presentationStarted: false,
 		selectedVideoPeerId: null,
 		gridBeforePin: false,
+		gridBeforePresentation: null,
 		callEndedTimeout: undefined,
 		isLiveTranscriptionEnabled: false,
 		externalCallServiceUrl: null,
@@ -174,6 +176,8 @@ export const useCallViewStore = defineStore('callView', {
 				return
 			}
 			this.presentationStarted = true
+			// ket4tec (NAS_CLOUD#159): вид до показа (при закреплении - вид до закрепления)
+			this.gridBeforePresentation = this.selectedVideoPeerId !== null ? this.gridBeforePin : this.isGrid
 
 			this.setCallViewMode({ token, isGrid: false, isStripeOpen: true, clearLast: false }) // ket4tec (NAS_CLOUD#108 п.1): полоса не закрывается — своя камера видна
 		},
@@ -192,10 +196,11 @@ export const useCallViewStore = defineStore('callView', {
 			}
 			this.presentationStarted = false
 
-			if (!this.isGrid && !this.isStripeOpen) {
-				// User didn't pick grid view during presentation, restore previous state
-				this.setCallViewMode({ token, isGrid: this.lastIsGrid, isStripeOpen: this.lastIsStripeOpen, clearLast: false })
+			// ket4tec (NAS_CLOUD#159): показ кончился - вернуть вид, который был до него (закрепление из #153 не трогаем)
+			if (!this.isGrid && this.selectedVideoPeerId === null && this.gridBeforePresentation !== null) {
+				this.setCallViewMode({ token, isGrid: this.gridBeforePresentation, clearLast: false })
 			}
+			this.gridBeforePresentation = null
 		},
 
 		/**

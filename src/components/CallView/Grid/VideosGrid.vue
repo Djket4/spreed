@@ -173,7 +173,6 @@ import {
 	getHalfColumnCount,
 	getHalfColumnMaxWidth,
 	getHalfColumnMinWidth,
-	getJustifyContent,
 	GRID_GAP,
 	TARGET_ASPECT_RATIO,
 	TILE_COLUMN_SPAN,
@@ -310,6 +309,9 @@ export default {
 		// `computeGridDimensions`); this clamp keeps the "videos per page" math
 		// consistent even before the layout has been recomputed.
 		const slots = computed(() => {
+			if (props.isStripe) {
+				return 9999 // ket4tec (NAS_CLOUD#159): полоса без страниц, листается пальцем
+			}
 			const gridSlots = gridDimensions.rows.value * gridDimensions.columns.value
 			const slots = noLocalVideoReserve.value ? gridSlots : gridSlots - 1
 			return videosCap ? Math.min(videosCap, slots) : slots
@@ -440,40 +442,17 @@ export default {
 			return getHalfColumnMinWidth(this.dpiAwareMinWidth)
 		},
 
-		// Computed css to reactively style the grid
+		// ket4tec (NAS_CLOUD#159): сетка квадратов по центру; полоса - flex в k7call.scss. Плитка занимает две половинки столбца
+		// (см. computeTilePlacements), чтобы неполный ряд вставал по центру.
 		gridStyle() {
-			let columns = this.columns
-			let rows = this.rows
-
-			// If there are no other videos the empty call view is shown above
-			// the local video.
-			if (this.orderedVideos.length === 0 && !this.isStripe) {
-				columns = 1
-				rows = 2
+			if (this.isStripe || !this.side) {
+				return undefined
 			}
-
-			// The grid is always laid out in half columns and every tile spans two
-			// of them, so that a row leaving an odd number of columns empty can be
-			// centered by starting it half a column further (see
-			// `computeTilePlacements`). A tile keeps the exact same width either
-			// way, as it also takes the gap between its two half columns, so the
-			// tiles do not jump around when the placement changes.
-			const halfColumnWidth = this.halfColumnMaxWidth !== null
-				? `minmax(${this.halfColumnMinWidth}px, ${this.halfColumnMaxWidth}px)`
-				: `minmax(${this.halfColumnMinWidth}px, 1fr)`
-
 			return {
-				gridTemplateColumns: `repeat(${getHalfColumnCount(columns)}, ${halfColumnWidth})`,
-				gridTemplateRows: `repeat(${rows}, minmax(${this.dpiAwareMinHeight}px, 1fr))`,
-				// The columns no longer take the whole width once they are
-				// capped, so the grid itself has to place them
-				justifyContent: getJustifyContent({
-					isStripe: this.isStripe,
-					totalTiles: this.totalTiles,
-					// The local video is laid out after the remote tiles, so it
-					// is the only tile of the grid when no remote one is shown
-					isLocalVideoAlone: !this.noLocalVideoReserve && this.displayedVideos.length === 0,
-				}),
+				gridTemplateColumns: `repeat(${getHalfColumnCount(this.columns)}, ${(this.side - GRID_GAP) / 2}px)`,
+				gridTemplateRows: `repeat(${this.rows}, ${this.side}px)`,
+				justifyContent: 'center',
+				alignContent: 'center',
 			}
 		},
 
@@ -553,6 +532,11 @@ export default {
 				return
 			}
 
+			if (this.isStripe) {
+				this.grid.scrollLeft += event.deltaY // ket4tec (NAS_CLOUD#159): колесо листает полосу
+				return
+			}
+
 			if (event.deltaY < 0 && this.hasPreviousPage) {
 				this.previous()
 			} else if (event.deltaY > 0 && this.hasNextPage) {
@@ -576,6 +560,9 @@ export default {
 		// Explicit placement of a tile in the grid. Columns are counted in half
 		// columns, which the grid flips on its own in RTL layouts.
 		tileStyle(index) {
+			if (this.isStripe) {
+				return undefined
+			}
 			const placement = this.tilePlacements[index]
 			if (!placement) {
 				return undefined

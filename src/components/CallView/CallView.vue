@@ -38,7 +38,6 @@
 						:isFullPage="showFullPage"
 						isGrid
 						isBig
-						fitVideo
 						@clickVideo="handleClickPinned" />
 
 					<!-- Local Video Override mode (following own video) -->
@@ -51,7 +50,6 @@
 						:isStripe="false"
 						:isSidebar="false"
 						isBig
-						fitVideo
 						@clickVideo="handleClickPinned" />
 
 					<!-- Screens -->
@@ -91,7 +89,6 @@
 						:sharedData="sharedDatas[promotedParticipantModel.attributes.peerId]"
 						:showTalkingHighlight="false"
 						isGrid
-						fitVideo
 						isBig
 						:isFullPage="showFullPage"
 						:isSidebar="isSidebar"
@@ -127,7 +124,7 @@
 					:isStripe="showPromotedArea"
 					:isRecording="isRecording"
 					:token="token"
-					:isOverlap="showFullPage"
+					:isOverlap="!callParticipantModels.length"
 					:callParticipantModels="stripeParticipantModels"
 					:screens="screens"
 					:localMediaModel="localMediaModel"
@@ -484,9 +481,9 @@ export default {
 		// floating over it rather than taking room of its own. A promoted area
 		// held by a single participant is laid out that way, and so is one with
 		// nobody in it yet.
+		// ket4tec (NAS_CLOUD#159): плавающей полосы поверх кадра больше нет, своя плитка - в общей ленте
 		showFullPage() {
-			return this.callParticipantModels.length <= 1
-				&& !(this.showLocalScreen || this.showRemoteScreen || this.showSelectedScreen)
+			return false
 		},
 
 		hasLocalVideo() {
@@ -553,15 +550,9 @@ export default {
 			})
 		},
 
+		// ket4tec (NAS_CLOUD#159): круглой камеры докладчика поверх экрана нет, его камера - квадрат в ленте
 		shouldShowPresenterOverlay() {
-			if (this.isSidebar) {
-				// Do not overload small video tile
-				return false
-			}
-
-			return (this.showLocalScreen && this.hasLocalVideo)
-				|| ((this.showRemoteScreen || this.showSelectedScreen)
-					&& (this.shownRemoteScreenCallParticipantModel?.attributes.videoAvailable || this.isModelWithVideo(this.shownRemoteScreenCallParticipantModel)))
+			return false
 		},
 
 		presenterModel() {
