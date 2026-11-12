@@ -8,6 +8,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import CallView from './CallView.vue'
+import { useCallViewStore } from '../../stores/callView.ts'
+import { localMediaModel } from '../../utils/webrtc/index.js'
 
 vi.mock('@nextcloud/event-bus', () => ({
 	EventBus: {
@@ -19,7 +21,9 @@ vi.mock('@nextcloud/event-bus', () => ({
 	unsubscribe: vi.fn(),
 }))
 
-vi.mock('../../utils/webrtc/index.js', () => ({
+vi.mock('./Grid/tilePromotionTransition.ts', () => ({ animateTilePromotion: vi.fn() }))
+
+vi.mock('../../utils/webrtc/index.js', async () => ({
 	beforeLeaveCall: { fn: null },
 	k4drawSignaling: () => null,
 	callParticipantCollection: {
@@ -33,10 +37,10 @@ vi.mock('../../utils/webrtc/index.js', () => ({
 		},
 	},
 	localMediaModel: {
-		attributes: {
+		attributes: (await vi.importActual('vue')).reactive({
 			localScreen: null,
 			videoEnabled: false,
-		},
+		}),
 		disableAudio: vi.fn(),
 		disableVideo: vi.fn(),
 	},
@@ -83,6 +87,38 @@ describe('CallView.vue', () => {
 		const unpinVideo = vi.spyOn(wrapper.vm.callViewStore, 'unpinVideo').mockImplementation(() => {})
 		handler()
 		expect(unpinVideo).toHaveBeenCalledWith(TOKEN, false)
+	})
+
+	test('pin, unpin via k4-unpin-video event: pin is cleared and the view is restored', async () => {
+		const store = useCallViewStore()
+		store.setCallViewMode({ token: TOKEN, isGrid: true })
+		store.setSelectedVideoPeerId('peer-1')
+		store.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+		wrapper = mountCallView()
+		const handler = subscribe.mock.calls.findLast(([name]) => name === 'k4-unpin-video')[1]
+		handler()
+		expect(store.selectedVideoPeerId).toBeNull()
+		expect(store.isGrid).toBe(true)
+	})
+
+	test('own screen share started while own camera is pinned still restores the grid (NAS_CLOUD#159)', async () => {
+		const store = useCallViewStore()
+		store.setCallViewMode({ token: TOKEN, isGrid: true })
+		store.setSelectedVideoPeerId('local')
+		store.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+		wrapper = mountCallView()
+
+		localMediaModel.attributes.localScreen = {}
+		await flushPromises()
+		expect(store.presentationStarted).toBe(true)
+
+		store.setSelectedVideoPeerId(null) // unpin while sharing
+		await flushPromises()
+		localMediaModel.attributes.localScreen = null
+		await flushPromises()
+
+		expect(store.presentationStarted).toBe(false)
+		expect(store.isGrid).toBe(true)
 	})
 
 	describe('video overlay mouse/keyboard activity tracking', () => {

@@ -29,7 +29,7 @@ type UseGridDimensionsOptions = {
 /**
  * Owns the measurement of the grid element and derives the number of columns and
  * rows the grid should use. The heavy lifting is done by the pure
- * {@link computeGridDimensions}; this composable only wires it to the DOM via a
+ * {@link computeSquareLayout}; this composable only wires it to the DOM via a
  * `ResizeObserver` and the relevant reactive inputs.
  *
  * @param options - the reactive layout inputs and template refs

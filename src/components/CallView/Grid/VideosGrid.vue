@@ -171,8 +171,6 @@ import { useCallViewStore } from '../../../stores/callView.ts'
 import {
 	computeTilePlacements,
 	getHalfColumnCount,
-	getHalfColumnMaxWidth,
-	getHalfColumnMinWidth,
 	GRID_GAP,
 	TARGET_ASPECT_RATIO,
 	TILE_COLUMN_SPAN,
@@ -306,11 +304,12 @@ export default {
 		// The local video always takes one slot, unless it is not shown
 		// (recording mode).
 		// The cap is primarily enforced by shrinking the grid layout (see
-		// `computeGridDimensions`); this clamp keeps the "videos per page" math
+		// `computeSquareLayout`); this clamp keeps the "videos per page" math
 		// consistent even before the layout has been recomputed.
 		const slots = computed(() => {
 			if (props.isStripe) {
-				return 9999 // ket4tec (NAS_CLOUD#159): полоса без страниц, листается пальцем
+				// ket4tec (NAS_CLOUD#159): одна строка; больше штатного лимита видимых потоков не монтируем, остальное - страницы полосы
+				return videosCap || 9999
 			}
 			const gridSlots = gridDimensions.rows.value * gridDimensions.columns.value
 			const slots = noLocalVideoReserve.value ? gridSlots : gridSlots - 1
@@ -426,22 +425,6 @@ export default {
 			})
 		},
 
-		// Maximum width of a half column, so that the tiles are not stretched
-		// past the target aspect ratio when the grid has room to spare. The
-		// empty call view has a layout of its own and takes whatever width it
-		// is given, so it is never capped.
-		halfColumnMaxWidth() {
-			if (this.rows <= 0 || (this.orderedVideos.length === 0 && !this.isStripe)) {
-				return null
-			}
-
-			return getHalfColumnMaxWidth(this.videoHeight, TARGET_ASPECT_RATIO, this.halfColumnMinWidth)
-		},
-
-		halfColumnMinWidth() {
-			return getHalfColumnMinWidth(this.dpiAwareMinWidth)
-		},
-
 		// ket4tec (NAS_CLOUD#159): сетка квадратов по центру; полоса - flex в k7call.scss. Плитка занимает две половинки столбца
 		// (см. computeTilePlacements), чтобы неполный ряд вставал по центру.
 		gridStyle() {
@@ -462,7 +445,7 @@ export default {
 			},
 
 			set(value) {
-				this.callViewStore.setCallViewMode({ token: this.token, isGrid: !value, clearLast: false })
+				this.callViewStore.setCallViewMode({ token: this.token, isGrid: !value, clearLast: false, manual: true })
 			},
 		},
 	},
