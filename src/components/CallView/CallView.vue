@@ -203,6 +203,7 @@ import RemoteVideoBlocker from '../../utils/webrtc/RemoteVideoBlocker.js'
 import { placeholderImage, placeholderModel, placeholderName, placeholderSharedData } from './Grid/gridPlaceholders.ts'
 import { animateTilePromotion } from './Grid/tilePromotionTransition.ts'
 import { state as k4, watchCall } from './k4draw/useDrawing.js' // ket4tec: k4draw
+import { watchHeaderLinks, watchMove } from './k4move/useMove.js' // ket4tec (NAS_CLOUD#113)
 import { watchStickers } from './k4stk/useStickers.js' // ket4tec: k4stk
 import { setUpSpeakerSimulation, tearDownSpeakerSimulation } from './speakerSimulation.ts'
 import { useActiveSpeakers } from './useActiveSpeakers.ts'
@@ -692,6 +693,8 @@ export default {
 		}
 		this.k4unwatch = watchCall() // ket4tec: k4draw — о доске узнаём без показа экрана
 		this.k4stkUnwatch = watchStickers() // ket4tec: k4stk
+		this.k4moveUnwatch = watchMove() // ket4tec (NAS_CLOUD#113)
+		this.k4hdrUnwatch = watchHeaderLinks() // ket4tec (NAS_CLOUD#113)
 		// ket4tec (NAS_CLOUD#103 п.48): на тач-устройствах iOS шлёт перед касанием mouseover/mousemove; плитки и оверлей звонка
 		// меняют разметку на них, и Safari считает первое касание «наведением» — кнопка срабатывает со второго. Глотаем до Vue.
 		if (window.matchMedia?.('(hover: none)').matches) {
@@ -715,6 +718,8 @@ export default {
 		}
 		this.k4unwatch?.() // ket4tec: k4draw
 		this.k4stkUnwatch?.() // ket4tec: k4stk
+		this.k4moveUnwatch?.() // ket4tec (NAS_CLOUD#113)
+		this.k4hdrUnwatch?.()
 		document.removeEventListener('click', this.k7talkTab, true)
 
 		this.debounceFetchPeers.clear?.()

@@ -9,6 +9,7 @@ import { showError } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { useStore } from 'vuex'
+import { moveGate, setJoiner } from '../components/CallView/k4move/useMove.js'
 import { ATTENDEE, CALL, PARTICIPANT } from '../constants.ts'
 import { callSIPDialOut } from '../services/callsService.ts'
 import { getTalkConfig } from '../services/CapabilitiesManager.ts'
@@ -55,16 +56,23 @@ export function useJoinCall() {
 	 * @param options.recordingConsent - whether to join the call with recording consent
 	 * @param options.shouldStartRecording - whether to start the recording together with the call (requires recording backend)
 	 * @param options.directCall - whether to join call with video off
+	 * @param options.k4take - ket4tec: skip the move-call prompt
 	 */
 	async function joinCall(token: string, {
 		silent = false,
 		recordingConsent = false,
 		shouldStartRecording = false,
 		directCall = false,
+		k4take = false, // ket4tec (NAS_CLOUD#113): уже спросили о переносе звонка
 	} = {}) {
 		const conversation = vuexStore.getters.conversation(token)
 		if (!actorStore.participantIdentifier.sessionId || conversation.attendeeId !== actorStore.participantIdentifier.attendeeId) {
 			console.error('Trying to join call without having joined the conversation')
+			return
+		}
+
+		// ket4tec (NAS_CLOUD#113): мой аккаунт уже в этом звонке в другой вкладке — спросить, а не входить второй раз
+		if (!k4take && moveGate(token, () => joinCall(token, { silent, recordingConsent, shouldStartRecording, directCall, k4take: true }))) {
 			return
 		}
 
@@ -123,6 +131,7 @@ export function useJoinCall() {
 		}
 	}
 
+	setJoiner(joinCall) // ket4tec (NAS_CLOUD#113): «Вернуть сюда» из CallView
 	return {
 		joinCall,
 	}
