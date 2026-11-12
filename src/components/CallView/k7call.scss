@@ -436,3 +436,7 @@ $glass: blur(24px) saturate(180%);
 // плитка ленты мала: подпись на всю ширину в своей строке, значки микрофона и камеры под ней
 #call-container .grid-main-wrapper:not(.is-grid) .wrapper:not(.wrapper--big) .bottom-bar { flex-wrap: wrap; row-gap: 2px; }
 #call-container .grid-main-wrapper:not(.is-grid) .wrapper:not(.wrapper--big) .participant-name { flex: 0 1 100%; max-width: 100%; box-sizing: border-box; }
+// ket4tec (NAS_CLOUD#159): таймер с индикатором записи на телефоне обрезался с двух сторон («)6 : 1(») — кнопка не сжимается ниже текста
+#content-vue .top-bar--in-call .top-bar__controls .call-time { flex: none; min-width: max-content; }
+#content-vue .top-bar--in-call .top-bar__controls .call-time .button-vue { width: auto !important; min-width: max-content; padding-inline: 12px; }
+#content-vue .top-bar--in-call .call-time__text { white-space: nowrap; overflow: visible; }
