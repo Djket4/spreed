@@ -24,6 +24,7 @@ type State = {
 	lastIsStripeOpen: boolean | null
 	presentationStarted: boolean
 	selectedVideoPeerId: string | null
+	gridBeforePin: boolean
 	callEndedTimeout: ReturnType<typeof setTimeout> | undefined
 	isLiveTranscriptionEnabled: boolean
 	externalCallServiceUrl: string | null
@@ -49,6 +50,7 @@ export const useCallViewStore = defineStore('callView', {
 		lastIsStripeOpen: null,
 		presentationStarted: false,
 		selectedVideoPeerId: null,
+		gridBeforePin: false,
 		callEndedTimeout: undefined,
 		isLiveTranscriptionEnabled: false,
 		externalCallServiceUrl: null,
@@ -81,7 +83,29 @@ export const useCallViewStore = defineStore('callView', {
 		},
 
 		setSelectedVideoPeerId(value: string | null) {
+			// ket4tec (NAS_CLOUD#153): запоминаем вид до закрепления, чтобы «Открепить» вернул его
+			if (value !== null && this.selectedVideoPeerId === null) {
+				this.gridBeforePin = this.isGrid
+			}
 			this.selectedVideoPeerId = value
+		},
+
+		/**
+		 * ket4tec (NAS_CLOUD#153): снять закрепление; без идущего показа экрана — закончить показ
+		 * и вернуть вид, который был до закрепления. С экраном остаёмся в виде докладчика.
+		 *
+		 * @param token current conversation token;
+		 * @param hasScreens идёт показ экрана (свой или чужой).
+		 */
+		unpinVideo(token: string, hasScreens = false) {
+			this.selectedVideoPeerId = null
+			if (hasScreens) {
+				return
+			}
+			this.stopPresentation(token)
+			if (this.gridBeforePin) {
+				this.setCallViewMode({ token, isGrid: true, clearLast: false })
+			}
 		},
 
 		handleJoinCall(conversation: Conversation) {
@@ -94,9 +118,8 @@ export const useCallViewStore = defineStore('callView', {
 			// ket4tec: каждый звонок начинается с сетки (все крупными плитками, своя тоже), и вдвоём тоже.
 			// Сохранённое «докладчик» не берём: его пишет и автоматика показа экрана. Переключатель вида остаётся.
 			const isGrid = true
-			// Speaker view shows a single speaker unless multi-speaker was picked before
-			const isMultiSpeaker = BrowserStorage.getItem(`callprefs-${conversation.token}-multispeaker`) === 'true'
-			this.setCallViewMode({ token: conversation.token, isGrid, isMultiSpeaker, isStripeOpen: true })
+			// ket4tec (NAS_CLOUD#153): режима «несколько говорящих» нет, сохранённую настройку не читаем
+			this.setCallViewMode({ token: conversation.token, isGrid, isMultiSpeaker: false, isStripeOpen: true })
 		},
 
 		/**

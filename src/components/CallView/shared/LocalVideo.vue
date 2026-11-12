@@ -10,7 +10,7 @@
 		:class="[videoContainerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo')">
+		@click="$emit('clickVideo', $event)">
 		<img
 			v-if="screenshotModeUrl"
 			class="dev-mode-video--self videoWrapper"
@@ -71,6 +71,7 @@
 
 <script>
 import { showError, showInfo } from '@nextcloud/dialogs'
+import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { inject, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -368,8 +369,7 @@ export default {
 		},
 
 		handleStopFollowing() {
-			this.callViewStore.setSelectedVideoPeerId(null)
-			this.callViewStore.stopPresentation(this.token)
+			emit('k4-unpin-video') // ket4tec (NAS_CLOUD#153): единый путь в CallView
 		},
 
 		updateContainerAspectRatio([{ target }]) {
