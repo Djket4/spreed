@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { subscribe } from '@nextcloud/event-bus'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -19,6 +20,8 @@ vi.mock('@nextcloud/event-bus', () => ({
 }))
 
 vi.mock('../../utils/webrtc/index.js', () => ({
+	beforeLeaveCall: { fn: null },
+	k4drawSignaling: () => null,
 	callParticipantCollection: {
 		callParticipantModels: [],
 		on: vi.fn(),
@@ -73,6 +76,14 @@ describe('CallView.vue', () => {
 			},
 		})
 	}
+
+	test('k4-unpin-video event unpins the video', async () => {
+		wrapper = mountCallView()
+		const handler = subscribe.mock.calls.find(([name]) => name === 'k4-unpin-video')[1]
+		const unpinVideo = vi.spyOn(wrapper.vm.callViewStore, 'unpinVideo').mockImplementation(() => {})
+		handler()
+		expect(unpinVideo).toHaveBeenCalledWith(TOKEN, false)
+	})
 
 	describe('video overlay mouse/keyboard activity tracking', () => {
 		beforeEach(() => {

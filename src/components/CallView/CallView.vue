@@ -179,6 +179,9 @@
 			<button type="button" @click="acceptAskUnmute">
 				{{ t('spreed', 'Unmute') }}
 			</button>
+			<button type="button" @click="declineAskUnmute">
+				{{ t('spreed', 'Dismiss') }}
+			</button>
 		</div>
 	</div>
 </template>
@@ -760,10 +763,15 @@ export default {
 
 	methods: {
 		t,
+		declineAskUnmute() { // ket4tec (NAS_CLOUD#154)
+			localCallParticipantModel.set('askUnmute', false)
+		},
+
 		acceptAskUnmute() { // ket4tec (NAS_CLOUD#154)
 			localMediaModel.enableAudio()
 			localCallParticipantModel.set('askUnmute', false)
 		},
+
 		// Placeholder data for devMode and screenshotMode
 		placeholderImage,
 		placeholderName,

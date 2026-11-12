@@ -194,13 +194,10 @@ CallParticipantModel.prototype = {
 
 	// ket4tec (NAS_CLOUD#154): просьба включить микрофон, тот же канал «control», что у forceMute
 	askUnmute() {
-		if (!this.get('peer')) {
-			return
-		}
-
+		// По peerId, без Peer: у участника без медиапотоков в MCU peer === null
 		this._webRtc.sendToAll('control', {
 			action: 'askUnmute',
-			peerId: this.get('peer').id,
+			peerId: this.get('peerId'),
 		})
 	},
 

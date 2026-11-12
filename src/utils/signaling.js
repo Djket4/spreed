@@ -806,6 +806,11 @@ Signaling.Standalone.prototype.connect = function() {
 				this.processEvent(data)
 				break
 			case 'message':
+				// ket4tec (NAS_CLOUD#154): «control» (forceMute/askUnmute) доверяем только серверному каналу 'control' (его пускает лишь модератор);
+				// обычное сообщение с type 'control' может прислать кто угодно, в том числе гость
+				if (data.message.data?.type === 'control') {
+					break
+				}
 				data.message.data.from = data.message.sender.sessionid
 				this._trigger('message', [data.message.data])
 				break
