@@ -42,6 +42,6 @@ php "$W/composer.phar" install --no-interaction --no-progress -q
 php ../../occ app:enable spreed
 
 for f in tests/php/Service/ParticipantServiceEmptyCallTest.php tests/php/BackgroundJob/EndEmptyCallTest.php tests/php/Service/ParticipantServiceTest.php tests/php/Service/ParticipantServiceParticipantTypeTest.php; do
-	php vendor-bin/phpunit/vendor/bin/phpunit -c tests/php/phpunit.xml "$f"
+	php vendor/bin/phpunit -c tests/php/phpunit.xml "$f"
 done
 df -h /; free -m
