@@ -349,7 +349,7 @@ function openBridge() {
 }
 
 /** Плашка «Приложение не найдено»: закрыть. */
-export const closeMissing = () => {
+export function closeMissing() {
 	if (['noapp', 'blocked', 'denied', 'allow'].includes(mac.st)) {
 		mac.st === 'allow' && (gen++, busy = false) // ждали запрос браузера: прекращаем ждать
 		mac.st = 'idle'

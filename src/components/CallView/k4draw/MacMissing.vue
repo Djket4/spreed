@@ -4,7 +4,11 @@
 
 <template>
 	<Teleport to="body">
-		<div v-if="mac.st === 'allow'" class="k4-missing" role="alertdialog" aria-label="Нужно разрешение браузера">
+		<div
+			v-if="mac.st === 'allow'"
+			class="k4-missing"
+			role="alertdialog"
+			aria-label="Нужно разрешение браузера">
 			<div class="k4-missing__title">
 				Нужно разрешение браузера
 			</div>
@@ -17,7 +21,11 @@
 				</button>
 			</div>
 		</div>
-		<div v-if="mac.st === 'denied'" class="k4-missing" role="alertdialog" aria-label="Доступ запрещён в браузере">
+		<div
+			v-if="mac.st === 'denied'"
+			class="k4-missing"
+			role="alertdialog"
+			aria-label="Доступ запрещён в браузере">
 			<div class="k4-missing__title">
 				Доступ запрещён в браузере
 			</div>
@@ -33,7 +41,11 @@
 				</button>
 			</div>
 		</div>
-		<div v-if="mac.st === 'blocked'" class="k4-missing" role="alertdialog" aria-label="Подключить приложение">
+		<div
+			v-if="mac.st === 'blocked'"
+			class="k4-missing"
+			role="alertdialog"
+			aria-label="Подключить приложение">
 			<div class="k4-missing__title">
 				Браузер не открыл окно связи
 			</div>
@@ -49,7 +61,11 @@
 				</button>
 			</div>
 		</div>
-		<div v-if="mac.st === 'noapp'" class="k4-missing" role="alertdialog" aria-label="Приложение не найдено">
+		<div
+			v-if="mac.st === 'noapp'"
+			class="k4-missing"
+			role="alertdialog"
+			aria-label="Приложение не найдено">
 			<div class="k4-missing__title">
 				Приложение не найдено
 			</div>
@@ -57,7 +73,11 @@
 				Скачайте его и один раз откройте вручную. После этого кнопка «Рисовать на экране» будет запускать его сама.
 			</div>
 			<div class="k4-missing__row">
-				<a class="k4-missing__dl" :href="MAC_DL" target="_blank" rel="noopener">Скачать</a>
+				<a
+					class="k4-missing__dl"
+					:href="MAC_DL"
+					target="_blank"
+					rel="noopener">Скачать</a>
 				<button type="button" @click="connectAnyway()">
 					Уже установлено
 				</button>
@@ -70,7 +90,7 @@
 </template>
 
 <script setup>
-import { closeMissing, connectAnyway, MAC_DL, mac } from './macBridge.js'
+import { closeMissing, connectAnyway, mac, MAC_DL } from './macBridge.js'
 </script>
 
 <style lang="scss" scoped>
