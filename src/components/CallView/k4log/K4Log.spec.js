@@ -30,7 +30,8 @@ describe('K4TileStats', () => {
 	test('нет данных (null) показывает прочерк, не 0', () => {
 		k4stats.peers.a = { kbps: null, loss: null, rtt: null, jit: null, fps: null, path: null, warn: [] }
 		const w = mount(K4TileStats, { props: { peerId: 'a' } })
-		expect(w.text()).toBe('— · — · —')
+		expect(w.find('.k4ts-full').text()).toBe('— · — · —')
+		expect(w.find('.k4ts-short').text()).toBe('— · — · —')
 	})
 
 	test('плашка знает все 8 ключей предупреждений', () => {
@@ -57,7 +58,8 @@ describe('K4TileStats', () => {
 		const w = mount(K4TileStats, { props: { peerId: 'a' } })
 		expect(w.find('.k4ts-red').text()).toBe('потери')
 		expect(w.find('.k4ts-turn').exists()).toBe(true)
-		expect(w.text()).toContain('1,2 Мбит/с · 20% · 80 мс')
+		expect(w.find('.k4ts-full').text()).toBe('1,2 Мбит/с · 20% · 80 мс')
+		expect(w.find('.k4ts-short').text()).toBe('1,2М · 20% · 80мс')
 	})
 })
 
@@ -109,6 +111,14 @@ describe('K4CallLogTab', () => {
 		await w.setProps({ active: true })
 		await vi.advanceTimersByTimeAsync(9000)
 		expect(get).toHaveBeenCalledTimes(3)
+		w.unmount()
+	})
+
+	test('rtc_stats без цифр: «нет данных», не пустое «связь:»', async () => {
+		get.mockResolvedValue({ data: { ocs: { data: { now: 1, events: [{ t: 1, name: 'a', k: 'rtc_stats', d: [] }] } } } })
+		const w = mount(K4CallLogTab, { props: { active: true } })
+		await flushPromises()
+		expect(w.find('.k4cl-row').text()).toContain('связь: нет данных')
 		w.unmount()
 	})
 
