@@ -59,10 +59,16 @@ describe('FaceFrame в цепочке превью', () => {
 			expect(ff.path).toBe('digital')
 			return vi.advanceTimersByTimeAsync(2600)
 		}).then(() => {
-			expect(ff.path).toBe('fallback')
+			// первый откат: приближение выключено, лёгкий сдвиг квадрата продолжается
+			expect(ff.path).toBe('center')
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(getFaceFrameLevel()).toBe('off')
 			expect(warn).toHaveBeenCalled()
+			return vi.advanceTimersByTimeAsync(2600)
+		}).then(() => {
+			// и он не тянет: обычный центр кадра, камера работает
+			expect(ff.path).toBe('fallback')
+			expect(ff.getOutputTrack()).toBe(track)
 			expect(document.querySelector('video')).toBeNull()
 			vi.useRealTimers()
 		})
