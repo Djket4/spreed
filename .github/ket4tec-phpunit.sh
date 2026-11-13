@@ -7,7 +7,7 @@ NC=$(grep -o 'nextcloud min-version="[0-9]*"' appinfo/info.xml | grep -o '[0-9]*
 APP=$PWD
 W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
-php -v | head -1
+php -v | head -1; php -m | tr "\n" " "; echo; which docker podman composer sudo || true; sudo -n true && echo SUDO_OK || true
 git clone -q --depth 1 --recurse-submodules --shallow-submodules -b "stable${NC}" https://github.com/nextcloud/server "$W/server"
 cd "$W/server"
 php occ maintenance:install --database sqlite --admin-user admin --admin-pass admin
