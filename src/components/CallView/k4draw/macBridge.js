@@ -23,7 +23,7 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(
 /** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (схема не сработала: плашка «Приложение не найдено» со «Скачать») | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
-export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', blocked: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
 
 let pop = null
@@ -34,6 +34,7 @@ let watch = 0
 // уже просили запустить: следующий неответ = приложения нет. Раньше не узнать: в Safari окно после k4draw://
 // остаётся about:blank и когда приложение есть, и когда схемы нет (проверено 09.11)
 let launched = false
+let gen = 0 // поколение звонка: отложенные итоги запуска после finish() игнорируем
 
 const show = myShow // по ключу показа: id сессии сигналинга мог смениться посреди показа
 const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
@@ -130,6 +131,9 @@ function finish() {
 	cur = null
 	pop && !pop.closed && pop.close()
 	pop = null
+	gen++
+	busy = false
+	launched = false
 	mac.st = 'idle'
 }
 
@@ -269,33 +273,27 @@ export async function pingApp() {
 }
 
 /**
- * Запуск по k4draw:// без нового окна: переход со страницы по ссылке на схему страницу не выгружает (звонок живёт).
- * Схема не зарегистрирована: браузер ничего не делает (Chrome) или показывает свой лист ошибки (Safari), окна нет.
- * «Схема сработала» = ответил ping или страница потеряла фокус/видимость (запрос «Открыть?» или само приложение).
+ * Запуск по k4draw:// в скрытом iframe: страница звонка не навигируется ни при каком исходе (нет приложения —
+ * браузер молчит или ругается внутри iframe). Успех = только ответ приложения на ping (до 8 с).
+ *
+ * @param g поколение звонка на старте
  */
-async function launchApp() {
-	let hit = false
-	const mark = () => { hit = true }
-	window.addEventListener('blur', mark)
-	document.addEventListener('visibilitychange', mark)
-	const a = document.createElement('a')
-	a.href = 'k4draw://open'
-	a.rel = 'noopener'
-	a.style.display = 'none'
-	document.body.appendChild(a)
-	a.click()
-	a.remove()
-	let ok = false
-	for (let i = 0; i < 27 && !ok; i++) { // до 8 с; без признаков через 3 с — схемы нет
+async function launchApp(g) {
+	const f = document.createElement('iframe')
+	f.style.display = 'none'
+	f.src = 'k4draw://open'
+	document.body.appendChild(f)
+	setTimeout(() => f.remove(), 5000)
+	for (let i = 0; i < 27; i++) {
 		await sleep(300)
-		ok = await pingApp()
-		if (!ok && i >= 9 && !hit) {
-			break
+		if (g !== gen) {
+			return false
+		}
+		if (await pingApp()) {
+			return true
 		}
 	}
-	window.removeEventListener('blur', mark)
-	document.removeEventListener('visibilitychange', mark)
-	return ok || hit
+	return false
 }
 
 /** Окно моста: только когда приложение уже ответило (или пользователь сам нажал «подключить»). */
@@ -308,7 +306,7 @@ function openBridge() {
 	const top = Math.max(0, Math.round((window.screen.availTop || 0) + 80))
 	pop = window.open(URL, 'k4draw', `popup=yes,width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=no`)
 	if (!pop) {
-		mac.st = 'idle' // окно заблокировано
+		mac.st = 'blocked' // окно заблокировано: плашка с кнопкой, клик откроет мост синхронно
 		return
 	}
 	mac.st = 'wait'
@@ -316,7 +314,7 @@ function openBridge() {
 }
 
 /** Плашка «Приложение не найдено»: закрыть. */
-export const closeMissing = () => { mac.st === 'noapp' && (mac.st = 'idle') }
+export const closeMissing = () => { (mac.st === 'noapp' || mac.st === 'blocked') && (mac.st = 'idle') }
 
 /** «Уже установлено — подключить»: открыть окно моста вручную (когда признаков запуска не видно, например в Safari). */
 export function connectAnyway() {
@@ -348,13 +346,19 @@ export async function openMac() {
 	launched = false
 	busy = true
 	mac.st = 'wait'
+	const g = gen
 	try {
 		if (await pingApp()) {
-			return openBridge()
+			return g === gen && openBridge()
 		}
-		mac.st = (await launchApp()) ? 'start' : 'noapp'
+		const ok = await launchApp(g)
+		if (g === gen) {
+			mac.st = ok ? 'start' : 'noapp'
+		}
 	} finally {
-		busy = false
+		if (g === gen) {
+			busy = false
+		}
 	}
 }
 

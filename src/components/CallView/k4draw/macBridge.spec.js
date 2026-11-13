@@ -6,15 +6,16 @@ vi.mock('@nextcloud/router', () => ({ getRootUrl: () => '/sub' }))
 describe('macBridge: запуск без служебных окон', () => {
 	let mod
 	let open
-	let clicked
+	let frames
 	beforeEach(async () => {
 		vi.useFakeTimers()
 		vi.resetModules()
 		open = vi.fn(() => ({ closed: false, close: vi.fn(), postMessage: vi.fn(), focus: vi.fn() }))
 		vi.stubGlobal('open', open)
 		window.open = open
-		clicked = []
-		vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function() { clicked.push(this.href) })
+		frames = []
+		const ap = document.body.appendChild.bind(document.body)
+		vi.spyOn(document.body, 'appendChild').mockImplementation((n) => { n.tagName === 'IFRAME' && frames.push(n.src); return ap(n) })
 		mod = await import('./macBridge.js')
 	})
 	afterEach(() => {
@@ -32,17 +33,17 @@ describe('macBridge: запуск без служебных окон', () => {
 		await mod.openMac()
 		expect(open).toHaveBeenCalledTimes(1)
 		expect(open.mock.calls[0][0]).toBe('http://127.0.0.1:47811/')
-		expect(clicked).toEqual([])
+		expect(frames).toEqual([])
 		expect(mod.mac.st).toBe('wait')
 	})
 
 	it('не отвечает, схема не сработала: ни одного окна, плашка noapp', async () => {
 		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
 		const p = mod.openMac()
-		await vi.advanceTimersByTimeAsync(5000)
+		await vi.advanceTimersByTimeAsync(9000)
 		await p
 		expect(open).not.toHaveBeenCalled()
-		expect(clicked).toEqual(['k4draw://open'])
+		expect(frames).toEqual(['k4draw://open'])
 		expect(mod.mac.st).toBe('noapp')
 	})
 
@@ -58,14 +59,34 @@ describe('macBridge: запуск без служебных окон', () => {
 		expect(open).toHaveBeenCalledTimes(1)
 	})
 
-	it('страница потеряла фокус (запрос «Открыть?»): start, не noapp', async () => {
+	it('потеря фокуса не считается запуском: noapp', async () => {
 		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
 		const p = mod.openMac()
 		await vi.advanceTimersByTimeAsync(300)
 		window.dispatchEvent(new Event('blur'))
 		await vi.advanceTimersByTimeAsync(9000)
 		await p
-		expect(mod.mac.st).toBe('start')
+		expect(mod.mac.st).toBe('noapp')
 		expect(open).not.toHaveBeenCalled()
+	})
+
+	it('звонок кончился во время запуска: итог не затирает idle', async () => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(600)
+		window.dispatchEvent(new Event('pagehide'))
+		await vi.advanceTimersByTimeAsync(9000)
+		await p
+		expect(mod.mac.st).toBe('idle')
+	})
+
+	it('окно моста заблокировано: плашка blocked, клик по кнопке открывает мост', async () => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({})))
+		open.mockReturnValueOnce(null)
+		await mod.openMac()
+		expect(mod.mac.st).toBe('blocked')
+		mod.connectAnyway()
+		expect(open).toHaveBeenCalledTimes(2)
+		expect(mod.mac.st).toBe('wait')
 	})
 })

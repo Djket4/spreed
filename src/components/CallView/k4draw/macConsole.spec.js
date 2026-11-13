@@ -45,11 +45,18 @@ describe('macConsole: кадры камер для приложения', () => 
 		expect(send.mock.calls[3][0].t).toBe('call')
 	})
 
-	it('кадр квадратный 128×128, вырез по центру', () => {
-		mod.consoleTick(vi.fn())
+	it('приложение v2: кадр квадратный 128×128, вырез по центру', () => {
+		mod.consoleTick(vi.fn(), true)
 		const cv = enc.mock.contexts[0]
 		expect([cv.width, cv.height]).toEqual([128, 128])
 		expect(draw.mock.calls[0].slice(1)).toEqual([280, 0, 720, 720, 0, 0, 128, 128])
 		expect(mod.cropWindow(720, 1280)).toEqual([0, 280, 720, 720])
+	})
+
+	it('старое приложение (tick без v): кадр 160×90 cover, не квадрат', () => {
+		mod.consoleTick(vi.fn())
+		const cv = enc.mock.contexts[0]
+		expect([cv.width, cv.height]).toEqual([160, 90])
+		expect(draw.mock.calls[0].slice(1)).toEqual([0, 0, 160, 90])
 	})
 })
