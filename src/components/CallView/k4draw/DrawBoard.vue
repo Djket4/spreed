@@ -32,6 +32,8 @@
 					:seed="p.seed"
 					:token="token" />
 				<b>{{ p.name }}</b>
+				<!-- ket4tec: журнал звонка (NAS_CLOUD#189); p.id = peerId, как ключ в k4stats.peers -->
+				<K4TileStats :peerId="p.me ? 'local' : p.id" compact />
 			</div>
 		</div>
 		<!-- ket4tec (правило 11.11): доска общая — открыл любой, у всех; закрыл любой, кому можно рисовать, — у всех -->
@@ -51,6 +53,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
+import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import K4Face from '../shared/k4face/K4Face.vue'
 import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'

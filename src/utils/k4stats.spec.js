@@ -3,11 +3,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const user = vi.hoisted(() => ({ cur: { uid: 'u' } }))
+vi.mock('@nextcloud/auth', () => ({ getCurrentUser: () => user.cur }))
 vi.mock('@nextcloud/axios', () => ({ default: { get: vi.fn(() => Promise.reject(new Error('403'))) } }))
 vi.mock('@nextcloud/router', () => ({ generateOcsUrl: (u) => u }))
 vi.mock('./calllog.js', () => ({ calllog: vi.fn() }))
 vi.mock('../components/CallView/k4draw/useDrawing.js', () => ({ state: {} }))
 
+import axios from '@nextcloud/axios'
 import { calllog } from './calllog.js'
 import { classify, k4stats, sample, startK4stats, stopK4stats } from './k4stats.js'
 
@@ -187,5 +190,17 @@ describe('рантайм', () => {
 			st = r.state
 			expect(r.warn).toEqual([{ w: 'loss', lvl: 'red' }])
 		}
+	})
+
+	it('feed: гость (нет текущего пользователя) пробу не делает, вошедший делает', () => {
+		axios.get.mockClear()
+		user.cur = null
+		start()
+		expect(axios.get).not.toHaveBeenCalled()
+		expect(k4stats.testmode).toBe(false)
+		stopK4stats()
+		user.cur = { uid: 'u' }
+		start()
+		expect(axios.get).toHaveBeenCalledTimes(1)
 	})
 })
