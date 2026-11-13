@@ -4,6 +4,35 @@
 
 <template>
 	<Teleport to="body">
+		<div v-if="mac.st === 'allow'" class="k4-missing" role="alertdialog" aria-label="Нужно разрешение браузера">
+			<div class="k4-missing__title">
+				Нужно разрешение браузера
+			</div>
+			<div class="k4-missing__text">
+				Разрешите доступ в запросе браузера (вверху слева). Без него связь с приложением не установится.
+			</div>
+			<div class="k4-missing__row">
+				<button type="button" @click="closeMissing()">
+					Закрыть
+				</button>
+			</div>
+		</div>
+		<div v-if="mac.st === 'denied'" class="k4-missing" role="alertdialog" aria-label="Доступ запрещён в браузере">
+			<div class="k4-missing__title">
+				Доступ запрещён в браузере
+			</div>
+			<div class="k4-missing__text">
+				Нажмите значок слева от адреса, разрешите «Доступ к другим приложениям и службам на этом устройстве» и нажмите «Рисовать на экране» ещё раз.
+			</div>
+			<div class="k4-missing__row">
+				<button type="button" @click="connectAnyway()">
+					Уже установлено
+				</button>
+				<button type="button" @click="closeMissing()">
+					Закрыть
+				</button>
+			</div>
+		</div>
 		<div v-if="mac.st === 'blocked'" class="k4-missing" role="alertdialog" aria-label="Подключить приложение">
 			<div class="k4-missing__title">
 				Браузер не открыл окно связи

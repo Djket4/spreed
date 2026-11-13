@@ -89,4 +89,73 @@ describe('macBridge: запуск без служебных окон', () => {
 		expect(open).toHaveBeenCalledTimes(2)
 		expect(mod.mac.st).toBe('wait')
 	})
+
+	// fetch, который висит, пока «пользователь не ответил»; abort по сигналу — AbortError, как в браузере
+	const pendingFetch = (state) => vi.fn((u, { signal }) => new Promise((res, rej) => {
+		const t = setInterval(() => {
+			if (state.answer === 'allow') {
+				clearInterval(t)
+				res({})
+			} else if (state.answer === 'block') {
+				clearInterval(t)
+				rej(new TypeError('Failed to fetch'))
+			}
+		}, 50)
+		signal.addEventListener('abort', () => {
+			clearInterval(t)
+			rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+		})
+	}))
+	const perm = (get) => vi.stubGlobal('navigator', { platform: 'MacIntel', permissions: { query: () => Promise.resolve({ state: get() }) } })
+
+	it('запрос браузера не отвечен: «разрешите доступ», не «не найдено»; после Allow мост сразу', async () => {
+		const state = {}
+		vi.stubGlobal('fetch', pendingFetch(state))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(15000)
+		expect(mod.mac.st).toBe('allow')
+		expect(open).not.toHaveBeenCalled()
+		state.answer = 'allow'
+		await vi.advanceTimersByTimeAsync(700)
+		await p
+		expect(open).toHaveBeenCalledTimes(1)
+		expect(mod.mac.st).toBe('wait')
+	})
+
+	it('Block в браузере (доступ запрещён): плашка denied, схема не запускается', async () => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
+		perm(() => 'denied')
+		await mod.openMac()
+		expect(mod.mac.st).toBe('denied')
+		expect(frames).toEqual([])
+		mod.connectAnyway() // обход «Уже установлено»
+		expect(open).toHaveBeenCalledTimes(1)
+	})
+
+	it('ждали запрос, потом Block: denied', async () => {
+		const state = {}
+		let st = 'prompt'
+		vi.stubGlobal('fetch', pendingFetch(state))
+		perm(() => st)
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(3000)
+		expect(mod.mac.st).toBe('allow')
+		st = 'denied'
+		state.answer = 'block'
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(mod.mac.st).toBe('denied')
+		expect(open).not.toHaveBeenCalled()
+	})
+
+	it('закрыли плашку «разрешите доступ»: ожидание прекращено', async () => {
+		vi.stubGlobal('fetch', pendingFetch({}))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(3000)
+		mod.closeMissing()
+		expect(mod.mac.st).toBe('idle')
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(mod.mac.st).toBe('idle')
+	})
 })
