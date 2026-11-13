@@ -52,3 +52,46 @@ export function centerZoom(t, W, H) {
 	const side = Math.min(m, 2 * Math.min(t.cx, 1 - t.cx) * W, 2 * Math.min(t.cy, 1 - t.cy) * H)
 	return Math.min(CENTER_MAX_ZOOM, Math.max(1, m / Math.max(side, 1)))
 }
+
+export const SPLIT_HOLD_MS = 1500 // второй человек вошёл/вышел: ждём, чтобы мимо идущий не дёргал кадр
+const SPLIT_MARGIN = 1.25 // запас вокруг пары лиц
+
+/**
+ * Два лица, которые не помещаются в один квадрат: поток 2:1 из двух квадратов.
+ * Три и более лиц — один квадрат между ними (открытый вопрос этапа 2).
+ *
+ * @param {Array<{x: number, w: number}>} faces рамки лиц в долях кадра
+ * @param {number} W ширина кадра
+ * @param {number} H высота кадра
+ */
+export function wantSplit(faces, W, H) {
+	if (faces.length !== 2) {
+		return false
+	}
+	const x1 = Math.min(faces[0].x, faces[1].x)
+	const x2 = Math.max(faces[0].x + faces[0].w, faces[1].x + faces[1].w)
+	return (x2 - x1) * W * SPLIT_MARGIN > Math.min(W, H)
+}
+
+/**
+ * Гистерезис деления: переключение, только когда желаемое состояние держится SPLIT_HOLD_MS.
+ *
+ * @param {{on: boolean, flipAt: number}} st состояние
+ * @param {boolean} want желаемое состояние
+ * @param {number} now текущее время, мс
+ */
+export function holdSplit(st, want, now) {
+	if (want === st.on) {
+		return { on: st.on, flipAt: 0 }
+	}
+	const flipAt = st.flipAt || now + SPLIT_HOLD_MS
+	return now >= flipAt ? { on: want, flipAt: 0 } : { on: st.on, flipAt }
+}
+
+/**
+ * Кадр шире квадрата в 2 раза (±5%) — «два квадрата» у смотрящего.
+ *
+ * @param w
+ * @param h
+ */
+export const isTwoSquares = (w, h) => !!w && !!h && Math.abs(w / h - 2) < 0.1

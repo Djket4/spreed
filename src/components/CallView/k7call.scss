@@ -422,6 +422,11 @@ $glass: blur(24px) saturate(180%);
 // кадр камеры заполняет квадрат без полей: «Выкл» и откат по fps дают широкий кадр, он режется по центру (NAS_CLOUD#172); обёртка VideoVue не сжимается по пропорции кадра
 #call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) { width: 100% !important; height: 100% !important; margin: 0 !important; }
 #call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) > video { object-fit: cover; object-position: center; }
+// этап 2 (#172): кадр 2:1 — две квадратные плитки; в сетке видео режется по половинам, в крупном виде показывается целиком
+#call-container video.k4-half-l { object-position: 0% 50%; transition: object-position .3s ease; }
+#call-container video.k4-half-r { object-position: 100% 50%; }
+#call-container .video__promoted > .video-container-big.k4-two { width: min(100cqw, 200cqh) !important; height: min(50cqw, 100cqh) !important; }
+#call-container .localVideoContainer video.k4-two-own { object-fit: contain; }
 // лента (в том числе «Вы»): квадраты высотой с ленту, листается пальцем и колесом
 #call-container .grid-main-wrapper:not(.is-grid) .grid { display: flex !important; gap: var(--grid-gap); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 #call-container .grid-main-wrapper:not(.is-grid) .grid::-webkit-scrollbar { display: none; }

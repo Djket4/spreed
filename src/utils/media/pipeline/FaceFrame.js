@@ -8,7 +8,7 @@ import { showWarning } from '@nextcloud/dialogs'
 import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
-import { centerZoom } from './FaceSquare.js'
+import { centerZoom, holdSplit, wantSplit } from './FaceSquare.js'
 import { clampTarget, squareRect } from './FaceSquare.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
@@ -488,6 +488,15 @@ export default class FaceFrame extends TrackSinkSource {
 				d.tileIdx++
 			}
 			const target = computeTarget(faces, lvl)
+			d.want = lvl === 'auto' && wantSplit(faces, video.videoWidth, video.videoHeight)
+			if (d.want) {
+				// два квадрата: каждый центрирован на своём лице, слева направо как в кадре
+				d.targets = faces.slice().sort((a, b) => a.x - b.x).map((f) => {
+					const t = computeTarget([f], 'auto')
+					t.zoom = Math.max(t.zoom, centerZoom(t, video.videoWidth, video.videoHeight))
+					return t
+				})
+			}
 			if (target) {
 				if (lvl === 'auto' && faces.length === 1) {
 					// лицо у края: сужаем квадрат, чтобы оно встало в центр (до 1.5×)
@@ -519,11 +528,19 @@ export default class FaceFrame extends TrackSinkSource {
 		const W = video.videoWidth
 		const H = video.videoHeight
 		const side = Math.min(W, H) // выход — квадрат (NAS_CLOUD#172)
-		if (canvas.width !== side || canvas.height !== side) {
-			canvas.width = side
+		const lvl = this._lvl()
+		// этап 2: два лица, не помещающиеся в квадрат, — 2:1 из двух квадратов (гистерезис SPLIT_HOLD_MS)
+		const was = d.split?.on ?? false
+		d.split = holdSplit(d.split || { on: false, flipAt: 0 }, !!d.want && lvl === 'auto' && !!d.targets, now)
+		const split = d.split.on
+		const cw = split ? side * 2 : side
+		if (canvas.width !== cw || canvas.height !== side) {
+			canvas.width = cw
 			canvas.height = side
 		}
-		const lvl = this._lvl()
+		if (split && !was) {
+			d.wins = d.targets.map((t) => ({ cx: t.cx, cy: t.cy, zoom: t.zoom }))
+		}
 
 		if (now - d.lastFace > LOST_AFTER_MS) {
 			d.target = { cx: 0.5, cy: 0.5, zoom: 1 }
@@ -536,8 +553,17 @@ export default class FaceFrame extends TrackSinkSource {
 		d.win = stepWindow(d.win, clampTarget(d.target, W, H), dt, { W, H })
 		this.window = d.win
 
-		const { sx, sy, side: ss } = squareRect(d.win, W, H)
-		ctx.drawImage(video, sx, sy, ss, ss, 0, 0, side, side)
+		if (split) {
+			d.wins = d.wins.map((w, i) => stepWindow(w, clampTarget(d.targets[i] || w, W, H), dt, { W, H }))
+			d.wins.forEach((w, i) => {
+				const q = squareRect(w, W, H)
+				ctx.drawImage(video, q.sx, q.sy, q.side, q.side, i * side, 0, side, side)
+			})
+			this.window = d.wins[0]
+		} else {
+			const { sx, sy, side: ss } = squareRect(d.win, W, H)
+			ctx.drawImage(video, sx, sy, ss, ss, 0, 0, side, side)
+		}
 		d.frames++
 		d.fpsFrames++
 

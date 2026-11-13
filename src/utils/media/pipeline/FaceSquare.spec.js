@@ -108,3 +108,33 @@ describe('одно лицо у края: квадрат сужается, лиц
 		expect(centerZoom({ cx: 0.5, cy: 0.05 }, W, H)).toBe(1.5)
 	})
 })
+
+describe('этап 2: два лица -> 2:1', () => {
+	const f = (x) => ({ x, w: 0.12 })
+	test('лица по краям не помещаются в квадрат, рядом — помещаются, одно и три — нет', async () => {
+		const { wantSplit } = await import('./FaceSquare.js')
+		expect(wantSplit([f(0.14), f(0.74)], W, H)).toBe(true)
+		expect(wantSplit([f(0.40), f(0.50)], W, H)).toBe(false)
+		expect(wantSplit([f(0.5)], W, H)).toBe(false)
+		expect(wantSplit([f(0.1), f(0.5), f(0.8)], W, H)).toBe(false)
+	})
+	test('гистерезис 1.5 с в обе стороны, мимо идущий не переключает', async () => {
+		const { holdSplit, isTwoSquares } = await import('./FaceSquare.js')
+		let st = { on: false, flipAt: 0 }
+		st = holdSplit(st, true, 1000)
+		expect(st.on).toBe(false)
+		st = holdSplit(st, true, 2400)
+		expect(st.on).toBe(false)
+		st = holdSplit(st, true, 2600)
+		expect(st.on).toBe(true)
+		st = holdSplit(st, false, 3000) // вышел на секунду
+		st = holdSplit(st, true, 3800) // вернулся: таймер сброшен
+		expect(st).toEqual({ on: true, flipAt: 0 })
+		st = holdSplit(st, false, 4000)
+		st = holdSplit(st, false, 5600)
+		expect(st.on).toBe(false)
+		expect(isTwoSquares(720, 360)).toBe(true)
+		expect(isTwoSquares(1280, 720)).toBe(false)
+		expect(isTwoSquares(360, 360)).toBe(false)
+	})
+})
