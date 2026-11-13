@@ -37,6 +37,7 @@ class CSPListener implements IEventListener {
 		$csp->addAllowedWorkerSrcDomain("'self'");
 		$csp->addAllowedFrameDomain('blob:');
 		$csp->addAllowedFrameDomain("'self'");
+		$csp->addAllowedFrameDomain('k4draw:'); // ket4tec: k4draw, запуск приложения схемой в скрытом iframe
 		$csp->addAllowedScriptDomain('blob:');
 		$csp->addAllowedScriptDomain("'self'");
 		$csp->addAllowedScriptDomain("'wasm-unsafe-eval'");

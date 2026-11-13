@@ -23,7 +23,7 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(
 /** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (схема не сработала: плашка «Приложение не найдено» со «Скачать») | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
-export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', blocked: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', allow: 'Подключаю…', denied: 'Рисовать на экране', blocked: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
 
 let pop = null
@@ -264,36 +264,71 @@ export async function pingApp() {
 	const t = setTimeout(() => ac.abort(), 800)
 	try {
 		await fetch(URL, { mode: 'no-cors', cache: 'no-store', signal: ac.signal })
-		return true
+		return 'ok'
 	} catch (e) {
-		return false
+		// не успел за 800 мс = браузер ждёт ответа пользователя на запрос доступа к локальной сети; быстрая ошибка = приложения нет или доступ запрещён
+		return ac.signal.aborted ? 'wait' : 'no'
 	} finally {
 		clearTimeout(t)
 	}
 }
 
+/** Доступ к локальной сети запрещён в браузере? Только Chromium (Permissions API); иначе ''. */
+export async function netPerm() {
+	for (const name of ['loopback-network', 'local-network-access']) {
+		try {
+			return (await navigator.permissions.query({ name })).state
+		} catch (e) { // имя не поддерживается
+		}
+	}
+	return ''
+}
+
 /**
  * Запуск по k4draw:// в скрытом iframe: страница звонка не навигируется ни при каком исходе (нет приложения —
- * браузер молчит или ругается внутри iframe). Успех = только ответ приложения на ping (до 8 с).
+ * браузер молчит или ругается внутри iframe; схема в CSP frame-src, CSPListener). Успех = только ответ приложения на ping.
+ * Пока браузер ждёт ответа пользователя на запрос доступа к локальной сети (ping не укладывается в 800 мс) —
+ * ждём, плашка «разрешите доступ»; «приложения нет» считается только по быстрым отказам (до 8 с).
  *
  * @param g поколение звонка на старте
+ * @param first итог первого ping
+ * @return {Promise<'ok'|'noapp'|'denied'>} ok с waited = ждали ответа на запрос браузера
  */
-async function launchApp(g) {
+async function launchApp(g, first) {
+	if (first === 'no' && await netPerm() === 'denied') {
+		return { r: 'denied' }
+	}
 	const f = document.createElement('iframe')
 	f.style.display = 'none'
 	f.src = 'k4draw://open'
 	document.body.appendChild(f)
 	setTimeout(() => f.remove(), 5000)
-	for (let i = 0; i < 27; i++) {
+	let waited = first === 'wait'
+	let no = 0
+	const t0 = Date.now()
+	while (no < 27 && Date.now() - t0 < 120000) {
+		first === 'wait' && (mac.st = 'allow')
 		await sleep(300)
 		if (g !== gen) {
-			return false
+			return { r: 'noapp' }
 		}
-		if (await pingApp()) {
-			return true
+		const r = await pingApp()
+		if (r === 'ok') {
+			return { r: 'ok', waited }
 		}
+		if (r === 'wait') {
+			waited = true
+			mac.st = 'allow'
+			continue
+		}
+		mac.st = 'wait'
+		if (await netPerm() === 'denied') {
+			return { r: 'denied' }
+		}
+		first = ''
+		no++
 	}
-	return false
+	return { r: 'noapp' }
 }
 
 /** Окно моста: только когда приложение уже ответило (или пользователь сам нажал «подключить»). */
@@ -314,7 +349,12 @@ function openBridge() {
 }
 
 /** Плашка «Приложение не найдено»: закрыть. */
-export const closeMissing = () => { (mac.st === 'noapp' || mac.st === 'blocked') && (mac.st = 'idle') }
+export const closeMissing = () => {
+	if (['noapp', 'blocked', 'denied', 'allow'].includes(mac.st)) {
+		mac.st === 'allow' && (gen++, busy = false) // ждали запрос браузера: прекращаем ждать
+		mac.st = 'idle'
+	}
+}
 
 /** «Уже установлено — подключить»: открыть окно моста вручную (когда признаков запуска не видно, например в Safari). */
 export function connectAnyway() {
@@ -348,12 +388,16 @@ export async function openMac() {
 	mac.st = 'wait'
 	const g = gen
 	try {
-		if (await pingApp()) {
+		const first = await pingApp()
+		if (first === 'ok') {
 			return g === gen && openBridge()
 		}
-		const ok = await launchApp(g)
+		const { r, waited } = await launchApp(g, first)
 		if (g === gen) {
-			mac.st = ok ? 'start' : 'noapp'
+			if (r === 'ok' && waited) {
+				return openBridge() // пользователь ответил на запрос браузера: мост сразу, без второго клика
+			}
+			mac.st = r === 'ok' ? 'start' : r
 		}
 	} finally {
 		if (g === gen) {
@@ -372,7 +416,7 @@ export function autoOpenMac() {
 		used = localStorage.getItem(AUTO) === '1'
 	} catch (e) { // хранилище закрыто: без автоподключения
 	}
-	if (used && isMac() && mac.st !== 'on' && mac.st !== 'wait') {
+	if (used && isMac() && !['on', 'wait', 'allow'].includes(mac.st)) {
 		openMac()
 	}
 }
