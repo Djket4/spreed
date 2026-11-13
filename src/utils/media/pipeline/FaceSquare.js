@@ -36,3 +36,19 @@ export function clampTarget(t, W, H) {
 	const hy = side / 2 / H
 	return { ...t, cx: clamp(t.cx, hx, 1 - hx), cy: clamp(t.cy, hy, 1 - hy) }
 }
+
+export const CENTER_MAX_ZOOM = 1.5 // лицо у края: квадрат сужается до min(W,H)/1.5, дальше остаётся смещение
+
+/**
+ * Одно лицо у края кадра: приближение, при котором квадрат уже не упирается в край и лицо встаёт в центр
+ * (сторона = 2 × расстояние от центра лица до ближнего края по каждой оси), не больше CENTER_MAX_ZOOM.
+ *
+ * @param {{cx: number, cy: number, zoom: number}} t цель (центр лица в долях кадра)
+ * @param {number} W ширина кадра
+ * @param {number} H высота кадра
+ */
+export function centerZoom(t, W, H) {
+	const m = Math.min(W, H)
+	const side = Math.min(m, 2 * Math.min(t.cx, 1 - t.cx) * W, 2 * Math.min(t.cy, 1 - t.cy) * H)
+	return Math.min(CENTER_MAX_ZOOM, Math.max(1, m / Math.max(side, 1)))
+}

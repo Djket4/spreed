@@ -8,6 +8,7 @@ import { showWarning } from '@nextcloud/dialogs'
 import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
+import { centerZoom } from './FaceSquare.js'
 import { clampTarget, squareRect } from './FaceSquare.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
@@ -488,6 +489,10 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			const target = computeTarget(faces, lvl)
 			if (target) {
+				if (lvl === 'auto' && faces.length === 1) {
+					// лицо у края: сужаем квадрат, чтобы оно встало в центр (до 1.5×)
+					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
+				}
 				d.target = target
 				d.lastFace = now
 			}

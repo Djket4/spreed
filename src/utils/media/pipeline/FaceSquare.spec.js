@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest'
 import { computeTarget } from './FaceFrame.js'
 import { stepWindow } from './FaceSmooth.js'
-import { clampTarget, squareRect } from './FaceSquare.js'
+import { centerZoom, clampTarget, squareRect } from './FaceSquare.js'
 
 const W = 1280
 const H = 720
@@ -80,5 +80,31 @@ describe('вырез квадрата по лицу (zoom 1)', () => {
 			xs.push(win.cx)
 		}
 		expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(0.01)
+	})
+})
+
+describe('одно лицо у края: квадрат сужается, лицо встаёт в центр', () => {
+	const place = (fx, fy = 0.5) => {
+		const t = { cx: fx, cy: fy, zoom: centerZoom({ cx: fx, cy: fy }, W, H) }
+		const r = squareRect(clampTarget(t, W, H), W, H)
+		return { z: t.zoom, pos: (fx * W - r.sx) / r.side }
+	}
+	test('лицо на 20%: приближение ~1.4×, лицо в центре', () => {
+		const { z, pos } = place(0.2)
+		expect(z).toBeCloseTo(1.406, 2)
+		expect(pos).toBeCloseTo(0.5, 2)
+	})
+	test('лицо на 10%: упор в 1.5× и остаточное смещение', () => {
+		const { z, pos } = place(0.1)
+		expect(z).toBe(1.5)
+		expect(pos).toBeLessThan(0.45)
+		expect(pos).toBeGreaterThan(0.2)
+	})
+	test('лицо по центру: приближения нет', () => {
+		expect(place(0.5).z).toBe(1)
+	})
+	test('лицо у верхнего края: то же по вертикали', () => {
+		expect(centerZoom({ cx: 0.5, cy: 0.4 }, W, H)).toBeCloseTo(1 / 0.8, 2)
+		expect(centerZoom({ cx: 0.5, cy: 0.05 }, W, H)).toBe(1.5)
 	})
 })
