@@ -33,7 +33,7 @@
 					:token="token" />
 				<!-- ket4tec (NAS_CLOUD#195 п.9): как в полосе звонка — NO SIGNAL без связи, значок вместо красной рамки, имя узкой полосой -->
 				<K4NoSignal v-if="p.lost && !k4net.selfLost" />
-				<span v-else-if="!p.on && !p.me" class="k4-micoff" title="Звук отключён">
+				<span v-else-if="!p.on" class="k4-micoff" title="Звук отключён">
 					<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="14" />
 				</span>
 				<b>{{ p.name }}</b>
@@ -67,7 +67,7 @@ import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
-import { k4net, peerLost } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
+import { k4net, peerLost, phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import { bgUrl, canDraw, humans, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
 
 const token = useGetToken()
@@ -112,7 +112,14 @@ const fit = computed(() => {
 	const ar = showOf(state.board)?.ar || 4 / 3
 	const bw = w - 2 * P, bh = h - 2 * P - DOCK
 	let res = 0, strip = {} // res — место под полосу камер вместе с отступом
-	if (n) {
+	if (n && !land) {
+		// ket4tec (NAS_CLOUD#195 п.3, 9): портрет — как под показом: доска главная, квадраты по 3 в ряд под ней (видно 1–2 ряда, дальше листается);
+		// док инструментов — своей строкой между доской и квадратами (DrawDock, --k4-db)
+		const { sq, rows } = phoneStrip(n)
+		const thick = rows * sq + G * (rows - 1)
+		res = thick + P
+		strip = { top: 'auto', bottom: `${P}px`, height: `${thick}px`, gridTemplateColumns: `repeat(3, ${sq}px)`, gridAutoRows: `${sq}px`, gridAutoFlow: 'row', justifyContent: 'center', alignContent: 'start', overflowY: 'auto' }
+	} else if (n) {
 		const free = land ? bw - P - bh * ar : bh - P - bw / ar // место рядом с доской во всю высоту (ширину)
 		const max = Math.max(land ? 160 : 76, Math.min(free, (land ? w : h) * 0.4))
 		// ket4tec (NAS_CLOUD#109 п.6): док инструментов (560 по центру сцены) не должен лежать на нижней плитке полосы
@@ -133,14 +140,16 @@ const fit = computed(() => {
 		const th = tw
 		const thick = land ? k * tw + G * (k - 1) : k * th + G * (k - 1)
 		res = thick + P
-		strip = land ? { width: `${thick}px`, bottom: `${P + under}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)` } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` }
+		strip = land ? { width: `${thick}px`, bottom: `${P + under}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)`, gridAutoRows: `${tw}px`, overflowY: 'auto' } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` }
 	}
 	// ket4tec (NAS_CLOUD#109 п.1, 6): лист меньше поля. «Закрыть доску» — в углу листа, а не поля (--k4-gx);
-	// в портрете лист прижат к камерам, пустое место уходит вниз, к доку (--k4-gb)
+	// в портрете лист прижат вниз, к доку и квадратам, пустое место уходит вверх (NAS_CLOUD#195)
 	const lw = bw - (land ? res : 0), lh = bh - (land ? 0 : res)
 	const sw = Math.min(lw, lh * ar)
 	return {
-		root: { [land ? '--k4-sr' : '--k4-st']: `${res}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': `${land ? 0 : Math.max(0, lh - sw / ar)}px` },
+		root: land
+			? { '--k4-sr': `${res}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': '0px' }
+			: { '--k4-st': `${Math.max(0, lh - sw / ar)}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': `${res}px` }, // портрет: лист прижат вниз, к доку и квадратам
 		strip,
 	}
 })

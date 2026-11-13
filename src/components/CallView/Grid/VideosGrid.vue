@@ -23,6 +23,8 @@
 				:hasNextPage="hasNextPage"
 				:isOpen="stripeOpen"
 				:count="totalTiles"
+				:people="stripPeople"
+				:token="token"
 				@previous="previous"
 				@next="next"
 				@toggle="handleClickStripeCollapse" />
@@ -427,6 +429,15 @@ export default {
 				rows: this.rows,
 				columns: this.columns,
 			})
+		},
+
+		// ket4tec (NAS_CLOUD#195 п.5): мини-аватары на свёрнутой кнопке «Камеры · N»
+		stripPeople() {
+			return this.callParticipantModels.slice(0, 3).map(({ attributes: a }) => ({
+				id: a.actorId || a.userId || a.peerId,
+				source: a.actorType || (a.userId ? 'users' : 'guests'),
+				name: a.name || '',
+			}))
 		},
 
 		// ket4tec (NAS_CLOUD#195 п.3): квадраты полосы на iPhone вертикально (применяет k7call.scss в своём media)

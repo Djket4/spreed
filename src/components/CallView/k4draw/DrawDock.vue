@@ -260,7 +260,9 @@ function placeScene() {
 	scene['--k4-sb'] = Math.max(0, window.innerHeight - (bb ? bb.top : window.innerHeight)) + 'px'
 	document.documentElement.style.setProperty('--k4-sb', scene['--k4-sb']) // для тостов на телефоне (k7ui.scss)
 	// ket4tec (NAS_CLOUD#196): при показе с полосой камер док — своей строкой между показом и полосой, не поверх плиток
-	const st = !board.value && document.querySelector('#call-container .videos-wrapper--stripe')?.getBoundingClientRect()
+	// у доски в портрете квадраты под листом (DrawBoard) — док так же между листом и квадратами
+	const sel = !board.value ? '#call-container .videos-wrapper--stripe' : (window.innerWidth < window.innerHeight ? '.k4-board--strip > .k4-strip' : '')
+	const st = sel && document.querySelector(sel)?.getBoundingClientRect()
 	scene['--k4-db'] = st?.height ? Math.max(0, window.innerHeight - st.top) + 'px' : scene['--k4-sb']
 }
 let sceneRO = null

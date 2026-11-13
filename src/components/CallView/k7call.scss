@@ -510,8 +510,60 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	#call-container:not(.k7-alone) #videos:has(> .video__promoted > .screenContainer) { justify-content: flex-end; }
 	#call-container:not(.k7-alone) .video__promoted:has(> .screenContainer) { flex: 0 1 auto; height: auto; aspect-ratio: var(--k4-ar, 16 / 10); max-height: 100%; }
 }
-// iPhone горизонтально: полоса свёрнута (CallView, LOW_SCREEN), кнопка «Камеры · N» разворачивает
-#call-container .stripe-controls-position--collapsed .button-vue--icon-and-text { padding-inline: 10px 14px; font-weight: 650; }
+// ket4tec (NAS_CLOUD#195 п.5): свёрнутая полоса — белая капсула «мини-аватары · Камеры · N ›» (эскиз, кадр 5)
+#call-container .stripe-controls-position--collapsed {
+	.stripe-controls { padding: 0; opacity: 1; }
+	.stripe-controls__group { background: none; }
+	.stripe-controls__group .button-vue {
+		height: 42px; min-height: 42px; padding: 0 10px 0 7px !important; border-radius: 999px;
+		background: var(--k7-glass) !important; color: var(--k7-fg) !important; font-size: 13.5px; font-weight: 650;
+		-webkit-backdrop-filter: $glass; backdrop-filter: $glass; box-shadow: inset 0 0 0 1px var(--k7-line2), 0 6px 16px #0000000f;
+	}
+}
+.k4-cams { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.k4-cams__ava { display: flex; }
+.k4-cams__ava > * { border-radius: 50%; box-shadow: 0 0 0 2px var(--k7-bg2); }
+.k4-cams__ava > * + * { margin-inline-start: -9px; }
+.k4-cams > .material-design-icon { color: var(--k7-fg2); }
+
+// ket4tec (NAS_CLOUD#195 п.5): iPhone горизонтально (эскиз, кадр 5). Шапки сайта нет; слева колонка — название, «Показывает»,
+// таймер и «…», внизу «Камеры · N ›»; показ по центру во всю высоту; кнопки звонка столбиком справа.
+// Раскрытая полоса (110 px) встаёт под показ — показ остаётся ~70% высоты.
+@media (max-height: 500px) and (orientation: landscape) {
+	$L: 'max(16px, env(safe-area-inset-left, 0px))';
+	$R: 'max(12px, env(safe-area-inset-right, 0px))';
+	// шапка портала (#k7) в альбомном звонке убрана — показ на всю высоту, как в эскизе
+	body:has(#content-vue.in-call) { --header-height: 0px !important; }
+	body:has(#content-vue.in-call) > :is(#k7, #header) { display: none !important; }
+	body:has(#content-vue.in-call) :is(#content, #content-vue) { top: 0 !important; height: 100dvh !important; }
+	#content-vue.in-call {
+		.app-navigation-toggle-wrapper, > .app-sidebar__toggle { display: none; }
+		.top-bar--in-call {
+			inset: 12px auto auto #{$L}; width: 184px; height: auto; padding: 0; // высота по содержимому — не перекрывает пилюлю «Камеры»
+			flex-direction: column; justify-content: flex-start; align-items: flex-start; gap: 10px;
+			> .top-bar__icon-wrapper { display: none; }
+			.conversation-header { flex: none; width: 100%; margin: 0; padding: 0 !important; justify-content: flex-start; }
+			.conversation-header__text:has(.k4-shows), .conversation-header__text { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 10px; width: 100%; }
+			.conversation-header .title { font-size: 17px; line-height: 1.2; text-align: start; }
+			.k4-shows { height: 26px; margin: 0; }
+			.top-bar__controls { margin: 0; gap: 6px; }
+			.top-bar__controls > .button-vue { display: none; } // участники и поиск — в эскизе их нет (список — в портрете)
+			.top-bar__controls :is(.call-time, .button-vue) { height: 36px !important; min-height: 36px !important; }
+			.top-bar__controls .action-item .button-vue { width: 36px !important; min-width: 36px !important; }
+		}
+		#call-container { --k7-btn: 38px; }
+		#call-container > #videos { inset: 12px calc(#{$R} + 60px) 12px calc(#{$L} + 200px) !important; width: auto !important; height: auto !important; }
+		#call-container > .bottom-bar {
+			inset: 0 #{$R} 0 auto !important; width: auto; height: auto; padding: 0 !important;
+			flex-direction: column; justify-content: center; gap: 8px;
+		}
+		#call-container > .bottom-bar :is(.bottom-bar-call-controls:has(.buttons-bar), .buttons-bar) { flex-direction: column; gap: 2px !important; }
+		#call-container > .bottom-bar .bottom-bar-call-controls:has(.buttons-bar) { padding: 4px; }
+		#call-container .stripe-controls-position { position: fixed; inset: auto auto 12px #{$L}; z-index: 3; }
+		#call-container .stripe-controls-position:not(.stripe-controls-position--collapsed) .stripe-controls { padding: 0; }
+	}
+	#{$k4s} { --stripe-height: 110px; }
+}
 
 // ket4tec (NAS_CLOUD#195 п.7): связь пропала у меня — звонок приглушён, сверху один знак «Переподключаемся…»
 #call-container.k4-selflost > :not(.k4-selflost-veil) { filter: saturate(.25); opacity: .45; transition: opacity .3s ease, filter .3s ease; }

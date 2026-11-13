@@ -11,6 +11,7 @@ import IconChevronDown from 'vue-material-design-icons/ChevronDown.vue'
 import IconChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import IconChevronRight from 'vue-material-design-icons/ChevronRight.vue'
 import IconChevronUp from 'vue-material-design-icons/ChevronUp.vue'
+import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
 
 const props = defineProps<{
 	/** Index of the page currently shown in the stripe, starting at 0 */
@@ -25,6 +26,9 @@ const props = defineProps<{
 	isOpen: boolean
 	/** ket4tec (NAS_CLOUD#195 п.5): сколько камер в полосе — на свёрнутой кнопке «Камеры · N» */
 	count?: number
+	/** ket4tec (NAS_CLOUD#195 п.5): первые участники — мини-аватары на свёрнутой кнопке */
+	people?: { id: string, source: string, name: string }[]
+	token?: string
 }>()
 
 const emit = defineEmits<{
@@ -103,7 +107,7 @@ const toggleLabel = computed(() => props.isOpen
 				:aria-label="toggleLabel"
 				:title="toggleLabel"
 				@click="emit('toggle')">
-				<template #icon>
+				<template v-if="isOpen || !count" #icon>
 					<IconChevronDown
 						v-if="isOpen"
 						:size="20" />
@@ -111,8 +115,24 @@ const toggleLabel = computed(() => props.isOpen
 						v-else
 						:size="20" />
 				</template>
+				<!-- ket4tec (NAS_CLOUD#195 п.5): свёрнутая полоса — белая капсула «мини-аватары · Камеры · N ›» -->
 				<template v-if="!isOpen && count" #default>
-					Камеры · {{ count }}
+					<span class="k4-cams">
+						<span v-if="people?.length" class="k4-cams__ava">
+							<AvatarWrapper
+								v-for="p in people"
+								:id="p.id"
+								:key="p.id + p.name"
+								:token="token"
+								:name="p.name"
+								:source="p.source"
+								:size="28"
+								disableMenu
+								disableTooltip />
+						</span>
+						Камеры · {{ count }}
+						<IconChevronRight class="bidirectional-icon" :size="18" />
+					</span>
 				</template>
 			</NcButton>
 		</div>

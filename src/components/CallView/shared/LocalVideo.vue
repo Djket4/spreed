@@ -54,6 +54,10 @@
 		<TileSticker :on="k4stkOn" own />
 		<K4TileStats peerId="local" />
 		<!-- ket4tec (NAS_CLOUD#195 п.7): своя связь пропала — одна общая плашка в CallView, на плитке отметки нет -->
+		<!-- ket4tec (NAS_CLOUD#195 п.1): свой микрофон выключен — тот же значок в углу, что у чужих плиток -->
+		<span v-if="k4MicOff" class="k4-micoff" :title="t('spreed', 'Muted')">
+			<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="14" />
+		</span>
 		<!-- ket4tec (NAS_CLOUD#195 п.4): «крупно» после тапа по своей плитке в полосе -->
 		<button
 			v-if="k4tapOn && tap.shown.value"
@@ -85,6 +89,7 @@ import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { inject, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import IconArrowExpand from 'vue-material-design-icons/ArrowExpand.vue'
@@ -92,6 +97,7 @@ import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import K4Face from './k4face/K4Face.vue' // ket4tec
 import VideoBackground from './VideoBackground.vue'
+import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-off-outline.svg?raw'
 import { AVATAR } from '../../../constants.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
@@ -109,6 +115,7 @@ export default {
 		K4Face,
 		IconAccountOffOutline,
 		NcButton,
+		NcIconSvgWrapper,
 		VideoBackground,
 		NcLoadingIcon,
 		IconArrowExpand,
@@ -185,6 +192,7 @@ export default {
 			callViewStore: useCallViewStore(),
 			actorStore: useActorStore(),
 			tap: useTapReveal(),
+			IconMicrophoneOffOutline,
 		}
 	},
 
@@ -202,6 +210,12 @@ export default {
 		// ket4tec: k4stk. Моя гифка/стикер вместо камеры (не в боковой панели)
 		k4stkOn() {
 			return !!k4stk.mine && !this.isSidebar
+		},
+
+		/** ket4tec (NAS_CLOUD#195 п.1): значок «микрофон выключен» на своей плитке (не на открытых кнопках) */
+		k4MicOff() {
+			return !this.isSidebar && !this.isBig && !this.isPresenterOverlay && (this.isGrid || this.isStripe)
+				&& !this.localMediaModel.attributes.audioEnabled && !(this.k4tapOn && this.tap.shown.value)
 		},
 
 		// ket4tec (NAS_CLOUD#195 п.4): своя плитка в полосе звонка (не боковая панель)
