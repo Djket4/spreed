@@ -147,9 +147,10 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 	public function testJoinNotViaCallControllerClearsEmptyMark(): void {
 		// вход через changeInCall (HPB, федерация) снимает отметку пустого звонка
 		$service = $this->service(false);
-		$session = $this->createMock(Session::class);
-		$session->method('getInCall')->willReturn(Participant::FLAG_DISCONNECTED);
-		$attendee = $this->createMock(Attendee::class);
+		// Entity-геттеры магические (__call), мок их не настроит: берём настоящие сущности
+		$session = new Session();
+		$session->setInCall(Participant::FLAG_DISCONNECTED);
+		$attendee = new Attendee();
 		$participant = $this->createMock(Participant::class);
 		$participant->method('getSession')->willReturn($session);
 		$participant->method('getAttendee')->willReturn($attendee);
