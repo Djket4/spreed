@@ -502,7 +502,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 			}
 			$total += strlen($line);
 			$lines[] = $line;
-			$cache[] = ['t' => ($nowMs - $age) / 1000, 'sess' => substr($s, 0, 6), 'ty' => $ty, 'name' => $name, 'k' => $e['k'], 'd' => (object)$d];
+			$cache[] = ['t' => ($nowMs - $age) / 1000, 'sess' => substr($s, 0, 6), 'r' => microtime(true) + count($cache) * 1e-6, 'ty' => $ty, 'name' => $name, 'k' => $e['k'], 'd' => (object)$d];
 		}
 		foreach ($lines as $line) {
 			@file_put_contents('php://stderr', $line);
@@ -544,7 +544,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 			return new DataResponse(['error' => 'forbidden'], Http::STATUS_FORBIDDEN);
 		}
 		$all = $this->calllogCache()->get('k4calllog/' . $this->room->getToken());
-		$events = array_values(array_filter(is_array($all) ? $all : [], static fn ($e) => $e['t'] > $since));
+		$events = array_values(array_filter(is_array($all) ? $all : [], static fn ($e) => ($e['r'] ?? $e['t']) > $since));
 		return new DataResponse(['now' => microtime(true), 'events' => $events]);
 	}
 

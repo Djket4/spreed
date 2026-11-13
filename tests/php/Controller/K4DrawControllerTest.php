@@ -136,4 +136,11 @@ class K4DrawControllerTest extends TestCase {
 		$attrs = (new \ReflectionMethod(K4DrawController::class, 'calllogFeed'))->getAttributes(\OCP\AppFramework\Http\Attribute\NoAdminRequired::class);
 		$this->assertNotEmpty($attrs);
 	}
+
+	public function testFeedUsesReceiveTime(): void {
+		$this->appConfig->method('getAppValueArray')->willReturn(['andrey']);
+		$this->store['k4calllog/abc123'] = [['t' => 1.0, 'r' => 9.0, 'k' => 'late'], ['t' => 8.0, 'r' => 3.0, 'k' => 'old']];
+		$r = $this->controller('users', 'andrey')->calllogFeed(5.0);
+		$this->assertSame(['late'], array_column($r->getData()['events'], 'k'));
+	}
 }
