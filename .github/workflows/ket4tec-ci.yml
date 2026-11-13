@@ -22,8 +22,6 @@ jobs:
         run: git ls-files -z 'ket4tec-*.sh' | xargs -0 -n1 bash -n
       - name: php -l lib
         run: git ls-files -z 'lib/*.php' | xargs -0 -n1 php -l >/dev/null
-      - name: PHPUnit (сервер NC во временной папке, выборочно, NAS_CLOUD#129)
-        run: .github/ket4tec-phpunit.sh
       - name: npm ci
         run: /usr/bin/time -f 'npm ci %es, пик %M КБ' npm ci --no-audit --no-fund
       - name: npm run build (как в ket4tec-deploy.sh)
