@@ -49,6 +49,7 @@ export const k4stats = reactive({
 })
 
 const STEP_MS = 3000
+const STATS_TIMEOUT_MS = 5000 // getStats не вернулся: не держим busy до конца звонка
 const LOG_EVERY = 5 // раз в 15 с
 const DISCONNECTED = ['disconnected', 'disconnected-long', 'failed', 'failed-no-restart']
 
@@ -157,8 +158,13 @@ export function classify(prevState, s, flags = {}) {
 		fps: flags.videoAvailable === true && s.fps !== null && s.fps < 8 ? 'yellow' : null,
 		own: flags.own || null,
 	}
+	// пустой замер (соединение пересоздаётся, нет данных) не хороший и не плохой: счётчики метрик не трогаем
+	const empty = ['kbps', 'loss', 'rtt', 'jit', 'fps', 'ab', 'vb'].every((k) => s[k] === null)
 	const changes = []
 	for (const w of Object.keys(now)) {
+		if (empty && w !== 'drop' && w !== 'own') {
+			continue
+		}
 		const c = { bad: 0, good: 0, ...cnt[w] }
 		if (now[w]) {
 			c.bad++
@@ -206,7 +212,13 @@ async function measure(id, pc, dir, flags) {
 	let s = EMPTY // нет pc или getStats упал: «обрыв» всё равно считаем по connectionState
 	if (pc) {
 		try {
-			const report = await pc.getStats()
+			let to
+			const report = await Promise.race([
+				pc.getStats(),
+				new Promise((_r, rej) => {
+					to = setTimeout(rej, STATS_TIMEOUT_MS, new Error('getStats timeout'))
+				}),
+			]).finally(() => clearTimeout(to))
 			s = sample(e.report, report, dir)
 			e.report = report
 		} catch (err) {

@@ -46,6 +46,8 @@ describe('sample', () => {
 	})
 })
 
+const base = { loss: 0, rtt: 50, jit: 5, fps: 25, ab: 1, vb: 1 }
+
 describe('classify', () => {
 	const run = (samples, flags) => {
 		let st = null
@@ -57,7 +59,6 @@ describe('classify', () => {
 		}
 		return all
 	}
-	const base = { loss: 0, rtt: 50, jit: 5, fps: 25, ab: 1, vb: 1 }
 
 	it('включается после 2 замеров подряд, один раз на вход', () => {
 		const r = run([{ ...base, loss: 6 }, { ...base, loss: 6 }, { ...base, loss: 7 }], {})
@@ -167,11 +168,24 @@ describe('рантайм', () => {
 		expect(k4stats.peers.peerAAAAAAA).toBeUndefined()
 	})
 
-	it('новый замер не стартует, пока идёт прошлый', async () => {
+	it('новый замер не стартует, пока идёт прошлый; после таймаута 5 с сбор продолжается', async () => {
 		const pc = { getStats: vi.fn(() => new Promise(() => {})) }
 		const mdl = { get: (k) => (k === 'peerId' ? 'peerB' : k === 'peer' ? { pc } : undefined) }
 		start([mdl])
-		await vi.advanceTimersByTimeAsync(10000)
+		await vi.advanceTimersByTimeAsync(7500)
 		expect(pc.getStats).toHaveBeenCalledTimes(1)
+		await vi.advanceTimersByTimeAsync(2500)
+		expect(pc.getStats).toHaveBeenCalledTimes(2)
+	})
+
+	it('пустой замер не гасит предупреждение', () => {
+		const bad = { ...base, loss: 20 }
+		const empty = { kbps: null, loss: null, rtt: null, jit: null, fps: null, ab: null, vb: null }
+		let st = classify(classify(null, bad, {}).state, bad, {}).state
+		for (let i = 0; i < 5; i++) {
+			const r = classify(st, empty, {})
+			st = r.state
+			expect(r.warn).toEqual([{ w: 'loss', lvl: 'red' }])
+		}
 	})
 })
