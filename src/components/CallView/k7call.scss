@@ -520,7 +520,9 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 }
 #call-container .k4-more-tile { display: none; }
 // ket4tec (NAS_CLOUD#195 п.6): кнопки по тапу встают по центру плитки — надпись NO SIGNAL уходит вниз, над именем
-#call-container .k4-tapped .k4-nosig { align-items: flex-end; padding-bottom: 28px; }
+// (iPad и десктоп: имя под плиткой — надпись к самому низу, иначе на 111 px её закрывает кнопка микрофона; телефон: над полосой имени)
+#call-container .k4-tapped .k4-nosig { align-items: flex-end; padding-bottom: 8px; }
+@media (max-width: 500px), (max-height: 500px) { #call-container .k4-tapped .k4-nosig { padding-bottom: 28px; } }
 // ket4tec (NAS_CLOUD#195 п.5): свёрнутая полоса — белая капсула «мини-аватары · Камеры · N ›» (эскиз, кадр 5)
 #call-container .stripe-controls-position--collapsed {
 	.stripe-controls { padding: 0; opacity: 1; }

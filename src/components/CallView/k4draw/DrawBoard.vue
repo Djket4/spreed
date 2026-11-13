@@ -115,11 +115,15 @@ const fit = computed(() => {
 	let top = 0 // портрет: квадраты стоят сразу под листом (и доком), а не у нижнего края
 	if (n && !land) {
 		// ket4tec (NAS_CLOUD#195 п.3, 9): портрет — как под показом (эскиз 4Б): лист сразу под шапкой, под ним док, под доком квадраты по 3
-		const { sq, rows } = phoneStrip(n)
+		// рядов — сколько нужно, чтобы влезли все без «+N»; предел — только место до панели звонка (как в 25.0.7)
+		// квадраты ужимаются до 72 px, чтобы влезли все ряды (с доком инструментов места меньше); дальше — прокрутка
+		const sh = Math.min(bw, (bh - phoneStrip(n).sq - P) * ar) / ar
+		top = P + sh + P + DOCK
+		const need = Math.ceil(n / 3), avail = h - P - top
+		const sq = Math.max(72, Math.min(phoneStrip(n).sq, Math.floor((avail - G * (need - 1)) / need)))
+		const rows = Math.max(1, Math.min(need, Math.floor((avail + G) / (sq + G))))
 		const thick = rows * sq + G * (rows - 1)
 		res = thick + P
-		const sh = Math.min(bw, (bh - res) * ar) / ar
-		top = P + sh + P + DOCK
 		strip = { top: `${top}px`, bottom: 'auto', height: `${thick}px`, gridTemplateColumns: `repeat(3, ${sq}px)`, gridAutoRows: `${sq}px`, gridAutoFlow: 'row', justifyContent: 'center', alignContent: 'start', overflowY: 'auto' }
 	} else if (n && h < 440) {
 		// ket4tec (NAS_CLOUD#195 п.9): iPhone горизонтально — лист главный; камеры одним узким столбиком справа, листаются
