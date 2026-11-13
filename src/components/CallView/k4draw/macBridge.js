@@ -7,7 +7,7 @@
 import { showWarning } from '@nextcloud/dialogs'
 import { getRootUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
-import { consoleCmd, consoleFrame, consoleTick, inCall, stopConsole } from './macConsole.js'
+import { consoleCmd, consoleFrame, consoleRtc, consoleTick, inCall, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
 import { clearAll, eraseMarks, hash, identity, localScreen, moveMark, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
@@ -163,10 +163,13 @@ function onCmd(d) {
 			return finish()
 		}
 		pumpNow()
-		return consoleTick(send, d.v === 2)
+		return consoleTick(send, d.v >= 2, d.v >= 3 ? (d.rtc ? 1 : 0) : null)
 	}
 	if (d.t === 'fr') {
 		return inCall() && consoleFrame(send)
+	}
+	if (d.t === 'rtc') {
+		return consoleRtc(d)
 	}
 	if (d.t === 'bye') {
 		lost()
