@@ -2,6 +2,7 @@
  * ket4tec: k4draw. Рисование поверх показа экрана: транспорт (сигналинг HPB, протокол v1) и состояние.
  * Один модуль на всех: слой, док и кнопка в панели звонка работают с одним `state` и одним набором показов.
  */
+import { showError } from '@nextcloud/dialogs'
 import { generateOcsUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
 import store from '../../../store/index.js'
@@ -120,6 +121,7 @@ if (typeof window !== 'undefined') {
 	window.__k4draw = { state, shows } // только для проверок
 }
 const listeners = new Set()
+let closeFailed = false // снимок при закрытии доски не сохранился: следующее «Закрыть» закрывает без сохранения
 // ket4tec (NAS_CLOUD#114): любое изменение рисунка поднимает show.dirty; сбрасывает успешный снимок (sendSnap)
 const INK = new Set(['add', 'upd', 'del', 'pts', 'end'])
 /**
@@ -128,6 +130,8 @@ const INK = new Set(['add', 'upd', 'del', 'pts', 'end'])
  */
 function emit(ev) {
 	INK.has(ev.t) && ev.show && (ev.show.dirty = true)
+	// новый постоянный штрих на самой доске (не указка, не чужой показ, не угасание метки): снова пробуем сохранить
+	INK.has(ev.t) && ev.mark && !isTemp(ev.mark.tool) && ev.show === showOf(state.board) && (closeFailed = false)
 	listeners.forEach((f) => f(ev))
 }
 /**
@@ -1378,16 +1382,32 @@ export function openBoard(ar, bg = null) {
  * ket4tec (NAS_CLOUD#114): тихий снимок, если на показе есть рисунок и он менялся после последнего снимка; ждём до 4 с.
  *
  * @param s показ
+ * @return {Promise<boolean|null>} false — снимок нужен, но не сохранился (сбой или не уложился в 4 с); null — другой снимок ещё идёт
  */
 async function snapIfDirty(s) {
 	if (s && s.perm > 0 && s.dirty) {
-		await Promise.race([autoSnap?.(), new Promise((r) => setTimeout(r, 4000))]).catch(() => {})
+		if (snapBusy?.()) {
+			return null
+		}
+		const ok = await Promise.race([Promise.resolve(autoSnap?.()), new Promise((r) => setTimeout(r, 4000, false))]).catch(() => false)
+		return ok !== false
 	}
+	return true
 }
 
 /** Закрыть доску у всех; с изменённым рисунком — сначала тихий снимок (делает тот, кто закрывает). */
 export async function requestCloseBoard() {
-	await snapIfDirty(showOf(state.board))
+	// ket4tec (NAS_CLOUD#110 В1): не сохранился — доска остаётся; повторное «Закрыть» закрывает без сохранения
+	const ok = closeFailed ? true : await snapIfDirty(showOf(state.board))
+	if (ok === null) {
+		return // снимок уже идёт (двойной клик): не сбой, ждём его
+	}
+	if (!ok) {
+		closeFailed = true
+		showError('Снимок не сохранился. Нажмите «Закрыть» ещё раз, чтобы закрыть без сохранения')
+		return
+	}
+	closeFailed = false
 	closeBoard()
 }
 
@@ -1498,13 +1518,16 @@ export function passBoard(old) {
 }
 
 let autoSnap = null
+let snapBusy = null
 /**
  * snapshot.js регистрирует автоснимок (без цикла импортов).
  *
  * @param f функция снимка
+ * @param busy занят ли снимок прямо сейчас
  */
-export function setAutoSnap(f) {
+export function setAutoSnap(f, busy) {
 	autoSnap = f
+	snapBusy = busy
 }
 let snapped = false // автоснимок уже сделан при выходе из звонка
 // До выхода из звонка (список участников и холст ещё целы): последний на доске с рисунком снимает её в Файлы, ждём до 4 с
@@ -1718,6 +1741,7 @@ export function sendSnap(n) {
 	const show = showOf(state.big)
 	if (show) {
 		show.dirty = false // снимок сохранён
+		closeFailed = false
 		local(show, { op: 'S', n })
 	}
 }

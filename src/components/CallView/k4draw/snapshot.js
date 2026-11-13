@@ -317,4 +317,4 @@ export async function screenSnapshot(png) {
 }
 
 // ket4tec: k4draw. Последний уходит из звонка с рисунком на доске: снимок в Файлы без вопросов
-setAutoSnap(() => shoot(useTokenStore().token, null, true))
+setAutoSnap(() => shoot(useTokenStore().token, null, true), () => snap.busy)
