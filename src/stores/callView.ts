@@ -41,6 +41,15 @@ type CallViewModePayload = {
 	manual?: boolean
 }
 
+/**
+ * ket4tec (NAS_CLOUD#108): полоса камер при показе открыта принудительно, но на низком окне
+ * (телефон в альбоме, 844×390) её 150 px съедают показ — там штатно закрыта.
+ */
+export const LOW_SCREEN = '(max-height: 500px)'
+export function stripeOpenForced(): boolean {
+	return !window.matchMedia?.(LOW_SCREEN).matches
+}
+
 export const useCallViewStore = defineStore('callView', {
 	state: (): State => ({
 		forceCallView: false,
@@ -186,7 +195,7 @@ export const useCallViewStore = defineStore('callView', {
 			// ket4tec (NAS_CLOUD#159): вид до показа (при закреплении - вид до закрепления)
 			this.gridBeforePresentation = this.selectedVideoPeerId !== null ? this.gridBeforePin : this.isGrid
 
-			this.setCallViewMode({ token, isGrid: false, isStripeOpen: true, clearLast: false }) // ket4tec (NAS_CLOUD#108 п.1): полоса не закрывается — своя камера видна
+			this.setCallViewMode({ token, isGrid: false, isStripeOpen: stripeOpenForced(), clearLast: false }) // ket4tec (NAS_CLOUD#108 п.1): полоса не закрывается — своя камера видна; на низком окне закрыта
 		},
 
 		/**
