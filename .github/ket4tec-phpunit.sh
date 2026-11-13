@@ -2,7 +2,7 @@
 # Одноразовый прогон PHPUnit Talk на системном php раннера: сервер Nextcloud (та же ветка, что min-version
 # в appinfo/info.xml) клонируется во временную папку, sqlite, приложение копируется в apps/spreed.
 # Запуск из корня репозитория. Без секретов, без постоянных контейнеров и данных.
-set -euo pipefail
+set -euxo pipefail
 NC=$(grep -o 'nextcloud min-version="[0-9]*"' appinfo/info.xml | grep -o '[0-9]*')
 APP=$PWD
 W=$(mktemp -d)
@@ -10,7 +10,7 @@ trap 'rm -rf "$W"' EXIT
 php -v | head -1
 git clone -q --depth 1 --recurse-submodules --shallow-submodules -b "stable${NC}" https://github.com/nextcloud/server "$W/server"
 cd "$W/server"
-php occ maintenance:install --database sqlite --admin-user admin --admin-pass admin >/dev/null
+php occ maintenance:install --database sqlite --admin-user admin --admin-pass admin
 cp -a "$APP" apps/spreed
 cd apps/spreed
 curl -sS https://getcomposer.org/installer | php -- --quiet
