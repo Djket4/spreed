@@ -79,6 +79,18 @@
 				</template>
 				<StickerSheet />
 			</NcAppSidebarTab>
+			<!-- ket4tec: журнал звонка, только тест-режим владельца (NAS_CLOUD#189) -->
+			<NcAppSidebarTab
+				v-if="isInCall && k4stats.testmode"
+				id="k4-calllog"
+				key="k4-calllog"
+				:order="4"
+				name="Журнал">
+				<template #icon>
+					<IconTextBoxOutline :size="20" />
+				</template>
+				<K4CallLogTab :active="opened && activeTab === 'k4-calllog'" />
+			</NcAppSidebarTab>
 			<NcAppSidebarTab
 				v-if="showBreakoutRoomsTab && !isInCall"
 				id="breakout-rooms"
@@ -149,7 +161,9 @@ import IconAccountMultipleOutline from 'vue-material-design-icons/AccountMultipl
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue'
 import IconDotsCircle from 'vue-material-design-icons/DotsCircle.vue'
 import IconInformationOutline from 'vue-material-design-icons/InformationOutline.vue'
+import IconTextBoxOutline from 'vue-material-design-icons/TextBoxOutline.vue' // ket4tec
 import IconStickerEmoji from 'vue-material-design-icons/StickerEmoji.vue' // ket4tec: k4stk
+import K4CallLogTab from '../CallView/k4log/K4CallLogTab.vue' // ket4tec
 import K4Snaps from '../CallView/k4draw/K4Snaps.vue'
 import StickerSheet from '../CallView/k4stk/StickerSheet.vue' // ket4tec: k4stk
 import SetGuestUsername from '../SetGuestUsername.vue'
@@ -171,6 +185,7 @@ import { useActorStore } from '../../stores/actor.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts'
 import { isChatHiddenForActor } from '../../utils/chatHidden.ts'
 import { isChannelConversation } from '../../utils/conversation.ts'
+import { k4stats } from '../../utils/k4stats.js' // ket4tec
 import { state as k4stk, canUse as k4stkCan } from '../CallView/k4stk/useStickers.js' // ket4tec: k4stk
 
 const canStartConversations = getTalkConfig('local', 'conversations', 'can-create')
@@ -182,12 +197,14 @@ export default {
 	name: 'RightSidebar',
 	components: {
 		BreakoutRoomsTab,
+		K4CallLogTab,
 		K4Snaps,
 		InternalSignalingHint,
 		LobbyStatus,
 		NcAppSidebar,
 		NcAppSidebarTab,
 		IconStickerEmoji,
+		IconTextBoxOutline,
 		StickerSheet,
 		NcButton,
 		NcIconSvgWrapper,
@@ -263,6 +280,7 @@ export default {
 		}
 
 		return {
+			k4stats, // ket4tec
 			IconPermMediaOutline,
 			activeTab,
 			CONTENT_MODES,
