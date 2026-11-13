@@ -5,6 +5,7 @@
  * Safari не пускает (mixed content), CSP Talk — тоже.
  */
 import { showWarning } from '@nextcloud/dialogs'
+import { getRootUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
 import { consoleCmd, consoleTick, inCall, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
@@ -13,16 +14,16 @@ import { clearAll, eraseMarks, hash, identity, localScreen, moveMark, myId, mySh
 const ORIGIN = 'http://127.0.0.1:47811'
 const URL = ORIGIN + '/'
 /** Страница скачивания приложения с инструкцией (статика облака, без входа) */
-export const MAC_DL = 'https://cloud.ket4tec.online/k4draw/'
+export const MAC_DL = getRootUrl() + '/k4draw/' // относительно текущего облака (боевое, test2)
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
 const AUTO = 'k4draw.mac'
 const SIZES = ['s', 'm', 'l']
 const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : null)
 
-/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (приложения нет: скачать) | on | lost (окно моста закрыто или приложение вышло) */
+/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (схема не сработала: плашка «Приложение не найдено» со «Скачать») | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
-export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Скачать приложение для Мака', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
 
 let pop = null
@@ -243,40 +244,115 @@ function retry() {
 	}, 1500)
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+let busy = false
+
 /**
- * Кнопка «Рисовать на экране» (только из клика: окно и запуск приложения требуют жеста).
+ * Приложение запущено? Запрос без окна: no-cors, ответ не читаем (старое приложение 1.6 CORS-заголовков не шлёт, и не надо).
+ * Нужен connect-src http://127.0.0.1:47811 в CSP (PageController/CSPListener). Safari может блокировать как mixed content:
+ * тогда всегда false, а «приложения нет» от «не смогли проверить» не отличить.
  */
-export function openMac() {
-	if (!off) {
-		off = onDraw(onEv)
-		window.addEventListener('message', onMsg)
-		window.addEventListener('pagehide', finish)
+export async function pingApp() {
+	const ac = new AbortController()
+	const t = setTimeout(() => ac.abort(), 800)
+	try {
+		await fetch(URL, { mode: 'no-cors', cache: 'no-store', signal: ac.signal })
+		return true
+	} catch (e) {
+		return false
+	} finally {
+		clearTimeout(t)
 	}
-	if (mac.st === 'on' && pop && !pop.closed) {
-		pop.focus()
-		return
+}
+
+/**
+ * Запуск по k4draw:// без нового окна: переход со страницы по ссылке на схему страницу не выгружает (звонок живёт).
+ * Схема не зарегистрирована: браузер ничего не делает (Chrome) или показывает свой лист ошибки (Safari), окна нет.
+ * «Схема сработала» = ответил ping или страница потеряла фокус/видимость (запрос «Открыть?» или само приложение).
+ */
+async function launchApp() {
+	let hit = false
+	const mark = () => { hit = true }
+	window.addEventListener('blur', mark)
+	document.addEventListener('visibilitychange', mark)
+	const a = document.createElement('a')
+	a.href = 'k4draw://open'
+	a.rel = 'noopener'
+	a.style.display = 'none'
+	document.body.appendChild(a)
+	a.click()
+	a.remove()
+	let ok = false
+	for (let i = 0; i < 27 && !ok; i++) { // до 8 с; без признаков через 3 с — схемы нет
+		await sleep(300)
+		ok = await pingApp()
+		if (!ok && i >= 9 && !hit) {
+			break
+		}
 	}
-	if (mac.st === 'noapp') {
-		window.open(MAC_DL, '_blank', 'noopener')
-		mac.st = 'idle'
-		return
-	}
-	const launch = mac.st === 'launch'
-	launched = mac.st === 'start'
-	pop?.close() // всегда свежее окно: окно, где Safari показал ошибку, больше не загрузится
+	window.removeEventListener('blur', mark)
+	document.removeEventListener('visibilitychange', mark)
+	return ok || hit
+}
+
+/** Окно моста: только когда приложение уже ответило (или пользователь сам нажал «подключить»). */
+function openBridge() {
+	pop?.close()
 	// Safari: если вкладка в полноэкранном режиме, окно всё равно откроется на весь экран (размер игнорируется), поэтому ещё и left/top
 	const W = 380
 	const H = 170
 	const left = Math.max(0, Math.round((window.screen.availLeft || 0) + window.screen.availWidth - W - 24))
 	const top = Math.max(0, Math.round((window.screen.availTop || 0) + 80))
-	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', `popup=yes,width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=no`)
-	if (launch || !pop) {
-		// запуск: Safari спросит, открыть ли приложение; после запуска — ещё раз нажать (панель приложения подскажет)
-		mac.st = launch && pop ? 'start' : 'idle' // !pop: окно заблокировано
+	pop = window.open(URL, 'k4draw', `popup=yes,width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=no`)
+	if (!pop) {
+		mac.st = 'idle' // окно заблокировано
 		return
 	}
 	mac.st = 'wait'
 	retry()
+}
+
+/** Плашка «Приложение не найдено»: закрыть. */
+export const closeMissing = () => { mac.st === 'noapp' && (mac.st = 'idle') }
+
+/** «Уже установлено — подключить»: открыть окно моста вручную (когда признаков запуска не видно, например в Safari). */
+export function connectAnyway() {
+	launched = true
+	openBridge()
+}
+
+/**
+ * Кнопка «Рисовать на экране» (только из клика: окно и запуск приложения требуют жеста).
+ * Ответило → окно моста; нет → запуск по схеме без окна; после запуска кнопка «Подключить приложение».
+ */
+export async function openMac() {
+	if (!off) {
+		off = onDraw(onEv)
+		window.addEventListener('message', onMsg)
+		window.addEventListener('pagehide', finish)
+	}
+	if (busy) {
+		return
+	}
+	if (mac.st === 'on' && pop && !pop.closed) {
+		pop.focus()
+		return
+	}
+	if (mac.st === 'start') {
+		launched = true
+		return openBridge()
+	}
+	launched = false
+	busy = true
+	mac.st = 'wait'
+	try {
+		if (await pingApp()) {
+			return openBridge()
+		}
+		mac.st = (await launchApp()) ? 'start' : 'noapp'
+	} finally {
+		busy = false
+	}
 }
 
 /**
