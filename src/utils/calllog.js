@@ -15,8 +15,16 @@ let token = null
 let sid = null
 let buf = []
 let timer = null
+let preTimer = null
 let started = false
 let screenOn = false
+let paused = false // после 403 (сессия устарела) не шлём до следующего calllogSession
+let sessionSent = false
+const cid = Array.from({ length: 5 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('')
+// события, которые можно отдать до входа в комнату (список сервера для /pre)
+const PRE = ['page_load', 'join_click', 'join_blocked', 'gum_err', 'js_error', 'pagehide', 'net']
+const MAX_PRE = 20
+const PRE_MS = 15000
 const tries = {}
 
 const cut = (v, n) => (v === null || v === undefined ? '' : String(v)).split('\n')[0].replace(/\s+/g, ' ').trim().slice(0, n)
@@ -35,6 +43,8 @@ export function calllog(k, d) {
 		}
 		if (sid && buf.length >= MAX_POST) {
 			flush()
+		} else if (!sid && k === 'join_blocked') {
+			flushPre()
 		}
 	} catch (e) {
 		// журнал не должен ломать звонок
@@ -48,17 +58,25 @@ export function calllog(k, d) {
 function flush(last) {
 	const ps = []
 	try {
-		while (token && sid && buf.length) {
+		while (token && sid && !paused && buf.length) {
 			const ev = buf.splice(0, MAX_POST)
-			const sentSid = sid
+			const sent = sid
 			ps.push(fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
 				method: 'POST',
 				keepalive: true, // переживает закрытие вкладки; sendBeacon не умеет заголовки OCS
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
-				body: JSON.stringify({ s: sid, sent: Date.now(), ev }),
+				body: JSON.stringify({ s: sent, sent: Date.now(), ev }),
 			}).then((r) => {
-				// комнаты/доступа нет (или сессия умерла): дальше слать бессмысленно, до следующего входа
-				if ([403, 404, 410].includes(r?.status) && sid === sentSid) {
+				if (r?.status === 403) {
+					// сессия устарела (переподключение): пачку вернуть в начало, ждать новую сессию
+					buf = ev.concat(buf).slice(-MAX_BUF)
+					if (sent === sid) {
+						paused = true
+					} else {
+						flush() // сессию успели сменить, пока шёл запрос: слать с новой
+					}
+				} else if ([404, 410].includes(r?.status) && sent === sid) {
+					// комнаты нет: дальше слать бессмысленно, до следующего входа (NAS_CLOUD#209)
 					calllogStop(false)
 				}
 			}).catch(() => {}))
@@ -93,6 +111,30 @@ export function calllogStop(final = true) {
 }
 
 /**
+ * Отдать до входа в комнату события из белого списка (гость без сессии): /pre, не больше 20.
+ */
+function flushPre() {
+	try {
+		if (sid || !token) {
+			return
+		}
+		const ev = buf.filter((e) => PRE.includes(e.k)).slice(0, MAX_PRE)
+		if (!ev.length) {
+			return
+		}
+		buf = buf.filter((e) => !ev.includes(e))
+		fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}/pre', { token }), {
+			method: 'POST',
+			keepalive: true,
+			headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
+			body: JSON.stringify({ c: cid, sent: Date.now(), ev }),
+		}).catch(() => {})
+	} catch (e) {
+		// ignore
+	}
+}
+
+/**
  * Участник вошёл в комнату: известна room session id, можно слать.
  *
  * @param {string} newToken токен комнаты
@@ -105,8 +147,13 @@ export function calllogSession(newToken, sessionId) {
 		}
 		token = newToken
 		sid = sessionId
+		paused = false
+		if (!sessionSent) {
+			sessionSent = true
+			calllog('session', { cid }) // связать «до входа» с настоящей сессией
+		}
 		if (!timer) {
-			timer = setInterval(flush, FLUSH_MS)
+			timer = setInterval(flush, FLUSH_MS) // маячок — от входа до выхода (NAS_CLOUD#209)
 		}
 		flush()
 	} catch (e) {
@@ -172,6 +219,7 @@ function onRejection(e) {
  */
 function onPageHide() {
 	calllog('pagehide')
+	flushPre()
 	flush(true)
 }
 
@@ -191,6 +239,7 @@ export function initCalllog() {
 		window.addEventListener('pagehide', onPageHide)
 		window.addEventListener('online', () => calllog('net', { st: 'online' }))
 		window.addEventListener('offline', () => calllog('net', { st: 'offline' }))
+		preTimer = setTimeout(flushPre, PRE_MS)
 	} catch (e) {
 		// ignore
 	}
@@ -202,7 +251,9 @@ export function initCalllog() {
  */
 export function _reset() {
 	clearInterval(timer)
-	token = sid = timer = null
+	clearTimeout(preTimer)
+	paused = sessionSent = false
+	token = sid = timer = preTimer = null
 	buf = []
 	started = screenOn = false
 	Object.keys(tries).forEach((k) => delete tries[k])

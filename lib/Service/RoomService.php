@@ -1253,7 +1253,7 @@ class RoomService {
 		$room->resetActiveSince();
 	}
 
-	public function resetActiveSince(Room $room, ?Participant $participant): void {
+	public function resetActiveSince(Room $room, ?Participant $participant, ?int $endedAt = null): void {
 		$oldActiveSince = $room->getActiveSince();
 		$oldCallFlag = $room->getCallFlag();
 
@@ -1272,7 +1272,7 @@ class RoomService {
 			return;
 		}
 
-		$event = new CallEndedEvent($room, $participant, $oldActiveSince);
+		$event = new CallEndedEvent($room, $participant, $oldActiveSince, $endedAt);
 		$this->dispatcher->dispatchTyped($event);
 	}
 

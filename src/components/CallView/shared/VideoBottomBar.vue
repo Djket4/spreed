@@ -14,7 +14,9 @@
 		</div>
 
 		<div v-if="!isSidebar" class="bottom-bar">
+			<!-- ket4tec (NAS_CLOUD#195 п.2): над показом экрана имени нет — «Показывает: …» в шапке звонка -->
 			<div
+				v-if="!isScreen"
 				class="participant-name"
 				:class="{
 					'participant-name--active': isCurrentlyActive,

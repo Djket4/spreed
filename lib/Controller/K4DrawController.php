@@ -10,13 +10,17 @@ declare(strict_types=1);
 namespace OCA\Talk\Controller;
 
 use OCA\Talk\Chat\ChatManager;
+use OCA\Talk\Middleware\Attribute\RequireLoggedInParticipant;
 use OCA\Talk\Middleware\Attribute\RequireModeratorOrNoLobby;
 use OCA\Talk\Middleware\Attribute\RequireParticipant;
 use OCA\Talk\Middleware\Attribute\RequirePermission;
 use OCA\Talk\Middleware\Attribute\RequireReadWriteConversation;
+use OCA\Talk\Middleware\Attribute\RequireRoom;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCP\AppFramework\Http\Attribute\PublicPage;
@@ -29,9 +33,12 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\ICache;
+use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IPreview;
 use OCP\IRequest;
+use OCP\IUserSession;
 use OCP\Lock\ILockingProvider;
 use OCP\Lock\LockedException;
 use OCP\Share\IManager as IShareManager;
@@ -40,6 +47,10 @@ use Psr\Log\LoggerInterface;
 class K4DrawController extends AEnvironmentAwareOCSController {
 	private const MAX_BYTES = 8 * 1024 * 1024;
 	private const MAX_SIDE = 8192;
+	private const CALLLOG_RING = 300;
+	private const CALLLOG_PRE_RING = 50;
+	private const CALLLOG_TTL = 14400;
+	private const CALLLOG_PRE_KINDS = ['page_load', 'join_click', 'join_blocked', 'gum_err', 'js_error', 'pagehide', 'net'];
 
 	public function __construct(
 		string $appName,
@@ -53,6 +64,8 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		private readonly IPreview $preview,
 		private readonly ILockingProvider $lockingProvider,
 		private readonly IConfig $config,
+		private readonly ICacheFactory $cacheFactory,
+		private readonly IUserSession $userSession,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -437,6 +450,20 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		if ($session === null || $s === '' || !hash_equals($session->getSessionId(), $s)) {
 			return new DataResponse(['error' => 'session'], Http::STATUS_FORBIDDEN);
 		}
+		$this->emitCalllog($ev, $s, $this->participant->getAttendee()->getActorType() === 'users' ? 'users' : 'guests', $this->participant->getAttendee()->getDisplayName(), $params['sent'] ?? null);
+		return new DataResponse(['n' => count($ev)]);
+	}
+
+	private function calllogCache(): ICache {
+		return $this->cacheFactory->createDistributed('k4calllog');
+	}
+
+	/**
+	 * Общая часть приёма: строки K4CALLLOG в stderr (формат прежний, имени нет) и копия с именем в кольцо кэша комнаты.
+	 *
+	 * @param list<mixed> $ev
+	 */
+	private function emitCalllog(array $ev, string $s, string $ty, string $name, mixed $sent): void {
 		// управляющие символы -> пробел; адреса -> <url>; длинные токены с цифрами/_/- -> <id> (чисто буквенные имена ошибок остаются)
 		$clean = static function (string $v, int $n): string {
 			$v = (string)preg_replace('/[\p{C}\p{Zl}\p{Zp}]+/u', ' ', $v);
@@ -445,8 +472,9 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 			return mb_substr($v, 0, $n);
 		};
 		$nowMs = (int)(microtime(true) * 1000);
-		$sentMs = is_int($params['sent'] ?? null) ? $params['sent'] : $nowMs;
+		$sentMs = is_int($sent) ? $sent : $nowMs;
 		$lines = [];
+		$cache = [];
 		$total = 0;
 		foreach ($ev as $e) {
 			if (!is_array($e) || !is_int($e['t'] ?? null) || !is_string($e['k'] ?? null) || !preg_match('/^[a-z_]{1,30}$/', $e['k'])) {
@@ -464,7 +492,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 				't' => ($nowMs - $age) / 1000,
 				'room' => $this->room->getToken(),
 				'sess' => substr($s, 0, 6),
-				'ty' => $this->participant->getAttendee()->getActorType() === 'users' ? 'users' : 'guests',
+				'ty' => $ty,
 				'k' => $e['k'],
 				'd' => (object)$d,
 			], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
@@ -474,10 +502,78 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 			}
 			$total += strlen($line);
 			$lines[] = $line;
+			$cache[] = ['t' => ($nowMs - $age) / 1000, 'sess' => substr($s, 0, 6), 'r' => microtime(true) + count($cache) * 1e-6, 'ty' => $ty, 'name' => $name, 'k' => $e['k'], 'd' => (object)$d];
 		}
 		foreach ($lines as $line) {
 			@file_put_contents('php://stderr', $line);
 		}
+		// ponytail: гонка get/set при одновременных пачках, допускается для отладочного вида
+		if ($cache !== [] && $this->appConfig->getAppValueArray('k4_testmode_users') !== []) {
+			$c = $this->calllogCache();
+			$key = 'k4calllog/' . $this->room->getToken();
+			$old = $c->get($key);
+			$all = array_merge(is_array($old) ? $old : [], $cache);
+			// анонимные события до входа: не больше 50 в кольце, чтобы поток гостей не вытеснял настоящие
+			$pre = 0;
+			for ($i = count($all) - 1; $i >= 0; $i--) {
+				if (str_starts_with((string)$all[$i]['sess'], '_') && ++$pre > self::CALLLOG_PRE_RING) {
+					unset($all[$i]);
+				}
+			}
+			$c->set($key, array_slice(array_values($all), -self::CALLLOG_RING), self::CALLLOG_TTL);
+		}
+	}
+
+	/**
+	 * Последние события комнаты для вкладки владельца: только учётки из app-config `k4_testmode_users`.
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{now: float, events: list<mixed>}, array{}>|DataResponse<Http::STATUS_FORBIDDEN, array{error: string}, array{}>
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[NoAdminRequired]
+	#[RequireLoggedInParticipant]
+	#[UserRateLimit(limit: 300, period: 600)]
+	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/calllog/{token}/feed', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+	])]
+	public function calllogFeed(float $since = 0): DataResponse {
+		$attendee = $this->participant->getAttendee();
+		if ($attendee->getActorType() !== 'users'
+			|| !in_array($attendee->getActorId(), $this->appConfig->getAppValueArray('k4_testmode_users'), true)) {
+			return new DataResponse(['error' => 'forbidden'], Http::STATUS_FORBIDDEN);
+		}
+		$all = $this->calllogCache()->get('k4calllog/' . $this->room->getToken());
+		$events = array_values(array_filter(is_array($all) ? $all : [], static fn ($e) => ($e['r'] ?? $e['t']) > $since));
+		return new DataResponse(['now' => microtime(true), 'events' => $events]);
+	}
+
+	/**
+	 * События до входа в комнату (у гостя ещё нет room session): тело {c: ^[a-z0-9]{5}$, sent, ev ≤20, всё ≤8 КБ}.
+	 * Только виды из белого списка, остальные отбрасываются.
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[RequireRoom]
+	#[BruteForceProtection(action: 'talkRoomToken')]
+	#[UserRateLimit(limit: 30, period: 600)]
+	#[AnonRateLimit(limit: 30, period: 600)]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/calllog/{token}/pre', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+	])]
+	public function calllogPre(): DataResponse {
+		$params = $this->request->getParams();
+		$c = $params['c'] ?? null;
+		$ev = $params['ev'] ?? null;
+		if ((int)$this->request->getHeader('Content-Length') > 8 * 1024
+			|| strlen((string)json_encode($params)) > 8 * 1024
+			|| !is_string($c) || !preg_match('/^[a-z0-9]{5}$/', $c)
+			|| !is_array($ev) || !array_is_list($ev) || count($ev) > 20) {
+			return new DataResponse(['error' => 'bad'], Http::STATUS_BAD_REQUEST);
+		}
+		$ev = array_values(array_filter($ev, static fn ($e) => is_array($e) && in_array($e['k'] ?? null, self::CALLLOG_PRE_KINDS, true)));
+		$this->emitCalllog($ev, '_' . $c, $this->userSession->isLoggedIn() ? 'users' : 'guests', 'до входа', $params['sent'] ?? null);
 		return new DataResponse(['n' => count($ev)]);
 	}
 }

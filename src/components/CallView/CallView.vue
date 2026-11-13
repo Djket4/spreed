@@ -6,7 +6,7 @@
 <template>
 	<div
 		id="call-container"
-		:class="{ 'k7-alone': showEmptyCallView && !isSidebar && !k4.board }"
+		:class="{ 'k7-alone': showEmptyCallView && !isSidebar && !k4.board, 'k4-selflost': k4SelfLost }"
 		@mousemove="debounceHandleMovement"
 		@keydown="debounceHandleMovement"
 		@mouseleave="hideOverlay">
@@ -167,6 +167,11 @@
 			<BottomBar v-if="!isRecording" :isSidebar="isSidebar" />
 		</template>
 
+		<!-- ket4tec (NAS_CLOUD#195 п.7): связь пропала у меня — один общий знак поверх приглушённого звонка -->
+		<div v-if="k4SelfLost" class="k4-selflost-veil">
+			<K4Reconnect title="Переподключаемся…" sub="Связь пропала у вас. Звонок вернётся сам" />
+		</div>
+
 		<!-- ket4tec (NAS_CLOUD#154): просьба организатора включить микрофон -->
 		<div
 			v-if="showAskUnmute"
@@ -195,6 +200,7 @@ import SpeakersGrid from './Grid/SpeakersGrid.vue'
 import VideosGrid from './Grid/VideosGrid.vue'
 import DrawBoard from './k4draw/DrawBoard.vue' // ket4tec: k4draw
 import EmptyCallView from './shared/EmptyCallView.vue'
+import K4Reconnect from './shared/K4Reconnect.vue' // ket4tec
 import LiveTranscriptionRenderer from './shared/LiveTranscriptionRenderer.vue'
 import LocalVideo from './shared/LocalVideo.vue'
 import PresenterOverlay from './shared/PresenterOverlay.vue'
@@ -207,7 +213,7 @@ import { SIMULCAST } from '../../constants.ts'
 import { fetchPeers } from '../../services/callsService.ts'
 import { getTalkConfig } from '../../services/CapabilitiesManager.ts'
 import { EventBus } from '../../services/EventBus.ts'
-import { useCallViewStore } from '../../stores/callView.ts'
+import { LOW_SCREEN, stripeOpenForced, useCallViewStore } from '../../stores/callView.ts'
 import { useParticipantActivityStore } from '../../stores/participantActivity.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { k4log } from '../../utils/k4log.js'
@@ -218,6 +224,7 @@ import { animateTilePromotion } from './Grid/tilePromotionTransition.ts'
 import { state as k4, watchCall } from './k4draw/useDrawing.js' // ket4tec: k4draw
 import { watchHeaderLinks, watchMove } from './k4move/useMove.js' // ket4tec (NAS_CLOUD#113)
 import { watchStickers } from './k4stk/useStickers.js' // ket4tec: k4stk
+import { k4net, selfLost } from './shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import { setUpSpeakerSimulation, tearDownSpeakerSimulation } from './speakerSimulation.ts'
 import { useActiveSpeakers } from './useActiveSpeakers.ts'
 import { useWakeLock } from './useWakeLock.ts'
@@ -233,6 +240,7 @@ export default {
 		BottomBar,
 		DrawBoard, // ket4tec: k4draw
 		EmptyCallView,
+		K4Reconnect,
 		VideosGrid,
 		LiveTranscriptionRenderer,
 		LocalVideo,
@@ -315,6 +323,9 @@ export default {
 	data() {
 		return {
 			k4, // ket4tec: k4draw
+			k4net, // ket4tec (NAS_CLOUD#195)
+			k4offline: !navigator.onLine,
+			k4localWas: false,
 			screens: [],
 			sharedDatas: {},
 			raisedHandUnwatchers: {},
@@ -582,9 +593,39 @@ export default {
 		isLiveTranscriptionEnabled() {
 			return this.callViewStore.isLiveTranscriptionEnabled
 		},
+
+		// ket4tec (NAS_CLOUD#195 п.7): мой собственный peer (MCU) не соединён — как isNotConnected в LocalVideo
+		k4localNotConn() {
+			const a = this.localCallParticipantModel.attributes
+			return a.peerNeeded && a.connectionState !== 'connected' && a.connectionState !== 'completed'
+		},
+
+		k4SelfLost() {
+			return !this.isSidebar && selfLost({
+				sigDown: this.k4net.sigDown,
+				offline: this.k4offline,
+				localLost: this.k4localWas && this.k4localNotConn,
+			})
+		},
 	},
 
 	watch: {
+		k4localNotConn: {
+			immediate: true,
+			handler(v) {
+				if (!v) {
+					this.k4localWas = true
+				}
+			},
+		},
+
+		k4SelfLost: {
+			immediate: true,
+			handler(v) {
+				k4net.selfLost = v
+			},
+		},
+
 		'localCallParticipantModel.attributes.peerId': function(newValue, previousValue) {
 			const index = this.screens.indexOf(previousValue)
 			if (index !== -1) {
@@ -693,6 +734,16 @@ export default {
 	},
 
 	mounted() {
+		// ket4tec (NAS_CLOUD#108): поворот в альбом во время показа — полосу сворачиваем (слушатель в одном месте: CSS не знает про состояние стора и оставил бы дыру 150 px)
+		this.k4lowMq = window.matchMedia?.(LOW_SCREEN)
+		// ket4tec (NAS_CLOUD#195 п.5): обратно в портрет — полоса снова открыта (в портрете стрелки сворачивания нет)
+		this.k4lowFn = (e) => this.callViewStore.presentationStarted && this.callViewStore.setCallViewMode({ token: this.token, isStripeOpen: !e.matches, clearLast: false })
+		this.k4netFn = () => {
+			this.k4offline = !navigator.onLine
+		}
+		window.addEventListener('online', this.k4netFn)
+		window.addEventListener('offline', this.k4netFn)
+		this.k4lowMq?.addEventListener?.('change', this.k4lowFn)
 		this.debounceFetchPeers = debounce(this.fetchPeers, 1500)
 		EventBus.on('refresh-peer-list', this.debounceFetchPeers)
 
@@ -728,6 +779,10 @@ export default {
 	},
 
 	beforeUnmount() {
+		this.k4lowMq?.removeEventListener?.('change', this.k4lowFn)
+		window.removeEventListener('online', this.k4netFn)
+		window.removeEventListener('offline', this.k4netFn)
+		k4net.selfLost = false
 		if (OC.debug) {
 			tearDownSpeakerSimulation()
 		}
@@ -954,7 +1009,7 @@ export default {
 				this.callViewStore.setCallViewMode({
 					token: this.token,
 					isGrid: false,
-					isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
+					isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 					clearLast: false,
 				})
 			} else {
@@ -1011,7 +1066,7 @@ export default {
 			this.callViewStore.setCallViewMode({
 				token: this.token,
 				isGrid: false,
-				isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
+				isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 				clearLast: false,
 			})
 		},
@@ -1031,7 +1086,7 @@ export default {
 			this.callViewStore.setCallViewMode({
 				token: this.token,
 				isGrid: false,
-				isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
+				isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 				clearLast: false,
 			})
 		},

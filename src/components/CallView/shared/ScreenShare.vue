@@ -7,6 +7,7 @@
 	<div
 		:id="screenContainerId"
 		class="screenContainer"
+		:class="{ 'k4-draw': k4state.mode }"
 		:style="{ '--k4-pb': (instanceTransform.scale === 1 ? k4pb : 0) + 'px' }"
 		@dblclick.capture="onDoubleClick">
 		<video
@@ -69,12 +70,13 @@ import { t } from '@nextcloud/l10n'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
 import panzoom from 'panzoom'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import IconMonitorScreenshot from 'vue-material-design-icons/MonitorScreenshot.vue'
 import DrawLayer from '../k4draw/DrawLayer.vue' // ket4tec: k4draw
 import VideoBottomBar from './VideoBottomBar.vue'
+import { useCallViewStore } from '../../../stores/callView.ts'
 import { useGuestNameStore } from '../../../stores/guestName.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
 import { isMac, mac, macLabel, openMac } from '../k4draw/macBridge.js' // ket4tec: k4draw
@@ -163,25 +165,56 @@ export default {
 		})
 		// жизнь показа привязана к модели локального экрана, не к экземпляру: закрепление камеры размонтирует компонент
 		props.localMediaModel && bindLocalScreen(props.localMediaModel)
-		// ket4tec: k4draw. В режиме рисования масштаб сброшен в 1, panzoom на паузе.
-		watch(() => k4state.mode, (on) => {
-			if (!instance.value) {
+		// ket4tec: k4draw (NAS_CLOUD#108). В режиме рисования зум остаётся: один палец/мышь/перо — штрих,
+		// два пальца — зум и сдвиг показа. Слой рисования повторяет transform видео, штрихи в координатах кадра.
+		// Одиночное касание не отдаём panzoom (иначе палец двигает картинку), второй палец — отдаём (щипок).
+		// Считаем только касания внутри показа: палец на кнопке дока + палец рисует — не щипок.
+		// Пока перо у экрана (и секунду после), касания (ладонь) panzoom не получает.
+		let k4mid = null
+		let k4penAt = -1e9
+		const k4in = (e) => {
+			const c = e.currentTarget
+			const ts = [...e.touches].filter((t) => c.contains(t.target))
+			if (ts.some((t) => t.touchType === 'stylus')) {
+				k4penAt = performance.now()
+			}
+			return ts
+		}
+		const k4block = (ts) => k4state.mode && (ts.length < 2 || performance.now() - k4penAt < 1000)
+		const k4touchStart = (e) => {
+			k4mid = null
+			if (k4block(k4in(e))) {
+				e.stopImmediatePropagation()
+			}
+		}
+		// panzoom щипком только масштабирует вокруг середины; сдвиг двумя пальцами добавляем сами.
+		// Оставшийся после щипка палец картинку не двигает: touchmove не доходит до слушателя panzoom на document.
+		const k4touchMove = (e) => {
+			const ts = k4in(e)
+			if (k4block(ts)) {
+				k4mid = null
+				k4state.mode && e.stopPropagation()
 				return
 			}
-			if (on) {
-				instance.value.zoomAbs(0, 0, 1)
-				instance.value.moveTo(0, 0)
-				instance.value.pause()
-			} else {
-				instance.value.resume()
+			if (!k4state.mode || ts.length !== 2 || !instance.value) {
+				k4mid = null
+				return
 			}
-		})
+			const [a, b] = ts
+			const m = { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }
+			if (k4mid) {
+				instance.value.moveBy(m.x - k4mid.x, m.y - k4mid.y, false)
+			}
+			k4mid = m
+		}
 
 		// ket4tec (NAS_CLOUD#109 п.7): экран вписан с полями (портрет телефона) — подпись стоит у нижнего края картинки, не контейнера
 		const k4pb = ref(0)
 		const k4fit = () => {
 			const v = screen.value
 			k4pb.value = v?.videoWidth ? Math.max(0, Math.round((v.clientHeight - v.clientWidth * v.videoHeight / v.videoWidth) / 2)) : 0
+			// ket4tec (NAS_CLOUD#195 п.3): пропорция показа — на iPhone вертикально главная область ужимается до неё, полоса встаёт сразу под показ
+			v?.videoWidth && v.closest('.video__promoted')?.style.setProperty('--k4-ar', String(v.videoWidth / v.videoHeight))
 		}
 		const k4ro = new ResizeObserver(k4fit)
 
@@ -195,7 +228,12 @@ export default {
 					maxZoom: ZOOM_MAX,
 					bounds: true,
 					boundsPadding: 1,
+					beforeMouseDown: () => k4state.mode, // ket4tec: k4draw — мышь в режиме рисования рисует, колесо зумит
 				})
+				// ket4tec: k4draw — capture раньше слушателя panzoom на том же контейнере
+				const c = screen.value.parentElement
+				c.addEventListener('touchstart', k4touchStart, { capture: true, passive: true })
+				c.addEventListener('touchmove', k4touchMove, { capture: true, passive: true })
 				instance.value.on('transform', (instance) => {
 					instanceTransform.value = { ...instance.getTransform() }
 				})
@@ -218,7 +256,11 @@ export default {
 		 * @param event Double click event
 		 */
 		function onDoubleClick(event) {
-			if (!instance.value || k4state.mode) { // ket4tec: k4draw
+			if (!instance.value) {
+				return
+			}
+			if (k4state.mode) { // ket4tec: k4draw — двойное касание при рисовании не зумит
+				event.stopPropagation()
 				return
 			}
 
@@ -241,6 +283,7 @@ export default {
 		}
 
 		return {
+			callViewStore: useCallViewStore(), // ket4tec (NAS_CLOUD#195)
 			isMac, // ket4tec: k4draw
 			mac,
 			macLabel,
@@ -306,6 +349,15 @@ export default {
 	},
 
 	watch: {
+		// ket4tec (NAS_CLOUD#195 п.2): чей экран крупно — в шапку звонка
+		remoteParticipantName: {
+			immediate: true,
+			handler(name) {
+				if (this.isBig && this.callParticipantModel) {
+					this.callViewStore.k4PresenterName = name || ''
+				}
+			},
+		},
 
 		'localMediaModel.attributes.localScreen': function(localScreen) {
 			this._setScreen(localScreen)
@@ -323,6 +375,13 @@ export default {
 			this._setScreen(this.localMediaModel.attributes.localScreen)
 		} else {
 			this._setScreen(this.callParticipantModel.attributes.screen)
+		}
+	},
+
+	beforeUnmount() {
+		// ket4tec (NAS_CLOUD#195 п.2): показ ушёл с крупного места — из шапки тоже (если его ещё не сменил новый показ)
+		if (this.isBig && this.callParticipantModel && this.callViewStore.k4PresenterName === (this.remoteParticipantName || '')) {
+			this.callViewStore.k4PresenterName = ''
 		}
 	},
 
@@ -366,6 +425,14 @@ export default {
 .screenContainer {
 	width: 100%;
 	height: 100%;
+}
+
+// ket4tec: k4draw (NAS_CLOUD#108) — жесты над всем показом (и полями вокруг кадра) ведёт код, не браузер, как у доски
+.screenContainer.k4-draw {
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 }
 
 .screen {
