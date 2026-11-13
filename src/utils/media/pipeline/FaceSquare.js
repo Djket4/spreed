@@ -106,6 +106,24 @@ export function splitTargets(want, targets, prev, single) {
 }
 
 /**
+ * Лицо осталось одно: окно, стоящее далеко от него, показывало бы пустой фон, пока плывёт к лицу
+ * (до секунды), — переносим его сразу (монтажная склейка, картинка есть в каждом кадре).
+ * Близкое окно (≤ COLLAPSE_NEAR) плывёт плавно.
+ *
+ * @param {Array} wins окна двух квадратов
+ * @param {object} single цель по оставшемуся лицу
+ */
+export const COLLAPSE_NEAR = 0.12
+/**
+ *
+ * @param wins
+ * @param single
+ */
+export function collapseWins(wins, single) {
+	return wins.map((w) => Math.abs(w.cx - single.cx) > COLLAPSE_NEAR ? { ...single } : w)
+}
+
+/**
  * Кадр шире квадрата в 2 раза (±5%) — «два квадрата» у смотрящего.
  *
  * @param w

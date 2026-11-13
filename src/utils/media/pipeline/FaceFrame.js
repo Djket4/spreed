@@ -8,7 +8,7 @@ import { showWarning } from '@nextcloud/dialogs'
 import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
-import { centerZoom, holdSplit, splitTargets, wantSplit } from './FaceSquare.js'
+import { centerZoom, collapseWins, holdSplit, splitTargets, wantSplit } from './FaceSquare.js'
 import { clampTarget, squareRect } from './FaceSquare.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
@@ -507,6 +507,9 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			if (d.split?.on) {
 				d.targets = splitTargets(d.want, d.targets, d.targets, target)
+				if (!d.want && target && d.wins) {
+					d.wins = collapseWins(d.wins, target)
+				}
 			}
 		} catch (e) { /* пропускаем детекцию */ }
 		const dur = performance.now() - t

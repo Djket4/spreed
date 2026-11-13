@@ -147,4 +147,13 @@ describe('этап 2: два лица -> 2:1', () => {
 		expect(splitTargets(false, undefined, [L, R], one)).toEqual([one, one])
 		expect(splitTargets(false, undefined, [L, R], null)).toEqual([L, R])
 	})
+
+	test('collapseWins: далёкое окно переносится на оставшееся лицо, близкое плывёт само', async () => {
+		const { collapseWins } = await import('./FaceSquare.js')
+		const L = { cx: 0.2, cy: 0.5, zoom: 1 }
+		const R = { cx: 0.8, cy: 0.5, zoom: 1 }
+		const one = { cx: 0.22, cy: 0.5, zoom: 1.1 }
+		expect(collapseWins([L, R], one)).toEqual([L, one])
+		expect(collapseWins([L, R], { cx: 0.5, cy: 0.5, zoom: 1 })).toEqual([{ cx: 0.5, cy: 0.5, zoom: 1 }, { cx: 0.5, cy: 0.5, zoom: 1 }])
+	})
 })
