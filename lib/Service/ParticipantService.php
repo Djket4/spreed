@@ -2364,10 +2364,11 @@ class ParticipantService {
 			return;
 		}
 
-		// Отсрочка нужна только для смены устройства, т.е. если в звонок входил кто-то кроме вышедшего.
-		// Иначе (1-1: звонящий сбросил до ответа) завершаем сразу, а не ждём тик cron.
+		// Только 1-1: звонящий сбросил до ответа, входящий должен погаснуть сразу, а не после тика cron.
+		// В групповых и публичных отсрочка всегда (один человек в звонке меняет устройство, #129).
 		$activeSince = $room->getActiveSince();
-		if ($activeSince === null || \count($this->getParticipantsJoinedCurrentCall($room, $activeSince->getTimestamp())) <= 1) {
+		$isOneToOne = \in_array($room->getType(), [Room::TYPE_ONE_TO_ONE, Room::TYPE_ONE_TO_ONE_FORMER], true);
+		if ($isOneToOne && ($activeSince === null || \count($this->getParticipantsJoinedCurrentCall($room, $activeSince->getTimestamp())) <= 1)) {
 			Server::get(RoomService::class)->resetActiveSince($room, null);
 			return;
 		}

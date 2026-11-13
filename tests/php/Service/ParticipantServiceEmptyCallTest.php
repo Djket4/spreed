@@ -71,8 +71,9 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 			->getMock();
 	}
 
-	private function room(int $flag): Room&MockObject {
+	private function room(int $flag, int $type = Room::TYPE_GROUP): Room&MockObject {
 		$room = $this->createMock(Room::class);
+		$room->method('getType')->willReturn($type);
 		$room->method('getActiveSince')->willReturn(new \DateTime('@900'));
 		$room->method('getId')->willReturn(42);
 		$room->method('getCallFlag')->willReturn($flag);
@@ -104,16 +105,29 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_DISCONNECTED));
 	}
 
-	public function testCallNobodyAnsweredEndsImmediately(): void {
+	public function testOneToOneNobodyAnsweredEndsImmediately(): void {
 		$service = $this->service(false);
 		$service->method('hasActiveSessionsInCall')->willReturn(false);
 		$service->method('getParticipantsJoinedCurrentCall')->willReturn([1]); // только вышедший
 		$roomService = $this->createMock(RoomService::class);
-		$room = $this->room(Participant::FLAG_IN_CALL);
+		$room = $this->room(Participant::FLAG_IN_CALL, Room::TYPE_ONE_TO_ONE);
 		$roomService->expects($this->once())->method('resetActiveSince')->with($room, null);
 		$this->overwriteService(RoomService::class, $roomService);
 		$this->appConfig->expects($this->never())->method('setValueInt');
 		$this->jobList->expects($this->never())->method('add');
 		$service->resetCallStateWhenNeeded($room);
+	}
+
+	public function testGroupSoloLeaverGetsGrace(): void {
+		// один в звонке группы/ссылки меняет устройство: отсрочка, не немедленное завершение
+		$service = $this->service(false);
+		$service->method('hasActiveSessionsInCall')->willReturn(false);
+		$service->method('getParticipantsJoinedCurrentCall')->willReturn([1]);
+		$roomService = $this->createMock(RoomService::class);
+		$roomService->expects($this->never())->method('resetActiveSince');
+		$this->overwriteService(RoomService::class, $roomService);
+		$this->appConfig->expects($this->once())->method('setValueInt');
+		$this->jobList->expects($this->once())->method('add');
+		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL, Room::TYPE_PUBLIC));
 	}
 }
