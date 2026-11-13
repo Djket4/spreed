@@ -89,6 +89,23 @@ export function holdSplit(st, want, now) {
 }
 
 /**
+ * Цели двух квадратов. Пока деление держится, а лицо осталось одно, оба квадрата идут к нему:
+ * иначе они стоят на старых местах и показывают пустой фон до самого слияния (NAS_CLOUD#172).
+ * Лиц нет совсем — остаются прежние цели.
+ *
+ * @param {boolean} want есть два лица, не влезающих в квадрат
+ * @param {Array|undefined} targets цели по лицам слева направо (при want)
+ * @param {Array|undefined} prev прежние цели
+ * @param {object|null} single цель по оставшимся лицам (computeTarget)
+ */
+export function splitTargets(want, targets, prev, single) {
+	if (want && targets) {
+		return targets
+	}
+	return single ? [single, single] : prev
+}
+
+/**
  * Кадр шире квадрата в 2 раза (±5%) — «два квадрата» у смотрящего.
  *
  * @param w
