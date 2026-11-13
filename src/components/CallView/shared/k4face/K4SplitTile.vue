@@ -71,6 +71,14 @@ export default {
 	background: #000;
 }
 
+.k4-split-tile video {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
 .k4-split-tile::after {
 	content: '';
 	position: absolute;
