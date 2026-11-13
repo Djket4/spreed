@@ -12,35 +12,60 @@ use OCA\Talk\Exceptions\RoomNotFoundException;
 use OCA\Talk\Manager;
 use OCA\Talk\Service\ParticipantService;
 use OCA\Talk\Service\RoomService;
+use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
 
 /**
  * ket4tec (NAS_CLOUD#129): звонок заканчивается не сразу, когда вышел последний участник,
- * а на ближайшем тике cron и только если комната по-прежнему пуста. Переключение устройства
- * (leave на одном, join на другом через 1-2 с) больше не завершает звонок и не перезапускает запись.
- * Аргумент: ['roomId' => int]. Задержка = период cron (на боевом 5 минут).
+ * а на ближайшем тике cron, не раньше чем через GRACE секунд после опустения и только если
+ * комната по-прежнему пуста. Переключение устройства (leave, через 1-2 с join) не завершает звонок.
+ * Аргумент: ['roomId' => int]. Момент опустения лежит в app config {@see self::key()}: его ставит
+ * leaveCall, снимает joinCall (кто-то вошёл) или эта задача.
  */
 class EndEmptyCall extends QueuedJob {
+	public const GRACE = 15;
+
 	public function __construct(
 		ITimeFactory $time,
 		private readonly Manager $manager,
 		private readonly RoomService $roomService,
 		private readonly ParticipantService $participantService,
+		private readonly IAppConfig $appConfig,
 	) {
 		parent::__construct($time);
 	}
 
+	public static function key(int $roomId): string {
+		return 'empty_call_' . $roomId;
+	}
+
 	#[\Override]
 	protected function run($argument): void {
+		$roomId = (int)($argument['roomId'] ?? 0);
+		$emptySince = $this->appConfig->getAppValueInt(self::key($roomId), 0);
+		if ($emptySince <= 0) {
+			return; // кто-то вошёл после опустения (или звонок уже закончен)
+		}
+
+		$wait = $emptySince + self::GRACE - $this->time->getTime();
+		if ($wait > 0) {
+			// ponytail: тик cron пришёл раньше GRACE (редко, окно 15 с из 300): ждём остаток в самой задаче, не более GRACE
+			sleep(min($wait, self::GRACE));
+			if ($this->appConfig->getAppValueInt(self::key($roomId), 0) !== $emptySince) {
+				return; // кто-то вошёл (или опустело заново и ждёт свою задачу)
+			}
+		}
+
+		$this->appConfig->deleteAppValue(self::key($roomId));
 		try {
-			$room = $this->manager->getRoomById((int)($argument['roomId'] ?? 0));
+			$room = $this->manager->getRoomById($roomId);
 		} catch (RoomNotFoundException) {
 			return;
 		}
 
 		if ($this->participantService->hasActiveSessionsInCall($room)) {
-			return; // кто-то вошёл: звонок продолжается
+			return;
 		}
 
 		$this->roomService->resetActiveSince($room, null);

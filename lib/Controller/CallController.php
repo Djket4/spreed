@@ -291,6 +291,7 @@ class CallController extends AEnvironmentAwareOCSController {
 		$silent = $silent || ($this->room->getAttributes() & RoomAttributes::VOICE_ROOM->value);
 
 		try {
+			$this->endEmptyCallBeforeJoin();
 			$this->participantService->changeInCall($this->room, $this->participant, $flags, silent: $silent, lastJoinedCall: $lastJoinedCall->getTimestamp());
 			$this->roomService->setActiveSince($this->room, $this->participant, $lastJoinedCall, $flags, silent: $silent, silentFor: $silentFor);
 		} catch (\InvalidArgumentException $e) {
@@ -567,6 +568,25 @@ class CallController extends AEnvironmentAwareOCSController {
 	}
 
 	/**
+	 * ket4tec (NAS_CLOUD#129): звонок опустел и ждёт задачу {@see EndEmptyCall}. Если с опустения прошло
+	 * больше GRACE секунд, это новый звонок (завершить старый до setActiveSince, чтобы B получил звонок и push);
+	 * если меньше, это переключение устройства и звонок продолжается.
+	 */
+	private function endEmptyCallBeforeJoin(): void {
+		$key = EndEmptyCall::key($this->room->getId());
+		$emptySince = $this->appConfig->getAppValueInt($key, 0);
+		if ($emptySince <= 0) {
+			return;
+		}
+
+		$this->appConfig->deleteAppValue($key);
+		if ($this->timeFactory->getTime() - $emptySince >= EndEmptyCall::GRACE
+			&& !$this->participantService->hasActiveSessionsInCall($this->room)) {
+			$this->roomService->resetActiveSince($this->room, null);
+		}
+	}
+
+	/**
 	 * Leave a call
 	 *
 	 * @param bool $all whether to also terminate the call for all participants
@@ -615,6 +635,7 @@ class CallController extends AEnvironmentAwareOCSController {
 			if (!$this->participantService->hasActiveSessionsInCall($this->room)) {
 				// ket4tec (NAS_CLOUD#129): не завершать звонок сразу, проверить позже (переключение устройства)
 				$argument = ['roomId' => $this->room->getId()];
+				$this->appConfig->setAppValueInt(EndEmptyCall::key($this->room->getId()), $this->timeFactory->getTime());
 				if (!$this->jobList->has(EndEmptyCall::class, $argument)) {
 					$this->jobList->add(EndEmptyCall::class, $argument);
 				}

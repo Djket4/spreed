@@ -13,6 +13,7 @@ use OCA\Talk\Manager;
 use OCA\Talk\Room;
 use OCA\Talk\Service\ParticipantService;
 use OCA\Talk\Service\RoomService;
+use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use PHPUnit\Framework\MockObject\MockObject;
 use Test\TestCase;
@@ -21,20 +22,26 @@ class EndEmptyCallTest extends TestCase {
 	protected Manager&MockObject $manager;
 	protected RoomService&MockObject $roomService;
 	protected ParticipantService&MockObject $participantService;
+	protected IAppConfig&MockObject $appConfig;
+	protected ITimeFactory&MockObject $time;
 
 	public function setUp(): void {
 		parent::setUp();
 		$this->manager = $this->createMock(Manager::class);
 		$this->roomService = $this->createMock(RoomService::class);
 		$this->participantService = $this->createMock(ParticipantService::class);
+		$this->appConfig = $this->createMock(IAppConfig::class);
+		$this->time = $this->createMock(ITimeFactory::class);
+		$this->time->method('getTime')->willReturn(1000);
 	}
 
 	protected function run42(): void {
-		$job = new EndEmptyCall($this->createMock(ITimeFactory::class), $this->manager, $this->roomService, $this->participantService);
+		$job = new EndEmptyCall($this->time, $this->manager, $this->roomService, $this->participantService, $this->appConfig);
 		self::invokePrivate($job, 'run', [['roomId' => 42]]);
 	}
 
 	public function testEndsCallWhenStillEmpty(): void {
+		$this->appConfig->method('getAppValueInt')->willReturn(900);
 		$room = $this->createMock(Room::class);
 		$this->manager->method('getRoomById')->with(42)->willReturn($room);
 		$this->participantService->method('hasActiveSessionsInCall')->willReturn(false);
@@ -43,6 +50,7 @@ class EndEmptyCallTest extends TestCase {
 	}
 
 	public function testKeepsCallWhenSomeoneJoined(): void {
+		$this->appConfig->method('getAppValueInt')->willReturn(900);
 		$room = $this->createMock(Room::class);
 		$this->manager->method('getRoomById')->willReturn($room);
 		$this->participantService->method('hasActiveSessionsInCall')->willReturn(true);
@@ -51,7 +59,15 @@ class EndEmptyCallTest extends TestCase {
 	}
 
 	public function testDeletedRoomIsIgnored(): void {
+		$this->appConfig->method('getAppValueInt')->willReturn(900);
 		$this->manager->method('getRoomById')->willThrowException(new RoomNotFoundException());
+		$this->roomService->expects($this->never())->method('resetActiveSince');
+		$this->run42();
+	}
+
+	public function testNothingWhenSomeoneJoinedAfterEmptied(): void {
+		$this->appConfig->method('getAppValueInt')->willReturn(0); // joinCall снял отметку
+		$this->manager->expects($this->never())->method('getRoomById');
 		$this->roomService->expects($this->never())->method('resetActiveSince');
 		$this->run42();
 	}
