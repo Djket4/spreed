@@ -107,6 +107,21 @@ describe('calllog', () => {
 			expect(fetch).toHaveBeenCalledTimes(3)
 		})
 
+		it('финальный flush завершается только когда fetch отработал (до leaveConversation)', async () => {
+			let done
+			globalThis.fetch = vi.fn(() => new Promise((r) => { done = r }))
+			calllogSession('abcd1234', 'S')
+			calllog('call_left')
+			let resolved = false
+			const p = calllogStop().then(() => { resolved = true })
+			await Promise.resolve()
+			await Promise.resolve()
+			expect(resolved).toBe(false)
+			done({ status: 200 })
+			await p
+			expect(resolved).toBe(true)
+		})
+
 		it('после 404 перестаёт слать, до следующего входа', async () => {
 			globalThis.fetch = vi.fn(() => Promise.resolve({ status: 404 }))
 			calllogSession('abcd1234', 'S')

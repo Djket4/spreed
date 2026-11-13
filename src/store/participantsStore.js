@@ -948,7 +948,8 @@ const actions = {
 			})
 		}
 
-		calllogStop() // финальный flush и стоп маячка, пока room session ещё жива
+		// финальный flush журнала должен дойти до выхода: после leaveConversation сервер удалит room session (403)
+		await Promise.race([calllogStop(), new Promise((resolve) => setTimeout(resolve, 1000))])
 		try {
 			await leaveConversation(token)
 			if (SessionStorage.getItem('joined_conversation') === token) {

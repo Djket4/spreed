@@ -43,13 +43,15 @@ export function calllog(k, d) {
 
 /**
  * @param {boolean} [last] страница закрывается: отдать всё сразу
+ * @return {Promise} завершение отправленных запросов (не бросает)
  */
 function flush(last) {
+	const ps = []
 	try {
 		while (token && sid && buf.length) {
 			const ev = buf.splice(0, MAX_POST)
 			const sentSid = sid
-			fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
+			ps.push(fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
 				method: 'POST',
 				keepalive: true, // переживает закрытие вкладки; sendBeacon не умеет заголовки OCS
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
@@ -59,7 +61,7 @@ function flush(last) {
 				if ([403, 404, 410].includes(r?.status) && sid === sentSid) {
 					calllogStop(false)
 				}
-			}).catch(() => {})
+			}).catch(() => {}))
 			if (!last) {
 				break
 			}
@@ -67,24 +69,27 @@ function flush(last) {
 	} catch (e) {
 		// ignore
 	}
+	return Promise.allSettled(ps)
 }
 
 /**
  * Выход из комнаты/звонка (или ответ 403/404/410): остановить маячок до следующего calllogSession.
  *
  * @param {boolean} [final] отдать накопленное одним последним запросом
+ * @return {Promise} завершение финальных запросов (чтобы выход из комнаты их дождался)
  */
 export function calllogStop(final = true) {
+	let p = Promise.resolve()
 	try {
 		if (final) {
-			flush(true)
+			p = flush(true)
 		}
 		clearInterval(timer)
-		timer = sid = null
-		buf = []
+		timer = sid = null // события, записанные после отправки, остаются в буфере до следующего входа
 	} catch (e) {
 		// ignore
 	}
+	return p
 }
 
 /**
