@@ -22,7 +22,7 @@ import { pullSignalingMessages } from '../services/signalingService.js'
 import store from '../store/index.js'
 import { useActorStore } from '../stores/actor.ts'
 import pinia from '../stores/pinia.ts'
-import { calllog } from './calllog.js'
+import { calllog, calllogSession } from './calllog.js'
 import CancelableRequest from './CancelableRequest.ts'
 import Encryption from './e2ee/encryption.js'
 import { convertToUnix } from './formattedTime.ts'
@@ -938,6 +938,7 @@ Signaling.Standalone.prototype.forceReconnect = function(newSession, flags) {
 				})
 
 				this.nextcloudSessionId = response.data.ocs.data.sessionId
+				calllogSession(this.currentRoomToken, this.nextcloudSessionId) // ket4tec: журнал получает новую сессию, иначе 403
 
 				// FIXME use _trigger() -> EventBus to emit payload instead of direct store usage
 				actorStore.setCurrentParticipant(response.data.ocs.data)

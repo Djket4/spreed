@@ -88,4 +88,63 @@ describe('calllog', () => {
 		window.removeEventListener('error', seen)
 		expect(seen).toHaveBeenCalledTimes(1) // только само событие error из теста
 	})
+
+	it('403: пауза, буфер цел, после calllogSession отправка возобновляется', async () => {
+		globalThis.fetch = vi.fn(() => Promise.resolve({ status: 403 }))
+		calllogSession('abcd1234', 'OLD')
+		calllog('x')
+		await vi.waitFor(() => expect(_buf().length).toBeGreaterThan(0))
+		const n = fetch.mock.calls.length
+		calllog('y')
+		calllogSession('abcd1234', 'OLD') // сессия та же, но пауза снимается только вызовом — проверим новую ниже
+		await vi.waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(n))
+		const before = fetch.mock.calls.length
+		await new Promise((r) => setTimeout(r, 0))
+		calllog('z')
+		expect(fetch.mock.calls.length).toBe(before) // на паузе: не шлём
+		expect(_buf().map((e) => e.k)).toContain('z')
+		globalThis.fetch = vi.fn(() => Promise.resolve({ status: 200 }))
+		calllogSession('abcd1234', 'NEW')
+		expect(fetch).toHaveBeenCalledTimes(1)
+		const body = JSON.parse(fetch.mock.calls[0][1].body)
+		expect(body.s).toBe('NEW')
+		expect(body.ev.map((e) => e.k)).toEqual(expect.arrayContaining(['x', 'y', 'z']))
+	})
+
+	it('/pre: только белый список и только без сессии; после сессии одно событие session', () => {
+		history.pushState({}, '', '/call/abcd1234')
+		initCalllog()
+		calllog('rtc_state')
+		calllog('join_blocked')
+		expect(fetch).toHaveBeenCalledTimes(1)
+		const [url, opt] = fetch.mock.calls[0]
+		expect(url).toBe('apps/spreed/api/v1/calllog/abcd1234/pre')
+		const body = JSON.parse(opt.body)
+		expect(body.c).toMatch(/^[a-z0-9]{5}$/)
+		expect(body.ev.map((e) => e.k)).toEqual(['page_load', 'join_blocked'])
+		expect(_buf().map((e) => e.k)).toEqual(['rtc_state'])
+		calllogSession('abcd1234', 'S')
+		calllogSession('abcd1234', 'S2')
+		const sent = fetch.mock.calls.slice(1).flatMap((c) => JSON.parse(c[1].body).ev)
+		expect(sent.filter((e) => e.k === 'session')).toHaveLength(1)
+		expect(sent.find((e) => e.k === 'session').d.cid).toBe(body.c)
+		calllog('join_blocked') // с сессией /pre не используется
+		expect(fetch.mock.calls.every((c, i) => i === 0 || !c[0].endsWith('/pre'))).toBe(true)
+	})
+
+	it('403 на старую сессию после смены сессии: нет вечной паузы, пачка уходит с новой', async () => {
+		let resolve
+		globalThis.fetch = vi.fn(() => new Promise((r) => {
+			resolve = r
+		}))
+		calllog('x')
+		calllogSession('abcd1234', 'OLD')
+		calllogSession('abcd1234', 'NEW') // пока запрос с OLD в полёте
+		globalThis.fetch.mockClear()
+		resolve({ status: 403 })
+		await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+		const body = JSON.parse(fetch.mock.calls[0][1].body)
+		expect(body.s).toBe('NEW')
+		expect(body.ev.map((e) => e.k)).toContain('x')
+	})
 })
