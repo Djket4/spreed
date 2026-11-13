@@ -8,8 +8,10 @@ NC=$(grep -o 'nextcloud min-version="[0-9]*"' appinfo/info.xml | grep -o '[0-9]*
 APP=$PWD
 # только если PR трогает lib/, tests/php/ или сам прогон (для push без базы запускаем всегда)
 if [ -n "${GITHUB_BASE_REF:-}" ]; then
-	git fetch -q --depth=50 origin "$GITHUB_BASE_REF" || true
-	if ! git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" 2>/dev/null | grep -qE '^(lib/|tests/php/|\.github/ket4tec-phpunit\.sh|\.github/workflows/ket4tec-ci\.yml)'; then
+	# HEAD в pull_request — merge-коммит с базой, поэтому двухточечный diff = изменения PR; при ошибке diff прогон НЕ пропускаем
+	git fetch -q --depth=1 origin "$GITHUB_BASE_REF" || true
+	if CHANGED=$(git diff --name-only "origin/${GITHUB_BASE_REF}" HEAD 2>/dev/null) \
+		&& ! grep -qE '^(lib/|tests/php/|\.github/ket4tec-phpunit\.sh|\.github/workflows/ket4tec-ci\.yml)' <<<"$CHANGED"; then
 		echo "PR не трогает lib/, tests/php/ и сам прогон: PHPUnit пропущен"
 		exit 0
 	fi
