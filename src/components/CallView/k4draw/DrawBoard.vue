@@ -59,7 +59,7 @@ import DrawLayer from './DrawLayer.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
-import { bgUrl, canDraw, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
+import { bgUrl, canDraw, humans, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
 
 const token = useGetToken()
 
@@ -71,7 +71,7 @@ const people = computed(() => {
 	// ket4tec: без камеры — то же облако синапсов, что в сетке (ключ тип/id как в VideoVue/LocalVideo)
 	const mySeed = actor.actorId ? actor.actorType + '/' + actor.actorId : 'me'
 	const out = [{ id: 'me', me: true, name: 'Вы', stream: me.videoEnabled && me.localStream, audio: me.localStream, on: !!me.audioEnabled, seed: mySeed, speaking: me.speaking }]
-	callParticipantCollection.callParticipantModels.forEach((m) => {
+	humans().forEach((m) => {
 		const a = m.attributes
 		const pp = store.getters.findParticipant(token.value, { sessionId: a.nextcloudSessionId })
 		const name = a.name || pp?.displayName || 'Участник'

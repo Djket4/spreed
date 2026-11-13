@@ -1439,11 +1439,21 @@ const ord = (a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0) // ст�
  *
  * @param excl кто уходит
  */
+/**
+ * Люди в звонке без служебных сессий (робот записи, SIP): тот же признак, что в сетке (CallView.vue:288).
+ * NAS_CLOUD#158
+ *
+ * @return {Array} модели участников
+ */
+export function humans() {
+	return callParticipantCollection.callParticipantModels.filter((m) => !m.attributes.internal || m.attributes.videoAvailable)
+}
+
 function pickOwner(excl) {
 	// про других — по экранному потоку, не по state.keys: зритель доски ключ чужого показа уже забыл, и выбор у клиентов разошёлся бы
 	// выбор без согласования: у кого `h`/`H` показа ещё в пути, выберет иначе. Сводят два правила в приёме `h`: из двух взявших остаётся старший, а доску, отданную показывающему, выбирают заново
 	const sharing = (s) => (s === me() ? !!myK && !isBoard(myK) : sharers.has(s) || !!callParticipantCollection.get(s)?.attributes.screen)
-	return [me(), ...callParticipantCollection.callParticipantModels.map((m) => m.attributes.peerId)]
+	return [me(), ...humans().map((m) => m.attributes.peerId)]
 		.filter((s) => s && s !== excl && !sharing(s) && (state.gd || !isGuestSid(s))) // показывающему экран не передаём: ключ доски затёр бы его показ; гостю при запрете — тоже (его `h` отбросят)
 		.sort(ord)[0]
 }
@@ -1500,7 +1510,7 @@ let snapped = false // автоснимок уже сделан при выхо�
 // До выхода из звонка (список участников и холст ещё целы): последний на доске с рисунком снимает её в Файлы, ждём до 4 с
 beforeLeaveCall.fn = async () => {
 	const s = myShow()
-	if (!s || !isBoard(s.k) || s.perm <= 0 || !s.dirty || snapped || callParticipantCollection.callParticipantModels.length) {
+	if (!s || !isBoard(s.k) || s.perm <= 0 || !s.dirty || snapped || humans().length) {
 		return
 	}
 	snapped = true
@@ -1668,7 +1678,7 @@ export function watchCall() {
 	room !== gdRoom && (state.gd = true) && (gdOk = '') // запрет гостям — только в своей комнате (NAS_CLOUD#110 В6)
 	gdRoom = room
 	const seen = setInterval(() => {
-		const n = callParticipantCollection.callParticipantModels.length
+		const n = humans().length
 		sharers.forEach((s) => callParticipantCollection.get(s) || sharers.delete(s)) // вышел из звонка, не сняв показ
 		// новичок (или вернувшийся Safari с новой сессией) мог пропустить `h` и свои `q`: доску объявляю заново, слой сам спросит пометки
 		n > others && isBoard(myK) && enqueue(hOf(myK, colsOut(shows.get(myK))))
@@ -1689,7 +1699,7 @@ export function watchCall() {
 		views--
 		held && release()
 		if (!views) {
-			others = Math.max(others, callParticipantCollection.callParticipantModels.length)
+			others = Math.max(others, humans().length)
 			// некому передать доску: снимок рисунка в Файлы, пока холст ещё в DOM
 			const s = myShow()
 			s && isBoard(s.k) && s.perm > 0 && s.dirty && !others && !snapped && autoSnap?.() // запасной путь
