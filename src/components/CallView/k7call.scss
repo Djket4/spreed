@@ -506,10 +506,21 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 		.grid { display: grid !important; grid-template-columns: repeat(3, var(--k4-sq, 120px)) !important; grid-template-rows: none !important; grid-auto-rows: var(--k4-sq, 120px) !important; gap: 8px !important; justify-content: center; align-content: start; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; }
 		.grid > * { grid-column: auto !important; grid-row: auto !important; width: var(--k4-sq, 120px) !important; height: var(--k4-sq, 120px) !important; margin: 0 !important; }
 	}
-	// показ ужат до своей пропорции (--k4-ar из ScreenShare) и стоит сразу над полосой; видео по-прежнему по центру своей области (DrawLayer)
-	#call-container:not(.k7-alone) #videos:has(> .video__promoted > .screenContainer) { justify-content: flex-end; }
-	#call-container:not(.k7-alone) .video__promoted:has(> .screenContainer) { flex: 0 1 auto; height: auto; aspect-ratio: var(--k4-ar, 16 / 10); max-height: 100%; }
+	// показ ужат до своей пропорции (--k4-ar из ScreenShare) и стоит сразу под шапкой, полоса — сразу под ним (эскиз 4Б);
+	// видео по-прежнему по центру своей области (DrawLayer)
+	#call-container:not(.k7-alone) #videos:has(> .video__promoted > .screenContainer) { justify-content: flex-start; }
+	// с седьмого участника: 4 собеседника, «Вы» и «+N» (VideosGrid), нажатие — список участников
+	#{$k4s} .grid:has(> .k4-more-tile) > :nth-child(n+5):not(.k4-more-tile, .localVideoContainer) { display: none !important; } // 4 собеседника, «Вы», «+N»
+	#{$k4s} .grid > .k4-more-tile {
+		display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--k7-r-tile);
+		background: var(--k7-glass); color: var(--k7-fg); font-size: 26px; font-weight: 700; box-shadow: inset 0 0 0 1px var(--k7-line2); cursor: pointer;
+	}
+	// overflow: показ увеличен щипком — не вылезает из своей рамки под полосу
+	#call-container:not(.k7-alone) .video__promoted:has(> .screenContainer) { flex: 0 1 auto; height: auto; aspect-ratio: var(--k4-ar, 16 / 10); max-height: 100%; overflow: hidden; }
 }
+#call-container .k4-more-tile { display: none; }
+// ket4tec (NAS_CLOUD#195 п.6): кнопки по тапу встают по центру плитки — надпись NO SIGNAL уходит вниз, над именем
+#call-container .k4-tapped .k4-nosig { align-items: flex-end; padding-bottom: 28px; }
 // ket4tec (NAS_CLOUD#195 п.5): свёрнутая полоса — белая капсула «мини-аватары · Камеры · N ›» (эскиз, кадр 5)
 #call-container .stripe-controls-position--collapsed {
 	.stripe-controls { padding: 0; opacity: 1; }
@@ -567,6 +578,8 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 
 // ket4tec (NAS_CLOUD#195 п.7): связь пропала у меня — звонок приглушён, сверху один знак «Переподключаемся…»
 #call-container.k4-selflost > :not(.k4-selflost-veil) { filter: saturate(.25); opacity: .45; transition: opacity .3s ease, filter .3s ease; }
+// док рисования живёт вне звонка (телепорт) и не закрывает карточку «Переподключаемся»
+body:has(#call-container.k4-selflost) .k4-dockwrap { display: none; }
 body:has(#call-container.k4-selflost) .top-bar--in-call { opacity: .45; }
 .k4-selflost-veil {
 	position: fixed; inset: 0; z-index: 2100;

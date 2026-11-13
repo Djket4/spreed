@@ -101,6 +101,16 @@
 							:localMediaModel="localMediaModel"
 							:localCallParticipantModel="localCallParticipantModel"
 							@clickVideo="handleClickLocalVideo" />
+						<!-- ket4tec (NAS_CLOUD#195 п.3): iPhone вертикально, с седьмого участника — последний квадрат «+N», открывает список участников
+							(видна только в своём media в k7call.scss) -->
+						<button
+							v-if="k4More"
+							type="button"
+							class="k4-more-tile"
+							:aria-label="'+' + k4More + ' — все участники'"
+							@click="sidebarStore.showSidebar({ activeTab: 'participants' })">
+							+{{ k4More }}
+						</button>
 					</div>
 					<NcButton
 						v-if="!isStripe && hasNextPage && gridWidth > 0"
@@ -173,6 +183,7 @@ import VideoVue from '../shared/VideoVue.vue'
 import StripeControls from './StripeControls.vue'
 import { getTalkConfig } from '../../../services/CapabilitiesManager.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
+import { useSidebarStore } from '../../../stores/sidebar.ts'
 import { phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import {
 	computeTilePlacements,
@@ -377,6 +388,7 @@ export default {
 			screenshotMode,
 			videosCap,
 			callViewStore,
+			sidebarStore: useSidebarStore(), // ket4tec (NAS_CLOUD#195)
 			gridWrapper,
 			grid,
 			stripeOpen,
@@ -438,6 +450,11 @@ export default {
 				source: a.actorType || (a.userId ? 'users' : 'guests'),
 				name: a.name || '',
 			}))
+		},
+
+		// ket4tec (NAS_CLOUD#195 п.3): больше шести — 4 собеседника, «Вы» и «+N» (скрытые собеседники)
+		k4More() {
+			return this.isStripe && this.totalTiles > 6 ? this.totalTiles - 5 : 0
 		},
 
 		// ket4tec (NAS_CLOUD#195 п.3): квадраты полосы на iPhone вертикально (применяет k7call.scss в своём media)

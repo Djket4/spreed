@@ -224,7 +224,7 @@ import { animateTilePromotion } from './Grid/tilePromotionTransition.ts'
 import { state as k4, watchCall } from './k4draw/useDrawing.js' // ket4tec: k4draw
 import { watchHeaderLinks, watchMove } from './k4move/useMove.js' // ket4tec (NAS_CLOUD#113)
 import { watchStickers } from './k4stk/useStickers.js' // ket4tec: k4stk
-import { k4net, peerLost, selfLost } from './shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
+import { k4net, selfLost } from './shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import { setUpSpeakerSimulation, tearDownSpeakerSimulation } from './speakerSimulation.ts'
 import { useActiveSpeakers } from './useActiveSpeakers.ts'
 import { useWakeLock } from './useWakeLock.ts'
@@ -605,7 +605,6 @@ export default {
 				sigDown: this.k4net.sigDown,
 				offline: this.k4offline,
 				localLost: this.k4localWas && this.k4localNotConn,
-				peers: this.callParticipantModels.map((m) => peerLost(m.attributes)),
 			})
 		},
 	},

@@ -112,13 +112,20 @@ const fit = computed(() => {
 	const ar = showOf(state.board)?.ar || 4 / 3
 	const bw = w - 2 * P, bh = h - 2 * P - DOCK
 	let res = 0, strip = {} // res — место под полосу камер вместе с отступом
+	let top = 0 // портрет: квадраты стоят сразу под листом (и доком), а не у нижнего края
 	if (n && !land) {
-		// ket4tec (NAS_CLOUD#195 п.3, 9): портрет — как под показом: доска главная, квадраты по 3 в ряд под ней (видно 1–2 ряда, дальше листается);
-		// док инструментов — своей строкой между доской и квадратами (DrawDock, --k4-db)
+		// ket4tec (NAS_CLOUD#195 п.3, 9): портрет — как под показом (эскиз 4Б): лист сразу под шапкой, под ним док, под доком квадраты по 3
 		const { sq, rows } = phoneStrip(n)
 		const thick = rows * sq + G * (rows - 1)
 		res = thick + P
-		strip = { top: 'auto', bottom: `${P}px`, height: `${thick}px`, gridTemplateColumns: `repeat(3, ${sq}px)`, gridAutoRows: `${sq}px`, gridAutoFlow: 'row', justifyContent: 'center', alignContent: 'start', overflowY: 'auto' }
+		const sh = Math.min(bw, (bh - res) * ar) / ar
+		top = P + sh + P + DOCK
+		strip = { top: `${top}px`, bottom: 'auto', height: `${thick}px`, gridTemplateColumns: `repeat(3, ${sq}px)`, gridAutoRows: `${sq}px`, gridAutoFlow: 'row', justifyContent: 'center', alignContent: 'start', overflowY: 'auto' }
+	} else if (n && h < 440) {
+		// ket4tec (NAS_CLOUD#195 п.9): iPhone горизонтально — лист главный; камеры одним узким столбиком справа, листаются
+		const tw = 84
+		res = tw + P
+		strip = { width: `${tw}px`, bottom: `${P + DOCK}px`, gridTemplateColumns: `${tw}px`, gridAutoRows: `${tw}px`, alignContent: 'start', overflowY: 'auto' }
 	} else if (n) {
 		const free = land ? bw - P - bh * ar : bh - P - bw / ar // место рядом с доской во всю высоту (ширину)
 		const max = Math.max(land ? 160 : 76, Math.min(free, (land ? w : h) * 0.4))
@@ -143,13 +150,13 @@ const fit = computed(() => {
 		strip = land ? { width: `${thick}px`, bottom: `${P + under}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)`, gridAutoRows: `${tw}px`, overflowY: 'auto' } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` }
 	}
 	// ket4tec (NAS_CLOUD#109 п.1, 6): лист меньше поля. «Закрыть доску» — в углу листа, а не поля (--k4-gx);
-	// в портрете лист прижат вниз, к доку и квадратам, пустое место уходит вверх (NAS_CLOUD#195)
+	// в портрете лист сверху, сразу под ним док и квадраты, пустое место уходит вниз (NAS_CLOUD#195)
 	const lw = bw - (land ? res : 0), lh = bh - (land ? 0 : res)
 	const sw = Math.min(lw, lh * ar)
 	return {
 		root: land
 			? { '--k4-sr': `${res}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': '0px' }
-			: { '--k4-st': `${Math.max(0, lh - sw / ar)}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': `${res}px` }, // портрет: лист прижат вниз, к доку и квадратам
+			: { '--k4-st': '0px', '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': `${top ? h - top : res}px` }, // портрет: лист сверху, ниже док и квадраты
 		strip,
 	}
 })

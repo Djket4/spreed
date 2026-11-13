@@ -68,9 +68,9 @@ describe('selfLost: один общий знак, а не по плиткам', 
 		expect(selfLost({ offline: true })).toBe(true)
 		expect(selfLost({ localLost: true })).toBe(true)
 	})
-	test('пропали все ≥2 собеседника — дело во мне', () => {
-		expect(selfLost({ peers: [true, true] })).toBe(true)
-		expect(selfLost({ peers: [true, false] })).toBe(false)
+	test('пропали все собеседники, а свой сокет жив — это их NO SIGNAL, не мой знак', () => {
+		expect(selfLost({ peers: [true, true] })).toBe(false)
+		expect(selfLost({ peers: [true, true, true] })).toBe(false)
 	})
 	test('один собеседник пропал — это его шум, не мой знак', () => {
 		expect(selfLost({ peers: [true] })).toBe(false)

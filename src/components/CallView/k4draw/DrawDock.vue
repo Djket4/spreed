@@ -252,12 +252,16 @@ function placeScene() {
 		return
 	}
 	const tb = document.querySelector('.top-bar')?.getBoundingClientRect()
-	scene['--k4-sl'] = Math.max(cc.left, 0) + 12 + 'px'
-	scene['--k4-sr'] = Math.max(window.innerWidth - cc.right, 0) + 12 + 'px'
-	scene['--k4-st'] = Math.max(tb ? tb.bottom : 0, cc.top) + 12 + 'px'
-	// док стоит над панелью звонка: она теперь видна и в режиме рисования (п.9)
 	const bb = document.querySelector('#call-container > .bottom-bar')?.getBoundingClientRect()
-	scene['--k4-sb'] = Math.max(0, window.innerHeight - (bb ? bb.top : window.innerHeight)) + 'px'
+	// ket4tec (NAS_CLOUD#195 п.5): iPhone горизонтально — панель звонка столбиком справа во всю высоту, название колонкой слева.
+	// Док тогда внизу экрана в границах показа (#videos): не под колонкой кнопок и не на пилюле «Камеры»
+	const side = bb && bb.height > window.innerHeight / 2
+	const vr = side && document.querySelector('#call-container > #videos')?.getBoundingClientRect()
+	scene['--k4-sl'] = (vr ? vr.left : Math.max(cc.left, 0) + 12) + 'px'
+	scene['--k4-sr'] = (vr ? window.innerWidth - vr.right : Math.max(window.innerWidth - cc.right, 0) + 12) + 'px'
+	scene['--k4-st'] = Math.max(tb ? tb.bottom : 0, cc.top) + 12 + 'px'
+	// док стоит над панелью звонка: она теперь видна и в режиме рисования (п.9); сбоку — панель не мешает, док у нижнего края
+	scene['--k4-sb'] = (side ? 0 : Math.max(0, window.innerHeight - (bb ? bb.top : window.innerHeight))) + 'px'
 	document.documentElement.style.setProperty('--k4-sb', scene['--k4-sb']) // для тостов на телефоне (k7ui.scss)
 	// ket4tec (NAS_CLOUD#196): при показе с полосой камер док — своей строкой между показом и полосой, не поверх плиток
 	// у доски в портрете квадраты под листом (DrawBoard) — док так же между листом и квадратами

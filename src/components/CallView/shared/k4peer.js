@@ -24,18 +24,17 @@ export function peerLost(a) {
 }
 
 /**
- * Связь пропала у меня: сигнальный сервер отвалился, браузер офлайн, мой собственный peer не соединён,
- * или пропали сразу все (≥2) собеседники — значит, дело во мне, а не в них.
+ * Связь пропала у меня: сигнальный сервер отвалился, браузер офлайн или мой собственный peer не соединён.
+ * Пропавшие собеседники — это их шум «NO SIGNAL», а не мой знак, даже если пропали все: свой сокет жив — связь у меня есть.
  *
  * @param {object} p
  * @param {boolean} [p.sigDown] сигнальный сокет закрыт
  * @param {boolean} [p.offline] navigator.onLine === false
  * @param {boolean} [p.localLost] мой peer (MCU/own) был соединён и потерян
- * @param {boolean[]} [p.peers] peerLost каждого собеседника
  * @return {boolean}
  */
-export function selfLost({ sigDown = false, offline = false, localLost = false, peers = [] } = {}) {
-	return sigDown || offline || localLost || (peers.length >= 2 && peers.every(Boolean))
+export function selfLost({ sigDown = false, offline = false, localLost = false } = {}) {
+	return sigDown || offline || localLost
 }
 
 /** Общее состояние сети звонка: sigDown пишет signaling.js, selfLost — CallView. */
