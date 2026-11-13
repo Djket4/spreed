@@ -207,7 +207,7 @@ import { SIMULCAST } from '../../constants.ts'
 import { fetchPeers } from '../../services/callsService.ts'
 import { getTalkConfig } from '../../services/CapabilitiesManager.ts'
 import { EventBus } from '../../services/EventBus.ts'
-import { useCallViewStore } from '../../stores/callView.ts'
+import { LOW_SCREEN, stripeOpenForced, useCallViewStore } from '../../stores/callView.ts'
 import { useParticipantActivityStore } from '../../stores/participantActivity.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { k4log } from '../../utils/k4log.js'
@@ -693,6 +693,10 @@ export default {
 	},
 
 	mounted() {
+		// ket4tec (NAS_CLOUD#108): поворот в альбом во время показа — полосу сворачиваем (слушатель в одном месте: CSS не знает про состояние стора и оставил бы дыру 150 px)
+		this.k4lowMq = window.matchMedia?.(LOW_SCREEN)
+		this.k4lowFn = (e) => e.matches && this.callViewStore.presentationStarted && this.callViewStore.setCallViewMode({ token: this.token, isStripeOpen: false, clearLast: false })
+		this.k4lowMq?.addEventListener?.('change', this.k4lowFn)
 		this.debounceFetchPeers = debounce(this.fetchPeers, 1500)
 		EventBus.on('refresh-peer-list', this.debounceFetchPeers)
 
@@ -728,6 +732,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		this.k4lowMq?.removeEventListener?.('change', this.k4lowFn)
 		if (OC.debug) {
 			tearDownSpeakerSimulation()
 		}
@@ -954,7 +959,7 @@ export default {
 				this.callViewStore.setCallViewMode({
 					token: this.token,
 					isGrid: false,
-					isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
+					isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 					clearLast: false,
 				})
 			} else {
@@ -1011,7 +1016,7 @@ export default {
 			this.callViewStore.setCallViewMode({
 				token: this.token,
 				isGrid: false,
-				isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
+				isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 				clearLast: false,
 			})
 		},
@@ -1031,7 +1036,7 @@ export default {
 			this.callViewStore.setCallViewMode({
 				token: this.token,
 				isGrid: false,
-				isStripeOpen: true, // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
+				isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
 				clearLast: false,
 			})
 		},
