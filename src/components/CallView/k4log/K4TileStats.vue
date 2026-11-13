@@ -3,11 +3,17 @@
 -->
 
 <template>
-	<div v-if="k4stats.testmode" class="k4ts" data-k4ts>
-		<span class="k4ts-line">{{ line }}</span>
-		<span v-if="s && s.path === 'relay'" class="k4ts-b k4ts-turn">TURN</span>
+	<div
+		v-if="k4stats.testmode"
+		class="k4ts"
+		:class="{ 'k4ts--right': right, 'k4ts--compact': compact }"
+		data-k4ts>
 		<span
-			v-for="w in warns"
+			class="k4ts-line"
+			:class="compact && worst ? (worst === 'red' ? 'k4ts-red' : 'k4ts-yellow') : ''">{{ compact ? kbpsText : line }}</span>
+		<span v-if="!compact && s && s.path === 'relay'" class="k4ts-b k4ts-turn">TURN</span>
+		<span
+			v-for="w in compact ? [] : warns"
 			:key="w.w"
 			class="k4ts-b"
 			:class="w.lvl === 'red' ? 'k4ts-red' : 'k4ts-yellow'">{{ WARN_TEXT[w.w] || w.w }}</span>
@@ -38,6 +44,16 @@ export default {
 			type: String,
 			required: true,
 		},
+		/** маленькая плитка (полоса доски): только битрейт, цвет по худшему предупреждению */
+		compact: {
+			type: Boolean,
+			default: false,
+		},
+		/** верхний правый угол (у плитки со стикером левый и имя заняты) */
+		right: {
+			type: Boolean,
+			default: false,
+		},
 	},
 
 	setup() {
@@ -53,9 +69,18 @@ export default {
 			return this.s?.warn ?? []
 		},
 
+		worst() {
+			return this.warns.some((w) => w.lvl === 'red') ? 'red' : this.warns.length ? 'yellow' : ''
+		},
+
+		kbpsText() {
+			const s = this.s
+			return s?.kbps == null ? DASH : (s.kbps >= 1000 ? (s.kbps / 1000).toFixed(1).replace('.', ',') + ' Мбит/с' : Math.round(s.kbps) + ' кбит/с')
+		},
+
 		line() {
 			const s = this.s
-			const kbps = s?.kbps == null ? DASH : (s.kbps >= 1000 ? (s.kbps / 1000).toFixed(1).replace('.', ',') + ' Мбит/с' : Math.round(s.kbps) + ' кбит/с')
+			const kbps = this.kbpsText
 			const loss = s?.loss == null ? DASH : Math.round(s.loss) + '%'
 			const rtt = s?.rtt == null ? DASH : Math.round(s.rtt) + ' мс'
 			return `${kbps} · ${loss} · ${rtt}`
@@ -72,6 +97,7 @@ export default {
 	left: 4px;
 	right: 4px;
 	display: flex;
+	max-width: 60%; // не дальше середины плитки: противоположный угол свободен (стикер, закрыть)
 	flex-wrap: nowrap;
 	gap: 4px;
 	overflow: hidden;
@@ -79,6 +105,16 @@ export default {
 	font-size: 11px;
 	line-height: 16px;
 	color: #fff;
+}
+
+.k4ts--right {
+	left: auto;
+	justify-content: flex-end;
+}
+
+.k4ts--compact {
+	max-width: calc(100% - 8px);
+	font-size: 10px;
 }
 
 .k4ts-line,

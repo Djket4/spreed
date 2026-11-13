@@ -40,6 +40,18 @@ describe('K4TileStats', () => {
 		expect(w.findAll('.k4ts-yellow').map((x) => x.text())).toEqual(Object.values(names))
 	})
 
+	test('компактный вид (полоса доски): только битрейт, цвет по худшему', () => {
+		k4stats.peers.a = { kbps: 480, loss: 20, rtt: 80, jit: null, fps: null, path: 'relay', warn: [{ w: 'rtt', lvl: 'yellow' }, { w: 'loss', lvl: 'red' }] }
+		const w = mount(K4TileStats, { props: { peerId: 'a', compact: true } })
+		expect(w.text()).toBe('480 кбит/с')
+		expect(w.find('.k4ts-line').classes()).toContain('k4ts-red')
+		expect(w.find('.k4ts-turn').exists()).toBe(false)
+	})
+
+	test('right ставит плашку в правый угол', () => {
+		expect(mount(K4TileStats, { props: { peerId: 'a', right: true } }).classes()).toContain('k4ts--right')
+	})
+
 	test('красное предупреждение и TURN', () => {
 		k4stats.peers.a = { kbps: 1200, loss: 20, rtt: 80, jit: null, fps: null, path: 'relay', warn: [{ w: 'loss', lvl: 'red' }] }
 		const w = mount(K4TileStats, { props: { peerId: 'a' } })

@@ -88,7 +88,7 @@
 		</div>
 		<!-- ket4tec: k4stk -->
 		<TileSticker :on="k4stkOn" :sid="peerId" />
-		<K4TileStats :peerId="peerId" />
+		<K4TileStats :peerId="peerId" right />
 		<slot v-if="!hideBottomBar" name="bottomBar">
 			<VideoBottomBar
 				:hasShadow="hasVideo"
