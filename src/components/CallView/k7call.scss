@@ -580,7 +580,7 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 #call-container.k4-selflost > :not(.k4-selflost-veil) { filter: saturate(.25); opacity: .45; transition: opacity .3s ease, filter .3s ease; }
 // док рисования живёт вне звонка (телепорт) и не закрывает карточку «Переподключаемся»
 body:has(#call-container.k4-selflost) .k4-dockwrap { display: none; }
-body:has(#call-container.k4-selflost) .top-bar--in-call { opacity: .45; }
+body:has(#call-container.k4-selflost) :is(.top-bar--in-call, .app-sidebar__toggle) { opacity: .45; } // кнопка участников — вне шапки звонка, приглушаем так же
 .k4-selflost-veil {
 	position: fixed; inset: 0; z-index: 2100;
 	display: flex; align-items: center; justify-content: center;

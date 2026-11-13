@@ -101,8 +101,8 @@
 							:localMediaModel="localMediaModel"
 							:localCallParticipantModel="localCallParticipantModel"
 							@clickVideo="handleClickLocalVideo" />
-						<!-- ket4tec (NAS_CLOUD#195 п.3): iPhone вертикально, с седьмого участника — последний квадрат «+N», открывает список участников
-							(видна только в своём media в k7call.scss) -->
+						<!-- ket4tec (NAS_CLOUD#195 п.3): iPhone вертикально, с седьмого участника — последний квадрат «+N», открывает список участников.
+							На других экранах не рендерится: иначе станет :last-child и сломает центрирование полосы (k7call.scss) -->
 						<button
 							v-if="k4More"
 							type="button"
@@ -171,6 +171,7 @@
 
 <script>
 import { t } from '@nextcloud/l10n'
+import { useMediaQuery } from '@vueuse/core'
 import debounce from 'debounce'
 import { computed, inject, ref, toRef, useTemplateRef, watch } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -389,6 +390,7 @@ export default {
 			videosCap,
 			callViewStore,
 			sidebarStore: useSidebarStore(), // ket4tec (NAS_CLOUD#195)
+			k4PhonePortrait: useMediaQuery('(max-width: 500px) and (orientation: portrait)'), // тот же media, что у полосы в k7call.scss
 			gridWrapper,
 			grid,
 			stripeOpen,
@@ -454,7 +456,7 @@ export default {
 
 		// ket4tec (NAS_CLOUD#195 п.3): больше шести — 4 собеседника, «Вы» и «+N» (скрытые собеседники)
 		k4More() {
-			return this.isStripe && this.totalTiles > 6 ? this.totalTiles - 5 : 0
+			return this.isStripe && this.k4PhonePortrait && this.totalTiles > 6 ? this.totalTiles - 5 : 0
 		},
 
 		// ket4tec (NAS_CLOUD#195 п.3): квадраты полосы на iPhone вертикально (применяет k7call.scss в своём media)
