@@ -1,5 +1,5 @@
 /**
- * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер 160×90
+ * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер 128×128 (квадрат)
  * (MediaStream между источниками не передать), команды микрофон / камера / остановить показ / покинуть.
  */
 import store from '../../../store/index.js'
@@ -7,6 +7,7 @@ import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 
 const MAX = 8
+const SQ = 128
 const vids = new Map() // id плитки -> <video> со своим потоком
 // Talk не принимает камеру участника, чья плитка не видна (при показе экрана полоса скрыта) — пока пульт
 // подключён, его плитки считаются видимыми: id -> RemoteVideoBlocker, которому добавлен счётчик
@@ -18,9 +19,11 @@ window.__k4mc = () => callParticipantCollection.callParticipantModels.map((m) =>
 	return { peer: String(a.peerId).slice(0, 6), video: a.videoAvailable, tracks: a.stream?.getVideoTracks().length ?? null, blocked: b?._blocked, counter: b?._visibleCounter, held: held.has(String(a.peerId)), vw: vids.get(String(a.peerId))?.videoWidth ?? null }
 })
 const cv = document.createElement('canvas')
-cv.width = 160
-cv.height = 90
+cv.width = cv.height = SQ
 let box = null
+const last = new Map() // id плитки -> прошлый jpg (ответ на tick v2 без перекодирования)
+let cost = 0 // скользящее среднее времени кодирования одного кадра, мс
+let nextAt = 0 // не кодировать раньше (держим кодирование в ~10% главного потока)
 
 /**
  * Скрытый, но в DOM: Safari не отдаёт кадры <video> вне документа.
@@ -51,19 +54,31 @@ function video(id, stream) {
 }
 
 /**
- * Кадр 160×90 «по заполнению», base64 JPEG без префикса.
+ * Окно исходного кадра, которое идёт в квадрат. Сейчас — центр (cover, как плитка в звонке);
+ * когда ветка face-center сдвинет окно к лицу у получателя, подменить только эту функцию.
+ *
+ * @param w ширина кадра
+ * @param h высота кадра
+ * @return {[number, number, number, number]} sx, sy, sw, sh
+ */
+export const cropWindow = (w, h) => {
+	const m = Math.min(w, h)
+	return [(w - m) / 2, (h - m) / 2, m, m]
+}
+
+/**
+ * Квадрат 128×128 «по заполнению», base64 JPEG без префикса.
  *
  * @param v
  */
-function jpg(v) {
+export function jpg(v) {
 	const w = v.videoWidth
 	const h = v.videoHeight
 	if (!w || !h) {
 		return null
 	}
-	const k = Math.max(160 / w, 90 / h)
-	const g = cv.getContext('2d')
-	g.drawImage(v, (160 - w * k) / 2, (90 - h * k) / 2, w * k, h * k)
+	const [sx, sy, sw, sh] = cropWindow(w, h)
+	cv.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, SQ, SQ)
 	return cv.toDataURL('image/jpeg', 0.6).slice(23)
 }
 
@@ -72,21 +87,35 @@ function jpg(v) {
  * @param stream
  * @param on камера включена
  */
-const frame = (id, stream, on) => (on && stream?.getVideoTracks().length ? jpg(video(id, stream)) : null)
+const frame = (id, stream, on, fresh) => {
+	if (!(on && stream?.getVideoTracks().length)) {
+		last.delete(id)
+		return null
+	}
+	const v = video(id, stream)
+	if (!fresh && last.has(id)) {
+		return last.get(id)
+	}
+	const t = performance.now()
+	const j = jpg(v)
+	cost = cost ? cost * 0.8 + (performance.now() - t) * 0.2 : performance.now() - t
+	j ? last.set(id, j) : last.delete(id)
+	return j
+}
 
 /**
  * Состояние звонка и плитки; свои первыми.
  */
-function snapshot() {
+function snapshot(fresh = true) {
 	const L = localMediaModel.attributes
-	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled) }]
+	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled, fresh) }]
 	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
 		const a = m.attributes
 		if (m.k4VideoBlocker && !held.has(String(a.peerId))) {
 			m.k4VideoBlocker.increaseVisibleCounter()
 			held.set(String(a.peerId), m.k4VideoBlocker)
 		}
-		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable) })
+		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable, fresh) })
 	})
 	const ids = new Set(tiles.map((t) => t.id))
 	held.forEach((b, id) => {
@@ -97,6 +126,7 @@ function snapshot() {
 	})
 	vids.forEach((v, id) => {
 		if (!ids.has(id)) {
+			last.delete(id)
 			v.srcObject = null
 			v.remove()
 			vids.delete(id)
@@ -106,12 +136,30 @@ function snapshot() {
 }
 
 /**
- * Кадр пульта: по `tick` приложения (5 раз в секунду), а не по своему таймеру — в фоновой вкладке Safari он спит.
+ * Кадр пульта по `tick` приложения (часы приложения: свой таймер в фоновой вкладке Safari спит).
+ * Приложение 1.6.1 и старее (tick без v): свежие кадры на каждый tick. v2: прошлые jpg без перекодирования,
+ * свежие приходят на `fr`.
+ *
+ * @param send отправка в окно моста
+ * @param v2 tick с `v:2`
+ */
+export function consoleTick(send, v2 = false) {
+	send(snapshot(!v2))
+}
+
+/**
+ * `fr` приложения (~12/с): свежие кадры камер. Бюджет ~10% главного потока: следующее кодирование не раньше
+ * чем через 9 × среднее время предыдущего (при дешёвом кодировании пропусков нет, при дорогом — реже).
  *
  * @param send отправка в окно моста
  */
-export function consoleTick(send) {
-	send(snapshot())
+export function consoleFrame(send) {
+	const now = performance.now()
+	if (now < nextAt) {
+		return
+	}
+	send(snapshot(true))
+	nextAt = now + cost * 9
 }
 
 /** */
@@ -122,6 +170,7 @@ export function stopConsole() {
 		v.srcObject = null
 	})
 	vids.clear()
+	last.clear()
 	box?.remove()
 	box = null
 }
