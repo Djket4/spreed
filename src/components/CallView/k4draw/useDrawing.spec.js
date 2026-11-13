@@ -118,4 +118,32 @@ describe('автосохранение рисунка (NAS_CLOUD#114)', () => {
 		await requestCloseBoard()
 		expect(state.board).toBe(null)
 	})
+
+	it('указка после сбоя не сбрасывает отметку: второе «Закрыть» закрывает без попытки', async () => {
+		openBoard(1.5)
+		draw()
+		snapNow.mockResolvedValueOnce(false)
+		await requestCloseBoard()
+		const show = window.__k4draw.shows.get(state.keys.me)
+		strokeEnd(show, strokeStart(show, 'laser', [0.2, 0.2], 0.5))
+		await requestCloseBoard()
+		expect(snapNow).toHaveBeenCalledTimes(1)
+		expect(state.board).toBe(null)
+	})
+
+	it('снимок уже идёт (двойной клик): ни тоста, ни отметки, ни закрытия; потом работает как обычно', async () => {
+		openBoard(1.5)
+		draw()
+		toast.showError.mockClear()
+		let busy = true
+		setAutoSnap(snapNow, () => busy)
+		await requestCloseBoard()
+		expect(toast.showError).not.toHaveBeenCalled()
+		expect(snapNow).not.toHaveBeenCalled()
+		expect(state.board).toBe('me')
+		busy = false
+		await requestCloseBoard()
+		expect(snapNow).toHaveBeenCalledTimes(1)
+		expect(state.board).toBe(null)
+	})
 })
