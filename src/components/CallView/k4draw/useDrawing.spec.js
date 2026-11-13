@@ -5,6 +5,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sig = vi.hoisted(() => ({ getSessionId: () => 'me', doSend: vi.fn(), on: vi.fn(), off: vi.fn() }))
+const toast = vi.hoisted(() => ({ showError: vi.fn() }))
+vi.mock('@nextcloud/dialogs', () => toast)
 vi.mock('@nextcloud/router', () => ({ generateOcsUrl: (u) => u }))
 vi.mock('../../../store/index.js', () => ({ default: { getters: {} } }))
 vi.mock('../../../stores/actor.ts', () => ({ useActorStore: () => ({}) }))
@@ -76,5 +78,44 @@ describe('автосохранение рисунка (NAS_CLOUD#114)', () => {
 		startShow()
 		await endShow()
 		expect(snapNow).not.toHaveBeenCalled()
+	})
+
+	it('сбой снимка при закрытии: доска остаётся, тост; повторное «Закрыть» закрывает без сохранения', async () => {
+		openBoard(1.5)
+		draw()
+		toast.showError.mockClear()
+		snapNow.mockResolvedValueOnce(false)
+		await requestCloseBoard()
+		expect(state.board).toBe('me')
+		expect(toast.showError).toHaveBeenCalledTimes(1)
+		await requestCloseBoard()
+		expect(snapNow).toHaveBeenCalledTimes(1) // второй раз не пробуем
+		expect(state.board).toBe(null)
+	})
+
+	it('после сбоя новый штрих: снова пробуем сохранить', async () => {
+		openBoard(1.5)
+		draw()
+		snapNow.mockResolvedValueOnce(false)
+		await requestCloseBoard()
+		expect(state.board).toBe('me')
+		draw()
+		await requestCloseBoard() // успешный снимок -> закрылась
+		expect(snapNow).toHaveBeenCalledTimes(2)
+		expect(state.board).toBe(null)
+	})
+
+	it('после сбоя успешный снимок сбрасывает отметку: следующий сбой снова держит доску', async () => {
+		openBoard(1.5)
+		draw()
+		snapNow.mockResolvedValueOnce(false)
+		await requestCloseBoard()
+		sendSnap(2) // доска сохранена другим путём (кнопка снимка)
+		draw()
+		snapNow.mockResolvedValueOnce(false)
+		await requestCloseBoard()
+		expect(state.board).toBe('me') // не закрылась «по отметке»
+		await requestCloseBoard()
+		expect(state.board).toBe(null)
 	})
 })
