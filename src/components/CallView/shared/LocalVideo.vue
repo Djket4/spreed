@@ -7,10 +7,10 @@
 	<div
 		ref="videoContainer"
 		class="localVideoContainer"
-		:class="[videoContainerClass, { 'k4stk-has': k4stkOn }]"
+		:class="[videoContainerClass, { 'k4stk-has': k4stkOn, 'k4-tapped': k4tapOn && tap.shown.value }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo', $event)">
+		@click="onTileClick">
 		<img
 			v-if="screenshotModeUrl"
 			class="dev-mode-video--self videoWrapper"
@@ -53,8 +53,21 @@
 		<!-- ket4tec: k4stk -->
 		<TileSticker :on="k4stkOn" own />
 		<K4TileStats peerId="local" />
-		<!-- ket4tec: своя связь пропала после подключения -->
-		<K4Reconnect v-if="k4WasConn && isNotConnected && !isSidebar" title="Нет связи" sub="переподключаемся…" />
+		<!-- ket4tec (NAS_CLOUD#195 п.7): своя связь пропала — одна общая плашка в CallView, на плитке отметки нет -->
+		<!-- ket4tec (NAS_CLOUD#195 п.1): свой микрофон выключен — тот же значок в углу, что у чужих плиток -->
+		<span v-if="k4MicOff" class="k4-micoff" :title="t('spreed', 'Muted')">
+			<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="14" />
+		</span>
+		<!-- ket4tec (NAS_CLOUD#195 п.4): «крупно» после тапа по своей плитке в полосе -->
+		<button
+			v-if="k4tapOn && tap.shown.value"
+			type="button"
+			class="k4-big"
+			title="Крупно"
+			aria-label="Крупно"
+			@click.stop="onBigClick">
+			<IconArrowExpand :size="16" />
+		</button>
 
 		<div class="bottom-bar">
 			<!-- ket4tec: подпись своей плитки, видна и поверх стикера/гифки -->
@@ -76,13 +89,15 @@ import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { inject, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
+import IconArrowExpand from 'vue-material-design-icons/ArrowExpand.vue'
 import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import K4Face from './k4face/K4Face.vue' // ket4tec
-import K4Reconnect from './K4Reconnect.vue' // ket4tec
 import VideoBackground from './VideoBackground.vue'
+import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-off-outline.svg?raw'
 import { AVATAR } from '../../../constants.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
@@ -90,6 +105,7 @@ import attachMediaStream from '../../../utils/attachmediastream.js'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
 import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
+import { useTapReveal } from './k4peer.js' // ket4tec (NAS_CLOUD#195)
 
 export default {
 
@@ -99,9 +115,10 @@ export default {
 		K4Face,
 		IconAccountOffOutline,
 		NcButton,
+		NcIconSvgWrapper,
 		VideoBackground,
 		NcLoadingIcon,
-		K4Reconnect,
+		IconArrowExpand,
 		K4TileStats,
 		TileSticker,
 	},
@@ -174,6 +191,8 @@ export default {
 			screenshotMode,
 			callViewStore: useCallViewStore(),
 			actorStore: useActorStore(),
+			tap: useTapReveal(),
+			IconMicrophoneOffOutline,
 		}
 	},
 
@@ -184,7 +203,6 @@ export default {
 			containerAspectRatio: null,
 			resizeObserver: null,
 			mouseover: false,
-			k4WasConn: false, // ket4tec
 		}
 	},
 
@@ -192,6 +210,17 @@ export default {
 		// ket4tec: k4stk. Моя гифка/стикер вместо камеры (не в боковой панели)
 		k4stkOn() {
 			return !!k4stk.mine && !this.isSidebar
+		},
+
+		/** ket4tec (NAS_CLOUD#195 п.1): значок «микрофон выключен» на своей плитке (не на открытых кнопках) */
+		k4MicOff() {
+			return !this.isSidebar && !this.isBig && !this.isPresenterOverlay && (this.isGrid || this.isStripe)
+				&& !this.localMediaModel.attributes.audioEnabled && !(this.k4tapOn && this.tap.shown.value)
+		},
+
+		// ket4tec (NAS_CLOUD#195 п.4): своя плитка в полосе звонка (не боковая панель)
+		k4tapOn() {
+			return this.isStripe && this.isGrid && !this.isSidebar && this.hasLocalVideo
 		},
 
 		stopFollowingLabel() {
@@ -216,7 +245,6 @@ export default {
 				'presenter-overlay': this.isPresenterOverlay,
 				'hover-shadow': this.isSelectable && this.mouseover,
 				speaking: this.localMediaModel.attributes.speaking,
-				'k4-nomic': !this.localMediaModel.attributes.audioEnabled && !this.isBig, // ket4tec: красная рамка «микрофон выключен»
 			}
 		},
 
@@ -269,16 +297,6 @@ export default {
 	},
 
 	watch: {
-		// ket4tec: плашку обрыва показываем только после первого подключения
-		isNotConnected: {
-			immediate: true,
-			handler(v) {
-				if (!v) {
-					this.k4WasConn = true
-				}
-			},
-		},
-
 		localCallParticipantModel: {
 			immediate: true,
 
@@ -346,6 +364,20 @@ export default {
 	},
 
 	methods: {
+		// ket4tec (NAS_CLOUD#195 п.4): в полосе тап открывает/закрывает кнопки, «крупно» — отдельной кнопкой
+		onTileClick(event) {
+			if (this.k4tapOn) {
+				this.tap.toggle()
+				return
+			}
+			this.$emit('clickVideo', event)
+		},
+
+		onBigClick(event) {
+			this.tap.hide()
+			this.$emit('clickVideo', event)
+		},
+
 		t,
 		_handleForcedMute() {
 			// The default toast selector is "body-user", but as this toast can

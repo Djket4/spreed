@@ -29,6 +29,8 @@ type State = {
 	callEndedTimeout: ReturnType<typeof setTimeout> | undefined
 	isLiveTranscriptionEnabled: boolean
 	externalCallServiceUrl: string | null
+	/** ket4tec (NAS_CLOUD#195 п.2): чей экран крупно — в шапке звонка «Показывает: …» */
+	k4PresenterName: string
 }
 
 type CallViewModePayload = {
@@ -67,6 +69,7 @@ export const useCallViewStore = defineStore('callView', {
 		callEndedTimeout: undefined,
 		isLiveTranscriptionEnabled: false,
 		externalCallServiceUrl: null,
+		k4PresenterName: '',
 	}),
 
 	getters: {

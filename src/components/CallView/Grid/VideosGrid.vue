@@ -10,6 +10,7 @@
 		ref="gridWrapper"
 		class="grid-main-wrapper"
 		:class="{ 'is-grid': !isStripe, overlap: isOverlap }"
+		:style="phoneStripeStyle"
 		:data-theme-dark="isStripe || undefined">
 		<div
 			v-if="isStripe && !isRecording"
@@ -21,6 +22,9 @@
 				:hasPreviousPage="hasPreviousPage"
 				:hasNextPage="hasNextPage"
 				:isOpen="stripeOpen"
+				:count="totalTiles"
+				:people="stripPeople"
+				:token="token"
 				@previous="previous"
 				@next="next"
 				@toggle="handleClickStripeCollapse" />
@@ -91,11 +95,22 @@
 							class="video"
 							:style="tileStyle(displayedVideos.length)"
 							isGrid
+							:isStripe="isStripe"
 							:fitVideo="false"
 							:token="token"
 							:localMediaModel="localMediaModel"
 							:localCallParticipantModel="localCallParticipantModel"
 							@clickVideo="handleClickLocalVideo" />
+						<!-- ket4tec (NAS_CLOUD#195 п.3): iPhone вертикально, с седьмого участника — последний квадрат «+N», открывает список участников.
+							На других экранах не рендерится: иначе станет :last-child и сломает центрирование полосы (k7call.scss) -->
+						<button
+							v-if="k4More"
+							type="button"
+							class="k4-more-tile"
+							:aria-label="'+' + k4More + ' — все участники'"
+							@click="sidebarStore.showSidebar({ activeTab: 'participants' })">
+							+{{ k4More }}
+						</button>
 					</div>
 					<NcButton
 						v-if="!isStripe && hasNextPage && gridWidth > 0"
@@ -156,6 +171,7 @@
 
 <script>
 import { t } from '@nextcloud/l10n'
+import { useMediaQuery } from '@vueuse/core'
 import debounce from 'debounce'
 import { computed, inject, ref, toRef, useTemplateRef, watch } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -168,6 +184,8 @@ import VideoVue from '../shared/VideoVue.vue'
 import StripeControls from './StripeControls.vue'
 import { getTalkConfig } from '../../../services/CapabilitiesManager.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
+import { useSidebarStore } from '../../../stores/sidebar.ts'
+import { phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import {
 	computeTilePlacements,
 	getHalfColumnCount,
@@ -371,6 +389,8 @@ export default {
 			screenshotMode,
 			videosCap,
 			callViewStore,
+			sidebarStore: useSidebarStore(), // ket4tec (NAS_CLOUD#195)
+			k4PhonePortrait: useMediaQuery('(max-width: 500px) and (orientation: portrait)'), // тот же media, что у полосы в k7call.scss
 			gridWrapper,
 			grid,
 			stripeOpen,
@@ -423,6 +443,29 @@ export default {
 				rows: this.rows,
 				columns: this.columns,
 			})
+		},
+
+		// ket4tec (NAS_CLOUD#195 п.5): мини-аватары на свёрнутой кнопке «Камеры · N»
+		stripPeople() {
+			return this.callParticipantModels.slice(0, 3).map(({ attributes: a }) => ({
+				id: a.actorId || a.userId || a.peerId,
+				source: a.actorType || (a.userId ? 'users' : 'guests'),
+				name: a.name || '',
+			}))
+		},
+
+		// ket4tec (NAS_CLOUD#195 п.3): больше шести — 4 собеседника, «Вы» и «+N» (скрытые собеседники)
+		k4More() {
+			return this.isStripe && this.k4PhonePortrait && this.totalTiles > 6 ? this.totalTiles - 5 : 0
+		},
+
+		// ket4tec (NAS_CLOUD#195 п.3): квадраты полосы на iPhone вертикально (применяет k7call.scss в своём media)
+		phoneStripeStyle() {
+			if (!this.isStripe) {
+				return undefined
+			}
+			const { sq, rows } = phoneStrip(this.totalTiles)
+			return { '--k4-sq': sq + 'px', '--k4-rows': rows }
 		},
 
 		// ket4tec (NAS_CLOUD#159): сетка квадратов по центру; полоса - flex в k7call.scss. Плитка занимает две половинки столбца
@@ -650,11 +693,7 @@ export default {
 	// Keeps the tiles off the rounded corners of the card
 	padding-inline: var(--grid-gap);
 
-	// The card the tiles sit on
-	.grid-main-wrapper:not(.overlap) & {
-		background-color: #262626;
-		border-radius: var(--border-radius-container);
-	}
+	// ket4tec (NAS_CLOUD#195 п.1): тёмной подложки под полосой нет — плитки лежат прямо на фоне звонка
 
 	// A stripe overlapping the promoted video takes no card of its own, which
 	// would band that video across: its tiles - the self camera, the only one

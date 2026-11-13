@@ -9,10 +9,10 @@
 		:id="(placeholderForPromoted ? 'placeholder-' : '') + 'container_' + peerId + '_video_incoming'"
 		ref="videoContainer"
 		class="video-container"
-		:class="[containerClass, { 'k4stk-has': k4stkOn }]"
+		:class="[containerClass, { 'k4stk-has': k4stkOn, 'k4-tapped': isStripe && tap.shown.value }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo', $event)">
+		@click="onTileClick">
 		<div
 			v-show="showVideo"
 			:class="videoWrapperClass"
@@ -75,13 +75,10 @@
 			class="placeholder-for-promoted">
 			<IconAccountCircleOutline v-if="isPromoted || isSelected" fillColor="#FFFFFF" :size="64" />
 		</div>
-		<!-- ket4tec: обрыв после того, как связь была, — плашка во всю плитку вместо застывшего кадра -->
-		<K4Reconnect
-			v-if="k4Recon"
-			:title="isNoLongerTryingToReconnect ? 'Связь потеряна' : 'Переподключается…'"
-			:sub="participantName" />
+		<!-- ket4tec (NAS_CLOUD#195 п.6/7): связь с участником пропала — шум «NO SIGNAL»; пропала у меня — общая плашка в CallView, в плитках ничего -->
+		<K4NoSignal v-if="k4Recon && !k4net.selfLost" />
 		<div
-			v-else-if="connectionMessage"
+			v-else-if="connectionMessage && !k4net.selfLost"
 			:class="connectionMessageClass"
 			class="connection-message">
 			{{ connectionMessage }}
@@ -89,11 +86,26 @@
 		<!-- ket4tec: k4stk -->
 		<TileSticker :on="k4stkOn" :sid="peerId" />
 		<K4TileStats :peerId="peerId" right />
+		<!-- ket4tec (NAS_CLOUD#195 п.1): вместо красной рамки — значок «микрофон выключен» в углу -->
+		<span v-if="k4MicOff" class="k4-micoff" :title="t('spreed', 'Muted')">
+			<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="14" />
+		</span>
+		<!-- ket4tec (NAS_CLOUD#195 п.4): «крупно» — маленькая кнопка в углу, видна после тапа по плитке полосы -->
+		<button
+			v-if="isStripe && tap.shown.value && !placeholderForPromoted"
+			type="button"
+			class="k4-big"
+			title="Крупно"
+			aria-label="Крупно"
+			@click.stop="onBigClick">
+			<IconArrowExpand :size="16" />
+		</button>
 		<slot v-if="!hideBottomBar" name="bottomBar">
 			<VideoBottomBar
 				:hasShadow="hasVideo"
 				:participantName="participantName"
 				v-bind="$props"
+				:showVideoOverlay="isStripe ? tap.shown.value : showVideoOverlay"
 				@bottomBarHover="handleHoverEvent" />
 		</slot>
 	</div>
@@ -104,17 +116,20 @@ import { t } from '@nextcloud/l10n'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
 import { inject, ref } from 'vue'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountCircleOutline from 'vue-material-design-icons/AccountCircleOutline.vue'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
+import IconArrowExpand from 'vue-material-design-icons/ArrowExpand.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
 import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import K4Face from './k4face/K4Face.vue' // ket4tec
-import K4Reconnect from './K4Reconnect.vue' // ket4tec
+import K4NoSignal from './K4NoSignal.vue' // ket4tec
 import ScreenShare from './ScreenShare.vue'
 import VideoBackground from './VideoBackground.vue'
 import VideoBottomBar from './VideoBottomBar.vue'
+import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-off-outline.svg?raw'
 import { ATTENDEE, AVATAR } from '../../../constants.ts'
 import { EventBus } from '../../../services/EventBus.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
@@ -124,6 +139,7 @@ import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
 import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
+import { k4net, useTapReveal } from './k4peer.js' // ket4tec (NAS_CLOUD#195)
 
 export default {
 
@@ -132,8 +148,10 @@ export default {
 	components: {
 		K4Face,
 		AvatarWrapper,
-		K4Reconnect,
+		K4NoSignal,
 		K4TileStats,
+		NcIconSvgWrapper,
+		IconArrowExpand,
 		TileSticker,
 		VideoBackground,
 		ScreenShare,
@@ -241,6 +259,9 @@ export default {
 			callViewStore: useCallViewStore(),
 			guestNameStore: useGuestNameStore(),
 			screenshotMode,
+			k4net,
+			tap: useTapReveal(),
+			IconMicrophoneOffOutline,
 		}
 	},
 
@@ -344,7 +365,6 @@ export default {
 				'videoContainer-dummy': this.placeholderForPromoted,
 				'not-connected': !this.placeholderForPromoted && !this.isConnected,
 				speaking: !this.placeholderForPromoted && this.isSpeaking && !this.isBig,
-				'k4-nomic': !this.placeholderForPromoted && this.model.attributes.audioAvailable === false && !this.isBig, // ket4tec: красная рамка «микрофон выключен»
 				hover: this.mouseover && !this.unSelectable && !this.isBig,
 				promoted: !this.placeholderForPromoted && this.sharedData.promoted && !this.isGrid,
 				presenter: this.isPresenterOverlay && this.mouseover,
@@ -578,6 +598,12 @@ export default {
 			return this.wasConnectedAtLeastOnce && !this.placeholderForPromoted && !this.isSidebar && (this.isDisconnected || this.isReconnecting || this.isNoLongerTryingToReconnect)
 		},
 
+		/** ket4tec (NAS_CLOUD#195): значок «микрофон выключен»; без связи и на открытых кнопках не нужен */
+		k4MicOff() {
+			return !this.placeholderForPromoted && !this.isBig && !this.isSidebar && this.model.attributes.audioAvailable === false
+				&& !this.k4Recon && !(this.isStripe && this.tap.shown.value)
+		},
+
 		k4stkOn() {
 			return !!k4stk.peers[this.peerId] && !this.showSharedScreen && !this.placeholderForPromoted
 		},
@@ -628,6 +654,20 @@ export default {
 
 	methods: {
 		t,
+		// ket4tec (NAS_CLOUD#195 п.4): в полосе тап открывает/закрывает кнопки плитки, «крупно» — отдельной кнопкой
+		onTileClick(event) {
+			if (this.isStripe && !this.placeholderForPromoted) {
+				this.tap.toggle()
+				return
+			}
+			this.$emit('clickVideo', event)
+		},
+
+		onBigClick(event) {
+			this.tap.hide()
+			this.$emit('clickVideo', event)
+		},
+
 		_setStream(stream) {
 			if (!stream) {
 				// Do not clear the srcObject of the video element, just leave

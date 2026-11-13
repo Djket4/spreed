@@ -17,7 +17,7 @@
 				v-for="p in people"
 				:key="p.id"
 				class="k4-strip__t"
-				:class="{ 'k4-strip__t--talk': p.speaking, 'k4-strip__t--off': !p.on }">
+				:class="{ 'k4-strip__t--talk': p.speaking }">
 				<video
 					v-if="p.stream"
 					:srcObject="p.stream"
@@ -31,6 +31,11 @@
 					:on="p.on"
 					:seed="p.seed"
 					:token="token" />
+				<!-- ket4tec (NAS_CLOUD#195 п.9): как в полосе звонка — NO SIGNAL без связи, значок вместо красной рамки, имя узкой полосой -->
+				<K4NoSignal v-if="p.lost && !k4net.selfLost" />
+				<span v-else-if="!p.on" class="k4-micoff" title="Звук отключён">
+					<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="14" />
+				</span>
 				<b>{{ p.name }}</b>
 				<!-- ket4tec: журнал звонка (NAS_CLOUD#189); p.id = peerId, как ключ в k4stats.peers -->
 				<K4TileStats :peerId="p.me ? 'local' : p.id" compact />
@@ -53,12 +58,16 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import K4Face from '../shared/k4face/K4Face.vue'
+import K4NoSignal from '../shared/K4NoSignal.vue'
 import DrawLayer from './DrawLayer.vue'
+import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-off-outline.svg?raw'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
+import { k4net, peerLost, phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import { bgUrl, canDraw, humans, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
 
 const token = useGetToken()
@@ -77,7 +86,7 @@ const people = computed(() => {
 		const name = a.name || pp?.displayName || 'Участник'
 		const id = a.actorId || pp?.actorId
 		const type = a.actorType || pp?.actorType
-		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, audio: a.stream, on: a.audioAvailable !== false, seed: id && type ? type + '/' + id : name, speaking: a.speaking })
+		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, audio: a.stream, on: a.audioAvailable !== false, seed: id && type ? type + '/' + id : name, speaking: a.speaking, lost: peerLost(a) })
 	})
 	return out.length > 1 ? out : []
 })
@@ -103,7 +112,25 @@ const fit = computed(() => {
 	const ar = showOf(state.board)?.ar || 4 / 3
 	const bw = w - 2 * P, bh = h - 2 * P - DOCK
 	let res = 0, strip = {} // res — место под полосу камер вместе с отступом
-	if (n) {
+	let top = 0 // портрет: квадраты стоят сразу под листом (и доком), а не у нижнего края
+	if (n && !land) {
+		// ket4tec (NAS_CLOUD#195 п.3, 9): портрет — как под показом (эскиз 4Б): лист сразу под шапкой, под ним док, под доком квадраты по 3
+		// рядов — сколько нужно, чтобы влезли все без «+N»; предел — только место до панели звонка (как в 25.0.7)
+		// квадраты ужимаются до 72 px, чтобы влезли все ряды (с доком инструментов места меньше); дальше — прокрутка
+		const sh = Math.min(bw, (bh - phoneStrip(n).sq - P) * ar) / ar
+		top = P + sh + P + DOCK
+		const need = Math.ceil(n / 3), avail = h - P - top
+		const sq = Math.max(72, Math.min(phoneStrip(n).sq, Math.floor((avail - G * (need - 1)) / need)))
+		const rows = Math.max(1, Math.min(need, Math.floor((avail + G) / (sq + G))))
+		const thick = rows * sq + G * (rows - 1)
+		res = thick + P
+		strip = { top: `${top}px`, bottom: 'auto', height: `${thick}px`, gridTemplateColumns: `repeat(3, ${sq}px)`, gridAutoRows: `${sq}px`, gridAutoFlow: 'row', justifyContent: 'center', alignContent: 'start', overflowY: 'auto' }
+	} else if (n && h < 440) {
+		// ket4tec (NAS_CLOUD#195 п.9): iPhone горизонтально — лист главный; камеры одним узким столбиком справа, листаются
+		const tw = 84
+		res = tw + P
+		strip = { width: `${tw}px`, bottom: `${P + DOCK}px`, gridTemplateColumns: `${tw}px`, gridAutoRows: `${tw}px`, alignContent: 'start', overflowY: 'auto' }
+	} else if (n) {
 		const free = land ? bw - P - bh * ar : bh - P - bw / ar // место рядом с доской во всю высоту (ширину)
 		const max = Math.max(land ? 160 : 76, Math.min(free, (land ? w : h) * 0.4))
 		// ket4tec (NAS_CLOUD#109 п.6): док инструментов (560 по центру сцены) не должен лежать на нижней плитке полосы
@@ -124,14 +151,16 @@ const fit = computed(() => {
 		const th = tw
 		const thick = land ? k * tw + G * (k - 1) : k * th + G * (k - 1)
 		res = thick + P
-		strip = land ? { width: `${thick}px`, bottom: `${P + under}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)` } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` }
+		strip = land ? { width: `${thick}px`, bottom: `${P + under}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)`, gridAutoRows: `${tw}px`, overflowY: 'auto' } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` }
 	}
 	// ket4tec (NAS_CLOUD#109 п.1, 6): лист меньше поля. «Закрыть доску» — в углу листа, а не поля (--k4-gx);
-	// в портрете лист прижат к камерам, пустое место уходит вниз, к доку (--k4-gb)
+	// в портрете лист сверху, сразу под ним док и квадраты, пустое место уходит вниз (NAS_CLOUD#195)
 	const lw = bw - (land ? res : 0), lh = bh - (land ? 0 : res)
 	const sw = Math.min(lw, lh * ar)
 	return {
-		root: { [land ? '--k4-sr' : '--k4-st']: `${res}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': `${land ? 0 : Math.max(0, lh - sw / ar)}px` },
+		root: land
+			? { '--k4-sr': `${res}px`, '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': '0px' }
+			: { '--k4-st': '0px', '--k4-gx': `${(lw - sw) / 2}px`, '--k4-gb': `${top ? h - top : res}px` }, // портрет: лист сверху, ниже док и квадраты
 		strip,
 	}
 })
@@ -234,27 +263,24 @@ onBeforeUnmount(() => {
 	video { width: 100%; height: 100%; object-fit: cover; display: block; }
 	video.mirror { transform: scaleX(-1); }
 	container-type: inline-size;
-	// подпись — «нижняя треть», как у плиток звонка (k7call.scss)
+	// ket4tec (NAS_CLOUD#195 п.9): подпись — узкая полоса по нижнему краю, лицо не закрывает (как в полосе звонка)
 	b {
 		position: absolute;
-		left: 6px;
-		bottom: 6px;
-		max-width: calc(100% - 12px);
-		padding: .4em .85em .4em 1.05em;
+		z-index: 2;
+		inset: auto 0 0;
+		height: 22px;
+		padding: 0 8px;
 		overflow: hidden;
-		border-radius: 5px 10px 10px 5px;
-		background: linear-gradient(90deg, #140f17eb, #1a1718b8);
-		box-shadow: 0 6px 16px #0006;
+		background: linear-gradient(0deg, #140f17b8, #140f1700);
 		color: #fff;
-		font-size: clamp(11px, 5.5cqi, 18px);
+		font-size: 12px;
 		font-weight: 700;
+		line-height: 22px;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-		&::before { content: ''; position: absolute; inset: 0 auto 0 0; width: .3em; background: linear-gradient(135deg, var(--k7-acc2, #5b2a86), var(--k7-acc, #a86bff)); }
 	}
-	// ket4tec (NAS_CLOUD#112): рамка поверх видео/облака — inset-тень самой плитки рисуется под детьми и закрывалась; говорящий важнее «без микрофона»
-	&--off::after, &--talk::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 3px var(--k7-dng, #e5453d); }
-	&--talk::after { box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
+	// ket4tec (NAS_CLOUD#112): рамка поверх видео/облака; красной «без микрофона» нет (NAS_CLOUD#195), только говорящий
+	&--talk::after { content: ''; position: absolute; z-index: 3; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
 }
 .k4-board__close {
 	position: absolute;

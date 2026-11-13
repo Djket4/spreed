@@ -14,6 +14,7 @@ import { t } from '@nextcloud/l10n'
 import {
 	generateOcsUrl,
 } from '@nextcloud/router'
+import { k4net } from '../components/CallView/shared/k4peer.js' // ket4tec (NAS_CLOUD#195 п.7)
 import { PARTICIPANT, SIGNALING } from '../constants.ts'
 import { hasTalkFeature } from '../services/CapabilitiesManager.ts'
 import { EventBus } from '../services/EventBus.ts'
@@ -663,6 +664,7 @@ Signaling.Standalone.prototype.reconnect = function() {
 	console.info('Reconnect in', interval)
 	k4log('sig.reconnect', { in: Math.round(interval) })
 	calllog('signaling', { st: 'reconnect', ms: Math.round(interval) })
+	k4net.sigDown = true
 	this.reconnectTimer = window.setTimeout(function() {
 		this.reconnectTimer = null
 		this.connect()
@@ -713,6 +715,7 @@ Signaling.Standalone.prototype.connect = function() {
 		console.debug('Connected', event)
 		k4log('sig.open')
 		calllog('signaling', { st: 'open' })
+		k4net.sigDown = false
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
