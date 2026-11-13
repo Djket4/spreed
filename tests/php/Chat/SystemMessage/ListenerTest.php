@@ -693,6 +693,7 @@ class ListenerTest extends TestCase {
 		$messages = [];
 		$this->chatManager->method('addSystemMessage')->willReturnCallback(function (...$args) use (&$messages) {
 			$messages[] = json_decode($args[4], true)['message'];
+			return $this->createMock(\OCP\Comments\IComment::class);
 		});
 		$event = new BeforeParticipantModifiedEvent($room, $participant, AParticipantModifiedEvent::PROPERTY_IN_CALL, Participant::FLAG_IN_CALL, Participant::FLAG_DISCONNECTED);
 		self::invokePrivate($this->listener, 'handle', [$event]);
