@@ -4,6 +4,8 @@
  */
 
 import { FaceDetector } from '@mediapipe/tasks-vision'
+import { showWarning } from '@nextcloud/dialogs'
+import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
 import { clampTarget, squareRect } from './FaceSquare.js'
@@ -82,9 +84,7 @@ export function computeTarget(faces, lvl) {
 	const x2 = Math.max(...faces.map((f) => f.x + f.w))
 	const y2 = Math.max(...faces.map((f) => f.y + f.h))
 	let zoom
-	if (lvl === 'off') {
-		zoom = 1 // только сдвиг квадрата к лицу, без приближения
-	} else if (lvl === 'auto') {
+	if (lvl === 'auto') {
 		// окно должно вместить рамку по ширине и по высоте (с запасом)
 		const needW = (x2 - x1) * AUTO_FACE_SPAN_W
 		const needH = (y2 - y1) * AUTO_FACE_SPAN_H
@@ -92,7 +92,7 @@ export function computeTarget(faces, lvl) {
 	} else {
 		zoom = parseFloat(lvl)
 	}
-	const shift = (lvl === 'auto' || lvl === 'off') ? (y2 - y1) * AUTO_HEAD_SHIFT : 0
+	const shift = lvl === 'auto' ? (y2 - y1) * AUTO_HEAD_SHIFT : 0
 	return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2 - shift, zoom: Math.max(1, zoom) }
 }
 
@@ -173,22 +173,15 @@ export default class FaceFrame extends TrackSinkSource {
 		;(window.__k4ff ||= []).push(this)
 		this.path = 'off'
 		this._hwZoomed = false
-		this._hwActive = false // аппаратный зум держит приближение: цифровой путь только центрирует
-		this._centerOnly = false // после отката по fps: приближения нет, остаётся лёгкий сдвиг квадрата
-		this._dead = false // и центрирование не тянет: исходный трек
+		this._hwActive = false // аппаратный зум держит приближение: цифровой путь только вырезает квадрат по лицу
 		this._applyToken = 0
 		this._outputTrack = null
-		this._unsubscribe = onFaceFrameLevelChange(() => {
-			if (getFaceFrameLevel() !== 'off') {
-				this._centerOnly = false // человек сам выбрал приближение
-			}
-			this._apply()
-		})
+		this._unsubscribe = onFaceFrameLevelChange(() => this._apply())
 	}
 
-	// уровень приближения для цифрового пути
+	// уровень для цифрового пути: при аппаратном зуме приближает камера, окно 1×
 	_lvl() {
-		return this._centerOnly || this._hwActive ? 'off' : getFaceFrameLevel()
+		return this._hwActive ? '1' : getFaceFrameLevel()
 	}
 
 	_handleInputTrack(trackId, newTrack) {
@@ -223,8 +216,9 @@ export default class FaceFrame extends TrackSinkSource {
 		const input = this.getInputTrack()
 		const lvl = getFaceFrameLevel()
 
-		if (!input || !input.enabled || this._dead) {
+		if (!input || !input.enabled || lvl === 'off') {
 			this._stopDigital()
+			this._hwActive = false
 			this.path = 'off'
 			if (input && this._hwZoomed) {
 				this._hwZoomed = false
@@ -236,7 +230,7 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 
-		if (lvl !== 'auto' && lvl !== 'off' && !this._centerOnly && await this._tryHardware(input, parseFloat(lvl))) {
+		if (lvl !== 'auto' && await this._tryHardware(input, parseFloat(lvl))) {
 			if (token !== this._applyToken) {
 				return
 			}
@@ -261,12 +255,16 @@ export default class FaceFrame extends TrackSinkSource {
 				return // пока ждали, кадрирование выключили или сменили камеру
 			}
 		}
-		this.path = this._centerOnly || lvl === 'off' ? 'center' : 'digital'
+		this.path = 'digital'
 		// пока канвас не дал кадров, на выходе исходная камера: пустого превью не бывает
 		if (this._digital?.input !== input) {
 			this._setOutput(input)
 		}
-		this._startDigital(input)
+		try {
+			this._startDigital(input)
+		} catch (e) {
+			this._fallback({ input, stopped: false }, 'запуск конвейера: ' + e.message)
+		}
 	}
 
 	async _setHardwareZoom(track, zoom) {
@@ -307,6 +305,9 @@ export default class FaceFrame extends TrackSinkSource {
 		video.srcObject = new MediaStream([input])
 		document.body.appendChild(video)
 		const canvas = document.createElement('canvas')
+		// Safari (предположение): captureStream отложенного от DOM канваса может отдавать чёрные кадры
+		canvas.style.cssText = video.style.cssText
+		document.body.appendChild(canvas)
 		const ctx = canvas.getContext('2d')
 		const t0 = performance.now()
 		const d = {
@@ -325,7 +326,6 @@ export default class FaceFrame extends TrackSinkSource {
 			stopped: false,
 			detector: null,
 			startedAt: t0,
-			hw: this._hwActive,
 			frames: 0, // отрисовок канваса с ненулевым размером
 			published: false,
 			sid: 0,
@@ -409,7 +409,9 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		if (!d.published) {
 			if (now - d.startedAt > NO_FRAMES_MS) {
-				this._fallback(d, `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
+				this._fallback(d, d.frames >= MIN_FRAMES
+					? `выходной трек не отдаёт кадры за ${NO_FRAMES_MS} мс`
+					: `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
 			}
 			return
 		}
@@ -428,23 +430,17 @@ export default class FaceFrame extends TrackSinkSource {
 		if (d.stopped) {
 			return
 		}
-		console.warn('FaceFrame: кадр по лицу отключён —', reason)
 		const input = d.input
 		this._stopDigital()
+		setFaceFrameLevel('off') // исходный трек, селектор покажет «Выкл»; вернуть «Авто» можно сразу
 		this._setOutput(input)
 		this.path = 'fallback'
 		if (window.__k4ffStats) {
 			window.__k4ffStats.path = 'fallback'
 		}
-		if (this._centerOnly || getFaceFrameLevel() === 'off' || d.hw) {
-			// и лёгкий сдвиг квадрата не тянет: обычный центр кадра (камера продолжает работать)
-			this._dead = true
-			return
-		}
-		// первый откат: приближение выключаем (селектор покажет), сдвиг квадрата к лицу остаётся
-		this._centerOnly = true
-		setFaceFrameLevel('off')
-		this._apply()
+		calllog('framing_error', { reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100) })
+		console.error('FaceFrame: кадр по лицу отключён —', reason)
+		showWarning('Кадр по лицу недоступен в этом браузере, камера работает без него')
 	}
 
 	_detectBoxes(d, source, W, H, now) {
@@ -526,7 +522,7 @@ export default class FaceFrame extends TrackSinkSource {
 
 		if (now - d.lastFace > LOST_AFTER_MS) {
 			d.target = { cx: 0.5, cy: 0.5, zoom: 1 }
-		} else if (lvl !== 'auto' && lvl !== 'off') {
+		} else if (lvl !== 'auto') {
 			d.target.zoom = parseFloat(lvl)
 		}
 
@@ -546,19 +542,49 @@ export default class FaceFrame extends TrackSinkSource {
 				if (!d.output) {
 					throw new Error('captureStream без видеотрека')
 				}
+				// проба: <video> на выходном треке, должен отдать кадр до подмены камеры
+				const probe = document.createElement('video')
+				probe.muted = true
+				probe.playsInline = true
+				probe.setAttribute('playsinline', '')
+				probe.style.cssText = d.video.style.cssText
+				probe.srcObject = new MediaStream([d.output])
+				document.body.appendChild(probe)
+				d.probe = probe
+				probe.play?.()?.catch?.(() => {})
 			} catch (e) {
 				this._fallback(d, 'canvas.captureStream недоступен: ' + e.message)
 				return
 			}
 		}
 		// пока канвас не дал 3 кадров, на выходе остаётся исходный трек
-		if (!d.published && d.frames >= MIN_FRAMES) {
+		if (!d.published && d.frames >= MIN_FRAMES && this._probeOk(d)) {
 			d.published = true
 			this._setOutput(d.output)
 		}
 
 		// детекция после отрисовки: кадр от неё не зависит
 		this._maybeDetect(d, now, lvl)
+	}
+
+	// выходной трек реально отдаёт кадры, и они не чёрные при нечёрном источнике
+	_probeOk(d) {
+		const p = d.probe
+		if (!p || !p.videoWidth || p.readyState < 2) {
+			return false
+		}
+		try {
+			const px = (el) => {
+				const c = document.createElement('canvas')
+				c.width = c.height = 8
+				const x = c.getContext('2d')
+				x.drawImage(el, 0, 0, 8, 8)
+				return x.getImageData(0, 0, 8, 8).data.some((v, i) => i % 4 !== 3 && v > 0)
+			}
+			return px(p) || !px(d.video)
+		} catch (e) {
+			return true
+		}
 	}
 
 	_stopDigital() {
@@ -571,6 +597,11 @@ export default class FaceFrame extends TrackSinkSource {
 		clearInterval(d.watch)
 		d.video.srcObject = null
 		d.video.remove()
+		d.canvas.remove()
+		if (d.probe) {
+			d.probe.srcObject = null
+			d.probe.remove()
+		}
 		if (d.output) {
 			this._disableRemoveTrackWhenEnded(d.output)
 			// останавливаем уже после того, как получатели переключились на новый

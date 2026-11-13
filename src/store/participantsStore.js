@@ -40,6 +40,7 @@ import { useParticipantActivityStore } from '../stores/participantActivity.ts'
 import pinia from '../stores/pinia.ts'
 import { useSessionStore } from '../stores/session.ts'
 import { useTokenStore } from '../stores/token.ts'
+import { calllog, calllogSession } from '../utils/calllog.js'
 import CancelableRequest from '../utils/CancelableRequest.ts'
 import { isConversationPhoneRoom } from '../utils/conversation.ts'
 import { convertToUnix } from '../utils/formattedTime.ts'
@@ -650,6 +651,7 @@ const actions = {
 	async joinCall({ commit, getters, state }, { token, participantIdentifier, flags, silent, recordingConsent, silentFor, options }) {
 		startK4Log(token)
 		k4log('call.join', { flags, silent })
+		calllog('join_click', { flags, silent: !!silent })
 		// SUMMARY: join call process
 		// There are 2 main steps to join a call:
 		// 1. Join the call (signaling-join-call)
@@ -705,6 +707,7 @@ const actions = {
 
 		const handleJoinCallFailed = ([token, payload]) => {
 			k4log('call.err', { where: 'joinFailed', payload: JSON.stringify(payload ?? null).slice(0, 150) })
+			calllog('join_blocked', { where: 'joinFailed', code: String(payload?.code ?? payload?.error ?? '').slice(0, 40) })
 			finishConnecting()
 			commit('connectionFailed', {
 				token,
@@ -768,6 +771,7 @@ const actions = {
 		try {
 			const actualFlags = await joinCall(token, flags, silent, recordingConsent, silentFor, options)
 			k4log('call.joined', { flags: actualFlags })
+			calllog('call_joined', { flags: actualFlags })
 			const updatedData = {
 				inCall: actualFlags,
 			}
@@ -784,6 +788,7 @@ const actions = {
 		} catch (e) {
 			console.error('Error while joining call: ', e)
 			k4log('call.err', { where: 'join', message: String(e?.message ?? e).slice(0, 150) })
+			calllog('join_blocked', { where: 'join', code: String(e?.response?.status ?? e?.name ?? '').slice(0, 40) })
 		}
 	},
 
@@ -808,6 +813,7 @@ const actions = {
 		}
 
 		k4log('call.leave', { all })
+		calllog('call_left', { all: !!all })
 		await leaveCall(token, all)
 		stopK4Log()
 
@@ -888,6 +894,7 @@ const actions = {
 				participantIdentifier: actorStore.participantIdentifier,
 				sessionId: response.data.ocs.data.sessionId,
 			})
+			calllogSession(token, response.data.ocs.data.sessionId)
 
 			if (response.data.ocs.data.remoteServer) {
 				// fetch and store remote capabilities for federated conversation

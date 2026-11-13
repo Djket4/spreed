@@ -22,6 +22,7 @@ import { pullSignalingMessages } from '../services/signalingService.js'
 import store from '../store/index.js'
 import { useActorStore } from '../stores/actor.ts'
 import pinia from '../stores/pinia.ts'
+import { calllog } from './calllog.js'
 import CancelableRequest from './CancelableRequest.ts'
 import Encryption from './e2ee/encryption.js'
 import { convertToUnix } from './formattedTime.ts'
@@ -661,6 +662,7 @@ Signaling.Standalone.prototype.reconnect = function() {
 	const interval = this.reconnectIntervalMs - (this.reconnectIntervalMs / 2) + (this.reconnectIntervalMs * Math.random())
 	console.info('Reconnect in', interval)
 	k4log('sig.reconnect', { in: Math.round(interval) })
+	calllog('signaling', { st: 'reconnect', ms: Math.round(interval) })
 	this.reconnectTimer = window.setTimeout(function() {
 		this.reconnectTimer = null
 		this.connect()
@@ -710,6 +712,7 @@ Signaling.Standalone.prototype.connect = function() {
 	this.socket.onopen = function(event) {
 		console.debug('Connected', event)
 		k4log('sig.open')
+		calllog('signaling', { st: 'open' })
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
@@ -728,6 +731,7 @@ Signaling.Standalone.prototype.connect = function() {
 	this.socket.onerror = function(event) {
 		console.error('Error', event)
 		k4log('sig.error')
+		calllog('signaling', { st: 'error' })
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
@@ -746,6 +750,7 @@ Signaling.Standalone.prototype.connect = function() {
 	this.socket.onclose = function(event) {
 		console.debug('Close', event)
 		k4log('sig.close', { code: event.code, reason: String(event.reason || '').slice(0, 60) })
+		calllog('signaling', { st: 'close', code: event.code })
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
@@ -806,6 +811,11 @@ Signaling.Standalone.prototype.connect = function() {
 				this.processEvent(data)
 				break
 			case 'message':
+				// ket4tec (NAS_CLOUD#154): «control» (forceMute/askUnmute) доверяем только серверному каналу 'control' (его пускает лишь модератор);
+				// обычное сообщение с type 'control' может прислать кто угодно, в том числе гость
+				if (data.message.data?.type === 'control') {
+					break
+				}
 				data.message.data.from = data.message.sender.sessionid
 				this._trigger('message', [data.message.data])
 				break

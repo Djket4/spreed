@@ -12,12 +12,12 @@ const W = 1280
 const H = 720
 const face = (cx, cy = 0.45, w = 0.12) => ({ x: cx - w / 2, y: cy - w / 2, w, h: w })
 const center = (faces) => {
-	const t = clampTarget(computeTarget(faces, 'off'), W, H)
+	const t = clampTarget(computeTarget(faces, '1'), W, H)
 	const r = squareRect(t, W, H)
 	return { t, r, faceX: (r.sx + r.side / 2) / W }
 }
 
-describe('вырез квадрата по лицу (zoom off)', () => {
+describe('вырез квадрата по лицу (zoom 1)', () => {
 	test('лицо в левой трети: центр квадрата уходит к лицу', () => {
 		const { r, t } = center([face(0.3)])
 		expect(t.zoom).toBe(1)
@@ -35,10 +35,10 @@ describe('вырез квадрата по лицу (zoom off)', () => {
 		expect(facePxInSquare).toBeLessThan(0.55)
 	})
 	test('лицо по центру: квадрат из середины', () => {
-		expect(squareRect(clampTarget(computeTarget([face(0.5)], 'off'), W, H), W, H).sx).toBeCloseTo((W - H) / 2)
+		expect(squareRect(clampTarget(computeTarget([face(0.5)], '1'), W, H), W, H).sx).toBeCloseTo((W - H) / 2)
 	})
 	test('лица нет: нет цели, окно остаётся в центре', () => {
-		expect(computeTarget([], 'off')).toBeNull()
+		expect(computeTarget([], '1')).toBeNull()
 		expect(squareRect({ cx: 0.5, cy: 0.5, zoom: 1 }, W, H).sx).toBeCloseTo((W - H) / 2)
 	})
 	test('лицо у самого края: квадрат не выходит за кадр', () => {
@@ -49,19 +49,19 @@ describe('вырез квадрата по лицу (zoom off)', () => {
 		}
 	})
 	test('вертикальный кадр телефона: сдвиг по высоте в пределах кадра', () => {
-		const r = squareRect(clampTarget(computeTarget([face(0.5, 0.2, 0.2)], 'off'), 720, 1280), 720, 1280)
+		const r = squareRect(clampTarget(computeTarget([face(0.5, 0.2, 0.2)], '1'), 720, 1280), 720, 1280)
 		expect(r.sx).toBe(0)
 		expect(r.sy).toBeGreaterThanOrEqual(0)
 		expect(r.sy + r.side).toBeLessThanOrEqual(1280)
 		expect(r.sy).toBeLessThan(200) // лицо в верхней части, квадрат поднялся
 	})
 	test('несколько лиц: общий центр', () => {
-		const t = computeTarget([face(0.2), face(0.6)], 'off')
+		const t = computeTarget([face(0.2), face(0.6)], '1')
 		expect(t.cx).toBeCloseTo(0.4)
 	})
 	test('сглаживание: скачок цели не даёт рывка, шаг не больше лимита скорости', () => {
 		let win = { cx: 0.5, cy: 0.5, zoom: 1 }
-		const target = clampTarget(computeTarget([face(0.2)], 'off'), W, H)
+		const target = clampTarget(computeTarget([face(0.2)], '1'), W, H)
 		let prev = win.cx
 		let maxStep = 0
 		for (let i = 0; i < 400; i++) {

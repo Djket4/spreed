@@ -15,7 +15,9 @@ import { SettingsAPI } from './services/SettingsAPI.ts'
 import store from './store/index.js'
 import pinia from './stores/pinia.ts'
 import { useSidebarStore } from './stores/sidebar.ts'
+import { initCalllog } from './utils/calllog.js'
 
+initCalllog()
 initializeTalkOnce()
 
 // ket4tec: метка форка v7 — тема облака (custom.css) не применяет к нему правила штатного Talk (html:not(.k7f))

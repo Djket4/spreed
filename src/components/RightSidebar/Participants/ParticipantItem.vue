@@ -134,6 +134,17 @@
 				</template>
 				{{ attendeePin }}
 			</NcActionText>
+			<!-- ket4tec (NAS_CLOUD#154): микрофон участника в звонке -->
+			<NcActionButton
+				v-if="callModel && selfIsModerator && !isSelf"
+				key="k4-mic"
+				closeAfterClick
+				@click="callModel.attributes.audioAvailable ? callModel.forceMute() : callModel.askUnmute()">
+				<template #icon>
+					<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="20" />
+				</template>
+				{{ callModel.attributes.audioAvailable ? t('spreed', 'Mute microphone') : t('spreed', 'Ask to unmute microphone') }}
+			</NcActionButton>
 			<!-- Grant or revoke owner/moderator permissions -->
 			<NcActionButton
 				v-if="canBePromotedToOwner"
@@ -432,6 +443,7 @@ import { formattedTime } from '../../../utils/formattedTime.ts'
 import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
 import { readableNumber } from '../../../utils/readableNumber.ts'
 import { getPreloadedUserStatus, getStatusMessage } from '../../../utils/userStatus.ts'
+import { callParticipantCollection } from '../../../utils/webrtc/index.js'
 
 export default {
 	name: 'ParticipantItem',
@@ -716,6 +728,12 @@ export default {
 
 		isSelf() {
 			return this.actorStore.checkIfSelfIsActor(this.participant)
+		},
+
+		callModel() { // ket4tec (NAS_CLOUD#154)
+			return this.isInCall && this.sessionIds.length
+				? callParticipantCollection.callParticipantModels.find((m) => this.sessionIds.includes(m.attributes.nextcloudSessionId))
+				: undefined
 		},
 
 		selfIsModerator() {

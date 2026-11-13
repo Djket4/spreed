@@ -120,19 +120,15 @@ describe('callViewStore', () => {
 			expect(callViewStore.isMultiSpeaker).toBeTruthy()
 		})
 
-		it('restores multi-speaker state from BrowserStorage when joining call', () => {
-			// Arrange
+		it('ignores saved multi-speaker state when joining call (NAS_CLOUD#153)', () => {
 			const conversation = { token: TOKEN, type: CONVERSATION.TYPE.GROUP }
 			vuexStore.commit('addConversation', conversation)
-			// ket4tec: сохранённая сетка больше не читается, первым читается multi-speaker
-			BrowserStorage.getItem.mockReturnValueOnce('true')
+			BrowserStorage.getItem.mockReturnValue('true')
 
-			// Act
 			callViewStore.handleJoinCall(conversation)
 
-			// Assert
-			expect(BrowserStorage.getItem).toHaveBeenCalledWith(BROWSER_STORAGE_KEY_MULTISPEAKER)
-			expect(callViewStore.isMultiSpeaker).toBeTruthy()
+			expect(callViewStore.isMultiSpeaker).toBe(false)
+			BrowserStorage.getItem.mockReset()
 		})
 
 		it('start presentation switches off grid view and restores when it ends', () => {
@@ -149,12 +145,28 @@ describe('callViewStore', () => {
 
 				callViewStore.startPresentation(TOKEN)
 				expect(callViewStore.isGrid).toBeFalsy()
-				expect(callViewStore.isStripeOpen).toBeFalsy()
+				expect(callViewStore.isStripeOpen).toBeTruthy() // ket4tec (#108): полоса не закрывается
 
 				callViewStore.stopPresentation(TOKEN)
-				expect(callViewStore.isGrid).toEqual(testState.isGrid)
-				expect(callViewStore.isStripeOpen).toEqual(testState.isStripeOpen)
+				expect(callViewStore.isGrid).toEqual(testState.isGrid) // ket4tec (#159): вид до показа
 			})
+		})
+
+		it('manual view pick during presentation is not overridden when it ends (NAS_CLOUD#159)', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			// person picks speaker view by hand
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false, manual: true })
+			callViewStore.stopPresentation(TOKEN)
+			expect(callViewStore.isGrid).toBe(false)
+		})
+
+		it('automatic switch during presentation still restores grid when it ends', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+			callViewStore.stopPresentation(TOKEN)
+			expect(callViewStore.isGrid).toBe(true)
 		})
 
 		it('switching modes during presentation does not resets it after it ends', () => {
@@ -253,6 +265,43 @@ describe('callViewStore', () => {
 			})
 			expect(callViewStore.lastIsGrid).toBeFalsy()
 			expect(callViewStore.lastIsStripeOpen).toBeTruthy()
+		})
+	})
+
+	describe('pinned video (NAS_CLOUD#153)', () => {
+		it('unpin from grid returns to grid, unpin from speaker view stays in speaker view', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.setSelectedVideoPeerId('peer')
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+			callViewStore.unpinVideo(TOKEN)
+			expect(callViewStore.selectedVideoPeerId).toBe(null)
+			expect(callViewStore.isGrid).toBe(true)
+
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false })
+			callViewStore.setSelectedVideoPeerId('peer')
+			callViewStore.unpinVideo(TOKEN)
+			expect(callViewStore.selectedVideoPeerId).toBe(null)
+			expect(callViewStore.isGrid).toBe(false)
+		})
+	})
+
+	describe('unpin with screens and presentation (NAS_CLOUD#153)', () => {
+		it('unpin during screen share keeps speaker view', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.setSelectedVideoPeerId('peer')
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: false, clearLast: false })
+			callViewStore.unpinVideo(TOKEN, true)
+			expect(callViewStore.selectedVideoPeerId).toBe(null)
+			expect(callViewStore.isGrid).toBe(false)
+		})
+
+		it('unpin resets presentationStarted', () => {
+			callViewStore.setCallViewMode({ token: TOKEN, isGrid: true })
+			callViewStore.startPresentation(TOKEN)
+			callViewStore.setSelectedVideoPeerId('peer')
+			expect(callViewStore.presentationStarted).toBe(true)
+			callViewStore.unpinVideo(TOKEN, false)
+			expect(callViewStore.presentationStarted).toBe(false)
 		})
 	})
 
