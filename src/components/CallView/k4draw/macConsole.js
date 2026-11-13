@@ -1,5 +1,5 @@
 /**
- * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер 128×128 (квадрат)
+ * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер (v2: квадрат 128×128, старое приложение: 160×90)
  * (MediaStream между источниками не передать), команды микрофон / камера / остановить показ / покинуть.
  */
 import store from '../../../store/index.js'
@@ -20,6 +20,10 @@ window.__k4mc = () => callParticipantCollection.callParticipantModels.map((m) =>
 })
 const cv = document.createElement('canvas')
 cv.width = cv.height = SQ
+// приложение 1.6/1.6.1 (tick без v) рисует плитку 180×101 растяжением: ему по-прежнему 160×90 cover
+const cvOld = document.createElement('canvas')
+cvOld.width = 160
+cvOld.height = 90
 let box = null
 const last = new Map() // id плитки -> прошлый jpg (ответ на tick v2 без перекодирования)
 let cost = 0 // скользящее среднее времени ответа на fr (кодирование всех плиток + отправка), мс
@@ -70,15 +74,21 @@ export const cropWindow = (w, h) => {
 }
 
 /**
- * Квадрат 128×128 «по заполнению», base64 JPEG без префикса.
+ * Квадрат 128×128 «по заполнению» (sq) или прежний 160×90 cover для старого приложения, base64 JPEG без префикса.
  *
  * @param v
+ * @param sq квадрат (приложение v2)
  */
-export function jpg(v) {
+export function jpg(v, sq = true) {
 	const w = v.videoWidth
 	const h = v.videoHeight
 	if (!w || !h) {
 		return null
+	}
+	if (!sq) {
+		const k = Math.max(160 / w, 90 / h)
+		cvOld.getContext('2d').drawImage(v, (160 - w * k) / 2, (90 - h * k) / 2, w * k, h * k)
+		return cvOld.toDataURL('image/jpeg', 0.6).slice(23)
 	}
 	const [sx, sy, sw, sh] = cropWindow(w, h)
 	cv.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, SQ, SQ)
@@ -90,7 +100,7 @@ export function jpg(v) {
  * @param stream
  * @param on камера включена
  */
-const frame = (id, stream, on, fresh) => {
+const frame = (id, stream, on, fresh, sq) => {
 	if (!(on && stream?.getVideoTracks().length)) {
 		last.delete(id)
 		return null
@@ -99,7 +109,7 @@ const frame = (id, stream, on, fresh) => {
 	if (!fresh && last.has(id)) {
 		return last.get(id)
 	}
-	const j = jpg(v)
+	const j = jpg(v, sq)
 	j ? last.set(id, j) : last.delete(id)
 	return j
 }
@@ -107,16 +117,16 @@ const frame = (id, stream, on, fresh) => {
 /**
  * Состояние звонка и плитки; свои первыми.
  */
-function snapshot(fresh = true) {
+function snapshot(fresh = true, sq = true) {
 	const L = localMediaModel.attributes
-	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled, fresh) }]
+	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled, fresh, sq) }]
 	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
 		const a = m.attributes
 		if (m.k4VideoBlocker && !held.has(String(a.peerId))) {
 			m.k4VideoBlocker.increaseVisibleCounter()
 			held.set(String(a.peerId), m.k4VideoBlocker)
 		}
-		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable, fresh) })
+		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable, fresh, sq) })
 	})
 	const ids = new Set(tiles.map((t) => t.id))
 	held.forEach((b, id) => {
@@ -145,7 +155,7 @@ function snapshot(fresh = true) {
  * @param v2 tick с `v:2`
  */
 export function consoleTick(send, v2 = false) {
-	send(snapshot(!v2))
+	send(snapshot(!v2, v2))
 }
 
 /**
@@ -162,7 +172,7 @@ export function consoleFrame(send) {
 		stat.skip++
 		late ||= setTimeout(() => {
 			late = 0
-			consoleFrame(send)
+			inCall() && consoleFrame(send)
 		}, nextAt - now)
 		return
 	}
@@ -185,6 +195,8 @@ export function stopConsole() {
 	last.clear()
 	clearTimeout(late)
 	late = 0
+	cost = 0
+	nextAt = 0
 	box?.remove()
 	box = null
 }

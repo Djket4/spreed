@@ -4,6 +4,22 @@
 
 <template>
 	<Teleport to="body">
+		<div v-if="mac.st === 'blocked'" class="k4-missing" role="alertdialog" aria-label="Подключить приложение">
+			<div class="k4-missing__title">
+				Браузер не открыл окно связи
+			</div>
+			<div class="k4-missing__text">
+				Нажмите кнопку, чтобы подключить приложение «Рисовать на экране».
+			</div>
+			<div class="k4-missing__row">
+				<button type="button" @click="connectAnyway()">
+					Подключить приложение
+				</button>
+				<button type="button" @click="closeMissing()">
+					Закрыть
+				</button>
+			</div>
+		</div>
 		<div v-if="mac.st === 'noapp'" class="k4-missing" role="alertdialog" aria-label="Приложение не найдено">
 			<div class="k4-missing__title">
 				Приложение не найдено
