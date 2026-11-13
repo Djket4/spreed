@@ -16,6 +16,7 @@ use OCA\Talk\Participant;
 use OCA\Talk\Room;
 use OCA\Talk\Service\MembershipService;
 use OCA\Talk\Service\ParticipantService;
+use OCA\Talk\Service\RoomService;
 use OCA\Talk\Service\SessionService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
@@ -66,12 +67,13 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 				$this->appConfig,
 				$this->jobList,
 			])
-			->onlyMethods(['hasActiveSessionsInCall'])
+			->onlyMethods(['hasActiveSessionsInCall', 'getParticipantsJoinedCurrentCall'])
 			->getMock();
 	}
 
 	private function room(int $flag): Room&MockObject {
 		$room = $this->createMock(Room::class);
+		$room->method('getActiveSince')->willReturn(new \DateTime('@900'));
 		$room->method('getId')->willReturn(42);
 		$room->method('getCallFlag')->willReturn($flag);
 		return $room;
@@ -79,6 +81,7 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 
 	public function testEmptyCallIsMarkedAndJobQueued(): void {
 		$service = $this->service(false);
+		$service->method('getParticipantsJoinedCurrentCall')->willReturn([1, 2]); // кто-то ещё входил в звонок
 		$service->method('hasActiveSessionsInCall')->willReturn(false);
 		$this->appConfig->expects($this->once())->method('setValueInt')->with('spreed', EndEmptyCall::key(42), 1000);
 		$this->jobList->method('has')->willReturn(false);
@@ -99,5 +102,18 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$this->appConfig->expects($this->never())->method('setValueInt');
 		$this->jobList->expects($this->never())->method('add');
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_DISCONNECTED));
+	}
+
+	public function testCallNobodyAnsweredEndsImmediately(): void {
+		$service = $this->service(false);
+		$service->method('hasActiveSessionsInCall')->willReturn(false);
+		$service->method('getParticipantsJoinedCurrentCall')->willReturn([1]); // только вышедший
+		$roomService = $this->createMock(RoomService::class);
+		$room = $this->room(Participant::FLAG_IN_CALL);
+		$roomService->expects($this->once())->method('resetActiveSince')->with($room, null);
+		$this->overwriteService(RoomService::class, $roomService);
+		$this->appConfig->expects($this->never())->method('setValueInt');
+		$this->jobList->expects($this->never())->method('add');
+		$service->resetCallStateWhenNeeded($room);
 	}
 }

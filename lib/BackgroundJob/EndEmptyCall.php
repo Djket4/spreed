@@ -74,6 +74,6 @@ class EndEmptyCall extends QueuedJob {
 			return;
 		}
 
-		$this->roomService->resetActiveSince($room, null);
+		$this->roomService->resetActiveSince($room, null, $emptySince);
 	}
 }

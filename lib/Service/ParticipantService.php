@@ -2364,6 +2364,14 @@ class ParticipantService {
 			return;
 		}
 
+		// Отсрочка нужна только для смены устройства, т.е. если в звонок входил кто-то кроме вышедшего.
+		// Иначе (1-1: звонящий сбросил до ответа) завершаем сразу, а не ждём тик cron.
+		$activeSince = $room->getActiveSince();
+		if ($activeSince === null || \count($this->getParticipantsJoinedCurrentCall($room, $activeSince->getTimestamp())) <= 1) {
+			Server::get(RoomService::class)->resetActiveSince($room, null);
+			return;
+		}
+
 		$argument = ['roomId' => $room->getId()];
 		$this->serverAppConfig->setValueInt('spreed', EndEmptyCall::key($room->getId()), $this->timeFactory->getTime());
 		if (!$this->jobList->has(EndEmptyCall::class, $argument)) {

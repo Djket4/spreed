@@ -70,7 +70,7 @@ class Listener implements IEventListener {
 		$actor = $event->getActor();
 		$activeSince = $event->getOldValue();
 
-		$duration = $this->timeFactory->getTime() - $activeSince->getTimestamp();
+		$duration = ($event->getEndedAt() ?? $this->timeFactory->getTime()) - $activeSince->getTimestamp();
 		$userIds = $this->participantService->getParticipantUserIds($room, $activeSince);
 		$cloudIds = $this->participantService->getParticipantActorIdsByActorType($room, [Attendee::ACTOR_FEDERATED_USERS], $activeSince);
 		$numGuests = $this->participantService->getActorsCountByType($room, Attendee::ACTOR_GUESTS, $activeSince->getTimestamp());

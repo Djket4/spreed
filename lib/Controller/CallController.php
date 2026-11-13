@@ -292,6 +292,8 @@ class CallController extends AEnvironmentAwareOCSController {
 			$this->endEmptyCallBeforeJoin();
 			$this->participantService->changeInCall($this->room, $this->participant, $flags, silent: $silent, lastJoinedCall: $lastJoinedCall->getTimestamp());
 			$this->roomService->setActiveSince($this->room, $this->participant, $lastJoinedCall, $flags, silent: $silent, silentFor: $silentFor);
+			// отметку снимаем только после успешного входа, иначе при исключении звонок завис бы без задачи
+			$this->appConfig->deleteAppValue(EndEmptyCall::key($this->room->getId()));
 		} catch (\InvalidArgumentException $e) {
 			return new DataResponse(['error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
 		}
@@ -577,10 +579,9 @@ class CallController extends AEnvironmentAwareOCSController {
 			return;
 		}
 
-		$this->appConfig->deleteAppValue($key);
 		if ($this->timeFactory->getTime() - $emptySince >= EndEmptyCall::GRACE
 			&& !$this->participantService->hasActiveSessionsInCall($this->room)) {
-			$this->roomService->resetActiveSince($this->room, null);
+			$this->roomService->resetActiveSince($this->room, null, $emptySince);
 		}
 	}
 
