@@ -11,7 +11,7 @@ import { centerZoom, clampTarget, squareRect } from './FaceSquare.js'
 const W = 1280
 const H = 720
 const face = (cx, cy = 0.45, w = 0.12) => ({ x: cx - w / 2, y: cy - w / 2, w, h: w })
-const center = (faces) => {
+function center(faces) {
 	const t = clampTarget(computeTarget(faces, '1'), W, H)
 	const r = squareRect(t, W, H)
 	return { t, r, faceX: (r.sx + r.side / 2) / W }
@@ -136,5 +136,15 @@ describe('этап 2: два лица -> 2:1', () => {
 		expect(isTwoSquares(720, 360)).toBe(true)
 		expect(isTwoSquares(1280, 720)).toBe(false)
 		expect(isTwoSquares(360, 360)).toBe(false)
+	})
+
+	test('splitTargets: второе лицо ушло — оба квадрата идут к оставшемуся, без пустых кадров', async () => {
+		const { splitTargets } = await import('./FaceSquare.js')
+		const L = { cx: 0.2, cy: 0.5, zoom: 1 }
+		const R = { cx: 0.8, cy: 0.5, zoom: 1 }
+		const one = { cx: 0.5, cy: 0.5, zoom: 1 }
+		expect(splitTargets(true, [L, R], undefined, one)).toEqual([L, R])
+		expect(splitTargets(false, undefined, [L, R], one)).toEqual([one, one])
+		expect(splitTargets(false, undefined, [L, R], null)).toEqual([L, R])
 	})
 })
