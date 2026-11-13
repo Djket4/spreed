@@ -32,6 +32,7 @@ import ReactionMenu from '../TopBar/ReactionMenu.vue'
 import TopBarMediaControls from '../TopBar/TopBarMediaControls.vue'
 import CallEndLeaveButton from './CallEndLeaveButton.vue'
 import DrawDock from './k4draw/DrawDock.vue' // ket4tec: k4draw
+import MacMissing from './k4draw/MacMissing.vue' // ket4tec: k4draw
 import {
 	toggleFullscreen,
 	useDocumentFullscreen,
@@ -517,6 +518,7 @@ function setCallLayout(layout: CallLayout) {
 		data-theme-dark>
 		<!-- ket4tec: k4draw -->
 		<DrawDock v-if="!isSidebar && k4draw.mode" />
+		<MacMissing v-if="!isSidebar" />
 		<div v-if="!isSidebar" class="bottom-bar-call-controls">
 			<!-- Fullscreen -->
 			<NcButton
