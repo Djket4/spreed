@@ -195,19 +195,6 @@ function onPageHide() {
 }
 
 /**
- * Сессию вот-вот снимут (unload -> signalingKill): отдать прощальную пачку, пока она ещё действует,
- * и забыть её, чтобы pagehide после этого не слал в /calllog (сервер ответил бы 404).
- */
-export function calllogEnd() {
-	try {
-		flush(true)
-		sid = null
-	} catch (e) {
-		// ignore
-	}
-}
-
-/**
  * Один раз при загрузке страницы.
  */
 export function initCalllog() {

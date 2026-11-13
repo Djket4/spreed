@@ -10,7 +10,6 @@ import { getTalkConfig } from '../../services/CapabilitiesManager.ts'
 import { fetchSignalingSettings } from '../../services/signalingService.js'
 import store from '../../store/index.js'
 import { isIOS, isSafari } from '../browserCheck.ts'
-import { calllogEnd } from '../calllog.js'
 import CancelableRequest from '../CancelableRequest.ts'
 import Encryption from '../e2ee/encryption.js'
 import { startK4stats, stopK4stats } from '../k4stats.js'
@@ -524,7 +523,6 @@ async function signalingLeaveConversation(token) {
  */
 function signalingKill() {
 	stopK4stats()
-	calllogEnd() // ket4tec: прощальная пачка журнала до снятия сессии
 	if (signaling) {
 		signaling.disconnect()
 		signaling = null
