@@ -33,30 +33,50 @@ import { useGetToken } from '../../../composables/useGetToken.ts'
 const MAX = 500
 const EVERY = 3000
 const BAD = ['rtc_warn', 'join_blocked', 'gum_err', 'js_error']
-const KIND = {
-	page_load: 'открыл страницу звонка',
-	pagehide: 'закрыл страницу',
-	join_click: 'нажал «войти в звонок»',
-	join_blocked: 'не смог войти в звонок',
-	call_joined: 'вошёл в звонок',
-	call_left: 'вышел из звонка',
-	gum_ok: 'дал доступ к камере и микрофону',
-	gum_err: 'не получил камеру или микрофон',
-	signaling: 'связь с сервером звонков',
-	rtc_state: 'состояние связи',
-	rtc_stats: 'связь',
-	rtc_path: 'путь связи',
-	rtc_warn: 'предупреждение',
-	board_open: 'открыл доску',
-	board_close: 'закрыл доску',
-	draw_mode: 'рисование',
-	media: 'микрофон или камера',
-	session: 'новая сессия',
-	screen_start: 'начал показ экрана',
-	screen_stop: 'закончил показ экрана',
-	net: 'сеть браузера',
-	js_error: 'ошибка в браузере',
+const WARN = { drop: 'обрыв', loss: 'потери', rtt: 'задержка', jit: 'дрожание звука', novideo: 'нет видео', noaudio: 'нет звука', fps: 'видео рывками', own: 'свой канал' }
+const SIG = { open: 'соединение с сервером звонков установлено', close: 'соединение с сервером звонков закрыто', error: 'ОШИБКА соединения с сервером звонков', reconnect: 'переподключение к серверу звонков' }
+const mbit = (k) => (k / 1000).toFixed(1).replace('.', ',') + ' Мбит/с'
+const has = (v) => v !== undefined && v !== null
+const who = (p) => (p === 'local' ? 'свой поток' : 'поток от ' + p)
+// тексты по смыслу как client_text в calllog.py (NAS_CLOUD)
+const TEXT = {
+	page_load: (d) => `загружена страница звонка; окно ${d.w}x${d.h}`,
+	join_click: (d) => 'нажато «войти в звонок»' + (d.silent ? '; тихий вход' : ''),
+	call_joined: () => 'вход в звонок выполнен',
+	join_blocked: (d) => `ВХОД В ЗВОНОК НЕ УДАЛСЯ (${d.where}, код ${has(d.code) ? d.code : '—'})`,
+	call_left: (d) => 'выход из звонка' + (d.all ? ' (для всех)' : ''),
+	gum_ok: (d) => `доступ к устройствам получен (аудиодорожек ${d.a}, видеодорожек ${d.v})`,
+	gum_err: (d) => `ОТКАЗ/ОШИБКА устройства: ${d.name} (микрофон: ${d.a ? 'да' : 'нет'}, камера: ${d.v ? 'да' : 'нет'})`,
+	signaling: (d) => (SIG[d.st] || 'сервер звонков: ' + d.st) + (has(d.code) ? ` (код ${d.code})` : '') + (d.ms ? `, через ${d.ms} мс` : ''),
+	rtc_state: (d) => `WebRTC, ${who(d.peer)}: ${d.st}` + (d.n ? ` (обрывов с начала: ${d.n})` : ''),
+	screen_start: () => 'начат показ экрана',
+	screen_stop: () => 'показ экрана закончен',
+	screen_denied: (d) => 'показ экрана не начат: ' + (d.name || 'отказ'),
+	pagehide: () => 'страница закрыта или перезагружается',
+	js_error: (d) => `ошибка JS: ${d.name}: ${d.msg}`,
+	net: (d) => 'у браузера ' + (d.st === 'online' ? 'появилась сеть' : 'пропала сеть'),
+	framing_error: (d) => 'сбой кадрирования по лицу: ' + d.reason,
+	rtc_stats: (d) => 'связь: ' + [
+		has(d.up) ? `↑ ${mbit(d.up)} ${d.upl ?? 0}%` : null,
+		has(d.dn) ? `↓ ${mbit(d.dn)} ${d.dnl ?? 0}%` : null,
+		has(d.rtt) ? `${d.rtt} мс` : null,
+		d.path === 'relay' ? 'TURN' : null,
+	].filter(Boolean).join(' · '),
+	rtc_path: (d) => {
+		const ty = [d.lt, d.rt]
+		const how = ty.includes('relay') ? 'через ретранслятор TURN' : ty.includes('srflx') ? 'через сервер STUN' : 'напрямую'
+		return `путь соединения с ${d.peer}: ${how}` + (d.proto ? ', ' + d.proto : '')
+	},
+	rtc_warn: (d) => `${d.lvl === 'red' ? 'ПРЕДУПРЕЖДЕНИЕ' : 'предупреждение'} связи с ${d.peer}: ${WARN[d.w] || d.w}` + (d.on ? '' : ' — прошло'),
+	board_open: (d) => 'открыта доска' + (d.own ? ' (своя)' : ''),
+	board_close: () => 'доска закрыта',
+	draw_mode: (d) => 'режим рисования ' + (d.on ? 'включён' : 'выключен'),
+	media: (d) => (d.kind === 'a' ? 'микрофон ' : 'камеру ') + (d.on ? 'включил' : d.by === 'host' ? 'выключил ведущий' : 'выключил сам'),
+	session: () => 'сессия получена, события до входа относятся к ней',
 }
+
+/** `d` из Redis может прийти как [] вместо {} */
+const dOf = (e) => (e.d && typeof e.d === 'object' && !Array.isArray(e.d) ? e.d : {})
 
 export default {
 	name: 'K4CallLogTab',
@@ -87,7 +107,7 @@ export default {
 
 	methods: {
 		isBad(e) {
-			return BAD.includes(e.k) && !(e.k === 'rtc_warn' && e.d?.on === 0)
+			return BAD.includes(e.k) && !(e.k === 'rtc_warn' && !dOf(e).on)
 		},
 
 		time(t) {
@@ -95,8 +115,7 @@ export default {
 		},
 
 		text(e) {
-			const d = e.d && typeof e.d === 'object' ? e.d : {}
-			return (KIND[e.k] || e.k) + (d.w ? ': ' + d.w : '') + (d.lvl ? ' (' + d.lvl + ')' : '')
+			return TEXT[e.k] ? TEXT[e.k](dOf(e)) : e.k
 		},
 
 		async poll() {
