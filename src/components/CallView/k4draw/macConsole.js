@@ -128,7 +128,10 @@ const trs = new Map() // id плитки -> { tr, clone, src, mid }
 let paused = false // приложение спрятало плитки
 let dirty = false // набор дорожек изменился, пока шёл обмен offer/answer
 let offerAt = 0
-let cool = 0 // не предлагать видео до (после bye приложения)
+let busy = false // offer в работе (createOffer / setLocalDescription): изменения копятся в dirty
+let setupT = 0 // таймер «10 с без connected после offer»
+let cool = 0 // не предлагать видео до (после любого bye)
+const COOL = 30000 // пауза после собственного bye (сбой, таймаут): приложение в это время и так на v2
 let down = 0 // таймер «disconnected дольше 3 с»
 
 const rtcMid = (id) => trs.get(id)?.mid ?? null
@@ -172,9 +175,12 @@ function dropTr(id) {
  * Закрыть соединение, остановить клоны дорожек.
  *
  * @param bye сообщить приложению (оно вернётся на v2)
+ * @param wait сколько мс не предлагать видео заново (сбой — COOL; «камер не осталось» — 0)
  */
-function closeRtc(bye) {
+function closeRtc(bye, wait = COOL) {
 	clearTimeout(down)
+	clearTimeout(setupT)
+	setupT = 0
 	if (!pc) {
 		return
 	}
@@ -185,7 +191,11 @@ function closeRtc(bye) {
 	;[...trs.keys()].forEach(dropTr)
 	paused = false
 	dirty = false
-	bye && out({ t: 'rtc', bye: 1 })
+	busy = false
+	if (bye) {
+		cool = Date.now() + wait
+		out({ t: 'rtc', bye: 1 })
+	}
 }
 
 function newPc() {
@@ -194,7 +204,10 @@ function newPc() {
 	p.onconnectionstatechange = () => {
 		clearTimeout(down)
 		const s = p.connectionState
-		if (s === 'failed') {
+		if (s === 'connected') {
+			clearTimeout(setupT)
+			setupT = 0
+		} else if (s === 'failed') {
 			closeRtc(true)
 		} else if (s === 'disconnected') {
 			down = setTimeout(() => pc === p && closeRtc(true), 3000)
@@ -203,17 +216,58 @@ function newPc() {
 }
 
 async function offer() {
+	if (busy) {
+		return // изменения уже в dirty: уйдут следующим offer
+	}
+	busy = true
 	dirty = false
 	offerAt = Date.now()
 	const p = pc
-	await p.setLocalDescription(await p.createOffer())
-	if (pc !== p) {
-		return
+	try {
+		await p.setLocalDescription(await p.createOffer())
+		if (pc !== p) {
+			return
+		}
+		trs.forEach((e) => {
+			e.mid = e.tr.mid
+		})
+		out({ t: 'rtc', sdp: p.localDescription.toJSON() })
+		if (!setupT && p.connectionState !== 'connected') {
+			setupT = setTimeout(() => pc === p && p.connectionState !== 'connected' && closeRtc(true), 10000)
+		}
+	} finally {
+		pc === p && (busy = false)
 	}
-	trs.forEach((e) => {
-		e.mid = e.tr.mid
+}
+
+/**
+ * Источник дорожки сменился (другая камера): тот же отправитель, новый клон, масштаб пересчитан.
+ * Отказ replaceTrack — убираем transceiver, на следующем tick он создаётся заново.
+ *
+ * @param id плитка
+ * @param t новая исходная дорожка
+ */
+function swapSrc(id, t) {
+	const e = trs.get(id)
+	const old = e.clone
+	e.src = t
+	e.clone = t.clone()
+	e.clone.contentHint = 'motion'
+	const clone = e.clone
+	const p = pc
+	e.tr.sender.replaceTrack(clone).then(() => {
+		const par = e.tr.sender.getParameters()
+		if (pc === p && par.encodings?.[0]) {
+			par.encodings[0].scaleResolutionDownBy = enc(clone).scaleResolutionDownBy
+			return e.tr.sender.setParameters(par)
+		}
+	}).catch(() => {
+		if (pc === p && trs.get(id) === e) {
+			dropTr(id)
+			dirty = true
+		}
 	})
-	out({ t: 'rtc', sdp: p.localDescription.toJSON() })
+	old.stop()
 }
 
 /** Привести дорожки к набору плиток; при изменении — новый offer (или bye, если камер не осталось). */
@@ -235,12 +289,7 @@ function rtcSync(on) {
 			dropTr(id)
 			changed = true
 		} else if (e.src !== w.get(id)) { // камера переключена: та же дорожка-отправитель, новый источник
-			const old = e.clone
-			e.src = w.get(id)
-			e.clone = e.src.clone()
-			e.clone.contentHint = 'motion'
-			e.tr.sender.replaceTrack(e.clone)
-			old.stop()
+			swapSrc(id, w.get(id))
 		}
 	})
 	w.forEach((t, id) => {
@@ -252,12 +301,14 @@ function rtcSync(on) {
 		}
 	})
 	if (!trs.size) {
-		return closeRtc(true)
+		return closeRtc(true, 0) // камеры кончились: новая камера — сразу новый offer
 	}
 	if (changed) {
 		dirty = true
 	}
-	if (pc.signalingState === 'stable') {
+	if (busy) {
+		// offer в работе: ждём
+	} else if (pc.signalingState === 'stable') {
 		dirty && offer().catch(() => closeRtc(true))
 	} else if (Date.now() - offerAt > 5000) {
 		closeRtc(true) // answer не пришёл: приложение само вернётся на v2
