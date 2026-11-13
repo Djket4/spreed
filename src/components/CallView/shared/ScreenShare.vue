@@ -7,6 +7,7 @@
 	<div
 		:id="screenContainerId"
 		class="screenContainer"
+		:class="{ 'k4-draw': k4state.mode }"
 		:style="{ '--k4-pb': (instanceTransform.scale === 1 ? k4pb : 0) + 'px' }"
 		@dblclick.capture="onDoubleClick">
 		<video
@@ -69,7 +70,7 @@ import { t } from '@nextcloud/l10n'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
 import panzoom from 'panzoom'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import IconMonitorScreenshot from 'vue-material-design-icons/MonitorScreenshot.vue'
@@ -163,19 +164,29 @@ export default {
 		})
 		// жизнь показа привязана к модели локального экрана, не к экземпляру: закрепление камеры размонтирует компонент
 		props.localMediaModel && bindLocalScreen(props.localMediaModel)
-		// ket4tec: k4draw. В режиме рисования масштаб сброшен в 1, panzoom на паузе.
-		watch(() => k4state.mode, (on) => {
-			if (!instance.value) {
+		// ket4tec: k4draw (NAS_CLOUD#108). В режиме рисования зум остаётся: один палец/мышь/перо — штрих,
+		// два пальца — зум и сдвиг показа. Слой рисования повторяет transform видео, штрихи в координатах кадра.
+		// Одиночное касание не отдаём panzoom (иначе палец двигает картинку), второй палец — отдаём (щипок).
+		let k4mid = null
+		const k4touchStart = (e) => {
+			k4mid = null
+			if (k4state.mode && e.touches.length === 1) {
+				e.stopImmediatePropagation()
+			}
+		}
+		// panzoom щипком только масштабирует вокруг середины; сдвиг двумя пальцами добавляем сами
+		const k4touchMove = (e) => {
+			if (!k4state.mode || e.touches.length !== 2 || !instance.value) {
+				k4mid = null
 				return
 			}
-			if (on) {
-				instance.value.zoomAbs(0, 0, 1)
-				instance.value.moveTo(0, 0)
-				instance.value.pause()
-			} else {
-				instance.value.resume()
+			const [a, b] = e.touches
+			const m = { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }
+			if (k4mid) {
+				instance.value.moveBy(m.x - k4mid.x, m.y - k4mid.y, false)
 			}
-		})
+			k4mid = m
+		}
 
 		// ket4tec (NAS_CLOUD#109 п.7): экран вписан с полями (портрет телефона) — подпись стоит у нижнего края картинки, не контейнера
 		const k4pb = ref(0)
@@ -195,7 +206,12 @@ export default {
 					maxZoom: ZOOM_MAX,
 					bounds: true,
 					boundsPadding: 1,
+					beforeMouseDown: () => k4state.mode, // ket4tec: k4draw — мышь в режиме рисования рисует, колесо зумит
 				})
+				// ket4tec: k4draw — capture раньше слушателя panzoom на том же контейнере
+				const c = screen.value.parentElement
+				c.addEventListener('touchstart', k4touchStart, { capture: true, passive: true })
+				c.addEventListener('touchmove', k4touchMove, { capture: true, passive: true })
 				instance.value.on('transform', (instance) => {
 					instanceTransform.value = { ...instance.getTransform() }
 				})
@@ -218,7 +234,11 @@ export default {
 		 * @param event Double click event
 		 */
 		function onDoubleClick(event) {
-			if (!instance.value || k4state.mode) { // ket4tec: k4draw
+			if (!instance.value) {
+				return
+			}
+			if (k4state.mode) { // ket4tec: k4draw — двойное касание при рисовании не зумит
+				event.stopPropagation()
 				return
 			}
 
@@ -366,6 +386,14 @@ export default {
 .screenContainer {
 	width: 100%;
 	height: 100%;
+}
+
+// ket4tec: k4draw (NAS_CLOUD#108) — жесты над всем показом (и полями вокруг кадра) ведёт код, не браузер, как у доски
+.screenContainer.k4-draw {
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 }
 
 .screen {

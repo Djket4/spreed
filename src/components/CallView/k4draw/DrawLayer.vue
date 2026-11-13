@@ -70,10 +70,10 @@ const ink = ref(null)
 const chips = ref(null)
 const erc = ref(null)
 
-// вне режима рисования слой повторяет transform видео (panzoom)
+// слой всегда повторяет transform видео (panzoom): штрихи держатся за картинку и при зуме во время рисования (NAS_CLOUD#108)
 const rootStyle = computed(() => {
 	const t = props.transform
-	return state.mode || !t || (t.scale === 1 && !t.x && !t.y)
+	return !t || (t.scale === 1 && !t.x && !t.y)
 		? {}
 		: { transform: `matrix(${t.scale},0,0,${t.scale},${t.x},${t.y})` }
 })
@@ -1130,15 +1130,16 @@ function openEdit(p, v) {
 	hd.addEventListener('pointerdown', (ev) => {
 		ev.preventDefault()
 		ev.stopPropagation()
-		E.drag = { x: ev.clientX - E.x, y: ev.clientY - E.y }
+		// слой может быть под зумом: экранный сдвиг делим на масштаб
+		E.drag = { x: ev.clientX, y: ev.clientY, ex: E.x, ey: E.y, s: props.transform?.scale || 1 }
 		try {
 			hd.setPointerCapture(ev.pointerId)
 		} catch (_) { /* не критично */ }
 	})
 	hd.addEventListener('pointermove', (ev) => {
 		if (E.drag) {
-			E.x = ev.clientX - E.drag.x
-			E.y = ev.clientY - E.drag.y
+			E.x = E.drag.ex + (ev.clientX - E.drag.x) / E.drag.s
+			E.y = E.drag.ey + (ev.clientY - E.drag.y) / E.drag.s
 			E.fit()
 		}
 	})
