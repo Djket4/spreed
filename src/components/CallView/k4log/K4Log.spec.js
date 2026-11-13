@@ -137,6 +137,18 @@ describe('K4CallLogTab', () => {
 		w.unmount()
 	})
 
+	test('«Только проблемы» — штатный NcCheckboxRadioSwitch и фильтрует', async () => {
+		get.mockResolvedValue({ data: { ocs: { data: { now: 1, events: [{ t: 1, name: 'a', k: 'call_joined', d: {} }, { t: 2, name: 'a', k: 'js_error', d: {} }] } } } })
+		const w = mount(K4CallLogTab, { props: { active: true } })
+		await flushPromises()
+		expect(w.find('.k4cl-f').exists()).toBe(false)
+		expect(w.findAll('.k4cl-row')).toHaveLength(2)
+		w.findComponent({ name: 'NcCheckboxRadioSwitch' }).vm.$emit('update:modelValue', true)
+		await flushPromises()
+		expect(w.findAll('.k4cl-row')).toHaveLength(1)
+		w.unmount()
+	})
+
 	test('шлёт since из now и перестаёт опрашивать после unmount', async () => {
 		const w = mount(K4CallLogTab, { props: { active: true } })
 		await flushPromises()
