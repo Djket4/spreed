@@ -61,11 +61,18 @@ describe('FaceFrame в цепочке превью', () => {
 			expect(ff.path).toBe('digital')
 			return vi.advanceTimersByTimeAsync(2600)
 		}).then(() => {
+			// откат сразу на исходный трек: ни канваса, ни скрытого video, уровень «Выкл»
 			expect(ff.path).toBe('fallback')
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(getFaceFrameLevel()).toBe('off')
 			expect(warn).toHaveBeenCalled()
 			expect(document.querySelector('video')).toBeNull()
+			// после отката «Авто» возвращается без перезагрузки
+			setFaceFrameLevel('auto')
+			return vi.advanceTimersByTimeAsync(100)
+		}).then(() => {
+			expect(ff.path).toBe('digital')
+			ff.destroy()
 			vi.useRealTimers()
 		})
 	})

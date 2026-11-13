@@ -1055,7 +1055,7 @@ export default {
 		justify-content: center;
 		border-radius: var(--border-radius-element, var(--border-radius-large));
 		background-color: var(--color-loading-dark);
-		aspect-ratio: 4/3;
+		aspect-ratio: 1/1;
 		margin-inline-end: var(--default-grid-baseline);
 	}
 

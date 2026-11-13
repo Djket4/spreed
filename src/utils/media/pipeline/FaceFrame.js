@@ -8,6 +8,8 @@ import { showWarning } from '@nextcloud/dialogs'
 import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
+import { centerZoom } from './FaceSquare.js'
+import { clampTarget, squareRect } from './FaceSquare.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
 const STORAGE_KEY = 'k4FaceFrameLevel'
@@ -69,6 +71,7 @@ export function onFaceFrameLevelChange(handler) {
 
 /**
  * Целевое окно (центр в долях кадра и приближение) по рамкам лиц.
+ * Несколько лиц — общий центр охватывающей рамки (не метаемся между людьми).
  *
  * @param {Array<{x: number, y: number, w: number, h: number}>} faces рамки в долях кадра (0..1)
  * @param {string} lvl уровень
@@ -171,9 +174,15 @@ export default class FaceFrame extends TrackSinkSource {
 		;(window.__k4ff ||= []).push(this)
 		this.path = 'off'
 		this._hwZoomed = false
+		this._hwActive = false // аппаратный зум держит приближение: цифровой путь только вырезает квадрат по лицу
 		this._applyToken = 0
 		this._outputTrack = null
 		this._unsubscribe = onFaceFrameLevelChange(() => this._apply())
+	}
+
+	// уровень для цифрового пути: при аппаратном зуме приближает камера, окно 1×
+	_lvl() {
+		return this._hwActive ? '1' : getFaceFrameLevel()
 	}
 
 	_handleInputTrack(trackId, newTrack) {
@@ -210,6 +219,7 @@ export default class FaceFrame extends TrackSinkSource {
 
 		if (!input || !input.enabled || lvl === 'off') {
 			this._stopDigital()
+			this._hwActive = false
 			this.path = 'off'
 			if (input && this._hwZoomed) {
 				this._hwZoomed = false
@@ -225,14 +235,19 @@ export default class FaceFrame extends TrackSinkSource {
 			if (token !== this._applyToken) {
 				return
 			}
-			this._stopDigital()
+			this._hwActive = true
 			this.path = 'hardware'
-			this._setOutput(input)
+			// приближает камера, а квадрат по лицу вырезает цифровой путь (zoom 1)
+			if (this._digital?.input !== input) {
+				this._setOutput(input)
+			}
+			this._startDigital(input)
 			return
 		}
 		if (token !== this._applyToken) {
 			return
 		}
+		this._hwActive = false
 
 		if (this._hwZoomed) {
 			this._hwZoomed = false
@@ -326,7 +341,7 @@ export default class FaceFrame extends TrackSinkSource {
 			lastLog: t0,
 		}
 		this._digital = d
-		video.play().catch(() => {})
+		video.play()?.catch(() => {})
 		getDetector().then((detector) => {
 			d.detector = detector
 		}).catch((e) => console.error('FaceFrame: детектор не загрузился', e))
@@ -372,7 +387,7 @@ export default class FaceFrame extends TrackSinkSource {
 		const sorted = [...d.durs].sort((a, b) => a - b)
 		const stats = {
 			path: this.path,
-			level: getFaceFrameLevel(),
+			level: this._lvl(),
 			fps: Math.round(d.fps * 10) / 10,
 			detAvg: sorted.length ? Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length * 10) / 10 : 0,
 			detP95: sorted.length ? Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] * 10) / 10 : 0,
@@ -418,7 +433,7 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		const input = d.input
 		this._stopDigital()
-		setFaceFrameLevel('off')
+		setFaceFrameLevel('off') // исходный трек, селектор покажет «Выкл»; вернуть «Авто» можно сразу
 		this._setOutput(input)
 		this.path = 'fallback'
 		if (window.__k4ffStats) {
@@ -443,7 +458,7 @@ export default class FaceFrame extends TrackSinkSource {
 
 	// не больше одной детекции за кадр: полный кадр (до 8 раз/с), а когда лица нет — плитка (до 2 раз/с)
 	_maybeDetect(d, now, lvl) {
-		const { video, canvas } = d
+		const { video } = d
 		const full = now >= d.nextDetectAt
 		const tileDue = !full && d.noFace && now >= d.nextTileAt
 		if (!d.detector || !(full || tileDue)) {
@@ -454,14 +469,16 @@ export default class FaceFrame extends TrackSinkSource {
 			let faces
 			let tile = null
 			if (full) {
-				faces = this._detectBoxes(d, video, canvas.width, canvas.height, now)
+				faces = this._detectBoxes(d, video, video.videoWidth, video.videoHeight, now)
 			} else {
 				// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
 				tile = TILES[d.tileIdx % TILES.length]
 				const tc = d.tileCanvas ||= document.createElement('canvas')
-				tc.width = canvas.width
-				tc.height = canvas.height
-				tc.getContext('2d').drawImage(video, tile.x * canvas.width, tile.y * canvas.height, tile.w * canvas.width, tile.h * canvas.height, 0, 0, tc.width, tc.height)
+				const vw = video.videoWidth
+				const vh = video.videoHeight
+				tc.width = vw
+				tc.height = vh
+				tc.getContext('2d').drawImage(video, tile.x * vw, tile.y * vh, tile.w * vw, tile.h * vh, 0, 0, vw, vh)
 				faces = this._detectBoxes(d, tc, tc.width, tc.height, now).map((b) => tileToFrame(b, tile))
 			}
 			if (full) {
@@ -472,6 +489,10 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			const target = computeTarget(faces, lvl)
 			if (target) {
+				if (lvl === 'auto' && faces.length === 1) {
+					// лицо у края: сужаем квадрат, чтобы оно встало в центр (до 1.5×)
+					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
+				}
 				d.target = target
 				d.lastFace = now
 			}
@@ -495,11 +516,14 @@ export default class FaceFrame extends TrackSinkSource {
 		if (!video.videoWidth) {
 			return
 		}
-		if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-			canvas.width = video.videoWidth
-			canvas.height = video.videoHeight
+		const W = video.videoWidth
+		const H = video.videoHeight
+		const side = Math.min(W, H) // выход — квадрат (NAS_CLOUD#172)
+		if (canvas.width !== side || canvas.height !== side) {
+			canvas.width = side
+			canvas.height = side
 		}
-		const lvl = getFaceFrameLevel()
+		const lvl = this._lvl()
 
 		if (now - d.lastFace > LOST_AFTER_MS) {
 			d.target = { cx: 0.5, cy: 0.5, zoom: 1 }
@@ -509,12 +533,11 @@ export default class FaceFrame extends TrackSinkSource {
 
 		const dt = d.lastTick ? Math.min(now - d.lastTick, 100) : 0
 		d.lastTick = now
-		d.win = stepWindow(d.win, d.target, dt)
+		d.win = stepWindow(d.win, clampTarget(d.target, W, H), dt, { W, H })
 		this.window = d.win
 
-		const sw = canvas.width / d.win.zoom
-		const sh = canvas.height / d.win.zoom
-		ctx.drawImage(video, d.win.cx * canvas.width - sw / 2, d.win.cy * canvas.height - sh / 2, sw, sh, 0, 0, canvas.width, canvas.height)
+		const { sx, sy, side: ss } = squareRect(d.win, W, H)
+		ctx.drawImage(video, sx, sy, ss, ss, 0, 0, side, side)
 		d.frames++
 		d.fpsFrames++
 

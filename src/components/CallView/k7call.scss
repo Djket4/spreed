@@ -316,8 +316,8 @@ $glass: blur(24px) saturate(180%);
 	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
 	// предел высоты — у самой прокрутки, не у контейнера: Safari не сжимает flex-ребёнка под max-height родителя, и листалась маска со всей шторкой
 	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: calc(var(--k7-vh, 100dvh) - 110px - var(--k7-sheet-bottom, 0px)) !important; }
-	// превью камеры — нормальной формы 16:10 (148 px сплющивало лицо, Андрей 10.11); шторка всё равно ниже шапки Стола
-	:root body .media-settings__preview { width: 100% !important; height: auto !important; aspect-ratio: 16 / 10 !important; }
+	// превью камеры — квадрат, как плитка в звонке (NAS_CLOUD#172); шторка всё равно ниже шапки Стола
+	:root body .media-settings__preview { width: 100% !important; height: auto !important; aspect-ratio: 1 / 1 !important; }
 	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
@@ -419,6 +419,9 @@ $glass: blur(24px) saturate(180%);
 // крупный кадр камеры (закреплённый, говорящий): квадрат по центру главной области
 #call-container .video__promoted { container-type: size; }
 #call-container .video__promoted > .video-container-big { position: absolute !important; inset: 0 !important; margin: auto !important; padding: 0 !important; width: 100cqmin !important; height: 100cqmin !important; max-width: none !important; }
+// кадр камеры заполняет квадрат без полей: «Выкл» и откат по fps дают широкий кадр, он режется по центру (NAS_CLOUD#172); обёртка VideoVue не сжимается по пропорции кадра
+#call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) { width: 100% !important; height: 100% !important; margin: 0 !important; }
+#call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) > video { object-fit: cover; object-position: center; }
 // лента (в том числе «Вы»): квадраты высотой с ленту, листается пальцем и колесом
 #call-container .grid-main-wrapper:not(.is-grid) .grid { display: flex !important; gap: var(--grid-gap); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 #call-container .grid-main-wrapper:not(.is-grid) .grid::-webkit-scrollbar { display: none; }
