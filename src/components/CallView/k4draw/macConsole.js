@@ -165,7 +165,7 @@ export function consoleFrame(send) {
 	cost = cost ? cost * 0.8 + d * 0.2 : d
 	stat.n++
 	stat.ms += d
-	nextAt = now + d + cost * 7
+	nextAt = now + cost * 7
 }
 
 /** */
