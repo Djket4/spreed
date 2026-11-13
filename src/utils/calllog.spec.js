@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@nextcloud/auth', () => ({ getRequestToken: () => 'rt' }))
 vi.mock('@nextcloud/router', () => ({ generateOcsUrl: (u, p) => u.replace('{token}', p.token) }))
 
-import { _buf, _reset, calllog, calllogRtc, calllogScreen, calllogSession, initCalllog } from './calllog.js'
+import { _buf, _reset, calllog, calllogEnd, calllogRtc, calllogScreen, calllogSession, initCalllog } from './calllog.js'
 
 describe('calllog', () => {
 	beforeEach(() => {
@@ -146,5 +146,19 @@ describe('calllog', () => {
 		const body = JSON.parse(fetch.mock.calls[0][1].body)
 		expect(body.s).toBe('NEW')
 		expect(body.ev.map((e) => e.k)).toContain('x')
+	})
+
+	it('прощальная пачка до снятия сессии; pagehide после calllogEnd в /calllog не шлёт', () => {
+		history.pushState({}, '', '/call/abcd1234')
+		initCalllog()
+		calllogSession('abcd1234', 'S')
+		fetch.mockClear()
+		calllog('x')
+		calllogEnd() // unload: сессию сейчас снимут
+		expect(fetch).toHaveBeenCalledTimes(1)
+		expect(JSON.parse(fetch.mock.calls[0][1].body).s).toBe('S')
+		fetch.mockClear()
+		window.dispatchEvent(new Event('pagehide'))
+		expect(fetch.mock.calls.filter((c) => !c[0].endsWith('/pre'))).toHaveLength(0)
 	})
 })

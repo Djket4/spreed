@@ -4,6 +4,7 @@
 
 // ket4tec: статистика звонка для тестового режима (NAS_CLOUD#189).
 // Форма `k4stats` — контракт для интерфейса (вкладка и плитки), см. JSDoc ниже.
+import { getCurrentUser } from '@nextcloud/auth'
 import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
 import { reactive, watch } from 'vue'
@@ -332,7 +333,8 @@ export function startK4stats(c) {
 		c.localMedia.on('change:' + key, fn)
 		stopWatch.push(() => c.localMedia.off('change:' + key, fn))
 	}
-	axios.get(generateOcsUrl('apps/spreed/api/v1/calllog/{token}/feed', { token: c.token }), { params: { since: Date.now() / 1000 } })
+	// гость (не вошёл в Nextcloud) получил бы 401: шум в журнале и в серии отказов, пробу не делаем
+	getCurrentUser() && axios.get(generateOcsUrl('apps/spreed/api/v1/calllog/{token}/feed', { token: c.token }), { params: { since: Date.now() / 1000 } })
 		.then(() => {
 			if (ctx === c) {
 				k4stats.testmode = true
