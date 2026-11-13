@@ -1,4 +1,6 @@
 <!--
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+  -
   - ket4tec: k4draw. Плашка «Приложение не найдено»: схема k4draw:// не сработала.
 -->
 
@@ -56,6 +58,31 @@
 				<button type="button" @click="connectAnyway()">
 					Подключить приложение
 				</button>
+				<button type="button" @click="closeMissing()">
+					Закрыть
+				</button>
+			</div>
+		</div>
+		<div
+			v-if="mac.st === 'unverified'"
+			class="k4-missing"
+			role="alertdialog"
+			aria-label="Не удалось проверить приложение">
+			<div class="k4-missing__title">
+				Не удалось проверить приложение
+			</div>
+			<div class="k4-missing__text">
+				Браузер не даёт проверить, запущено ли оно. Если приложение установлено, подключите его вручную.
+			</div>
+			<div class="k4-missing__row">
+				<button type="button" @click="connectAnyway()">
+					Подключить вручную
+				</button>
+				<a
+					class="k4-missing__dl k4-missing__dl--minor"
+					:href="MAC_DL"
+					target="_blank"
+					rel="noopener">Скачать</a>
 				<button type="button" @click="closeMissing()">
 					Закрыть
 				</button>
@@ -127,5 +154,6 @@ import { closeMissing, connectAnyway, mac, MAC_DL } from './macBridge.js'
 		text-decoration: none;
 	}
 	&__dl { background: var(--color-primary-element, #0082c9) !important; color: var(--color-primary-element-text, #fff) !important; border-color: transparent !important; }
+	&__dl--minor { background: transparent !important; color: var(--color-text-maxcontrast, #707070) !important; text-decoration: underline; }
 }
 </style>
