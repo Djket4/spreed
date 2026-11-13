@@ -9,8 +9,18 @@
 		:style="{ '--icon-size': `${size}px` }"
 		:class="[themeClass, { offline: offline }]">
 		<template v-if="!isOneToOne">
+			<!-- ket4tec: беседа без своей аватарки — цветной круг с эмодзи (html.k7-ava-letter — с буквой) -->
 			<div
-				v-if="iconClass"
+				v-if="k7Avatar"
+				class="avatar icon k7-ava"
+				:style="{ background: k7Avatar.color }"
+				role="img"
+				:aria-label="item.displayName">
+				<span class="k7-ava__emoji">{{ k7Avatar.emoji }}</span>
+				<span class="k7-ava__letter">{{ k7Avatar.letter }}</span>
+			</div>
+			<div
+				v-else-if="iconClass"
 				class="avatar icon"
 				:class="iconClass" />
 			<!-- img is used here instead of NcAvatar to explicitly set key required to avoid glitching in virtual scrolling  -->
@@ -24,7 +34,7 @@
 				class="avatar icon"
 				@error="onError">
 			<span
-				v-if="!hideUserStatus && conversationType"
+				v-if="!hideUserStatus && conversationType && !k7Avatar"
 				class="conversation-icon__type"
 				role="img"
 				aria-hidden="false"
@@ -71,7 +81,7 @@ import IconVolumeHighOutline from '../../img/material-icons/volume-high-outline.
 import { AVATAR, CONVERSATION } from '../constants.ts'
 import { getConversationAvatarOcsUrl } from '../services/avatarService.ts'
 import { hasTalkFeature } from '../services/CapabilitiesManager.ts'
-import { getFallbackIconClass } from '../utils/conversation.ts'
+import { getFallbackIconClass, k7ConversationAvatar } from '../utils/conversation.ts'
 import { getPreloadedUserStatus } from '../utils/userStatus.ts'
 
 const supportsAvatar = hasTalkFeature('local', 'avatar')
@@ -189,6 +199,16 @@ export default {
 			return getFallbackIconClass(this.item, this.failed || !this.canRequestAvatar)
 		},
 
+		k7Avatar() {
+			// черновик в окне создания (isDummyConversation) — как будет после создания, когда имя уже набрано
+			if ((this.item.isDummyConversation ? !this.item.displayName?.trim() : this.item.isCustomAvatar !== false)
+				|| ![CONVERSATION.TYPE.GROUP, CONVERSATION.TYPE.PUBLIC].includes(this.item.type)
+				|| this.item.remoteServer) {
+				return null
+			}
+			return k7ConversationAvatar(this.item.displayName)
+		},
+
 		themeClass() {
 			return `conversation-icon--${this.isDarkTheme ? 'dark' : 'bright'}`
 		},
@@ -278,6 +298,24 @@ export default {
 .offline {
 	opacity: .4;
 }
+
+.conversation-icon .avatar.icon.k7-ava {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	font-size: calc(var(--icon-size) * 0.52);
+	line-height: 1;
+	user-select: none;
+
+	.k7-ava__letter {
+		display: none;
+		font-size: calc(var(--icon-size) * 0.46);
+		font-weight: 800;
+		color: rgba(26, 23, 24, .82);
+	}
+}
+
 
 .conversation-icon :deep(.icon-vue) {
 	min-width: 0 !important;

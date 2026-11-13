@@ -18,6 +18,18 @@ const supportsAvatar = hasTalkFeature('local', 'avatar')
 const supportsConversationTags = hasTalkFeature('local', 'conversation-tags')
 
 /**
+ * ket4tec: служебные беседы — «Личные заметки», «Обновления приложения», образцы («Давайте начнём!»).
+ * В облаке KET4TEC их не показываем ни в списке, ни в поиске, ни в выборе беседы.
+ *
+ * @param conversation conversation object
+ */
+export function isK7ServiceConversation(conversation: Conversation): boolean {
+	return conversation.type === CONVERSATION.TYPE.NOTE_TO_SELF
+		|| conversation.type === CONVERSATION.TYPE.CHANGELOG
+		|| conversation.objectType === 'sample'
+}
+
+/**
  * Check if the conversation is classified (CLASSIFIED attribute bit is set)
  * Feature is supported with `classified-conversations` capability.
  *
@@ -302,4 +314,43 @@ export function sortConversationsList(
 			// Default (legacy) sort order: by recent activity
 			return conversation2.lastActivity - conversation1.lastActivity
 		})
+}
+
+// ket4tec: весёлая аватарка беседы без своей картинки — цветной круг v7 + эмодзи по смыслу названия (или первая буква).
+// Детерминированно от названия: тот же эмодзи ставится на сервер при создании (createGroupConversation), список рисует его же.
+const K7_AVATAR_COLORS = ['#9B6BEA', '#FFB38A', '#FF7A6B', '#5FD3A8', '#6BB8FF', '#FFD45C', '#FF8FC1', '#FF9F43', '#B9A2FF', '#3CC8C8']
+// порядок = приоритет: конкретное слово раньше общего («Тест утро» → ☀️, «Тест звука» → 🧪)
+const K7_AVATAR_RULES: [RegExp, string][] = [
+	[/утр|morning/, '☀️'],
+	[/переговор|negotiat/, '🤝'],
+	[/рожден|праздн|party|вечерин/, '🎉'],
+	[/обед|кофе|завтрак|ужин|lunch|coffee/, '☕️'],
+	[/отпуск|поездк|путешеств|trip|travel/, '✈️'],
+	[/спорт|трен|футбол|бег/, '⚽️'],
+	[/музык|music/, '🎵'],
+	[/фото|photo/, '📸'],
+	[/выставк|экспо|expo|площадк/, '🎪'],
+	[/семь|дом|family|home/, '🏡'],
+	[/звон|созвон|встреч|call|meet/, '📞'],
+	[/проект|работ|задач|офис|work|project/, '💼'],
+	[/тест|провер|test|qa/, '🧪'],
+]
+const K7_AVATAR_FUN = ['🦊', '🐙', '🌵', '🍉', '🚀', '🎈', '🌈', '🍀', '🐳', '🍩', '🦄', '🌻']
+
+/**
+ * @param name название беседы
+ */
+export function k7ConversationAvatar(name: string): { color: string, emoji: string, letter: string } {
+	const n = (name || '').trim()
+	let h = 0
+	for (const ch of n) {
+		h = (h * 31 + ch.codePointAt(0)!) >>> 0
+	}
+	const low = n.toLowerCase()
+	const rule = K7_AVATAR_RULES.find(([re]) => re.test(low))
+	return {
+		color: K7_AVATAR_COLORS[h % K7_AVATAR_COLORS.length],
+		emoji: rule ? rule[1] : K7_AVATAR_FUN[h % K7_AVATAR_FUN.length],
+		letter: (Array.from(n.replace(/^[^\p{L}\p{N}]+/u, ''))[0] || '#').toUpperCase(),
+	}
 }

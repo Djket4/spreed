@@ -61,7 +61,7 @@ import { leaveConversationSync } from './services/participantsService.js'
 import SessionStorage from './services/SessionStorage.js'
 import { useActorStore } from './stores/actor.ts'
 import { useCallViewStore } from './stores/callView.ts'
-import { useSidebarStore } from './stores/sidebar.ts'
+import { sidebarOpenByDefault, useSidebarStore } from './stores/sidebar.ts'
 import { useTokenStore } from './stores/token.ts'
 import { checkBrowser } from './utils/browserCheck.ts'
 import { hasExternalCallService } from './utils/conversation.ts'
@@ -181,7 +181,7 @@ export default {
 
 	watch: {
 		token(newValue, oldValue) {
-			const shouldShowSidebar = BrowserStorage.getItem('sidebarOpen') !== 'false'
+			const shouldShowSidebar = sidebarOpenByDefault()
 			if (!shouldShowSidebar || this.isMobile) {
 				this.sidebarStore.hideSidebar({ cache: false })
 			} else if (shouldShowSidebar) {
@@ -658,6 +658,10 @@ body#body-public {
 	--footer-height: 0;
 }
 </style>
+
+<style lang="scss" src="./assets/k7ui.scss"></style>
+
+<style lang="scss" src="./assets/k7guest.scss"></style>
 
 <style lang="scss" scoped>
 

@@ -7,7 +7,7 @@ import type { Ref } from 'vue'
 
 import debounce from 'debounce'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { computeGridDimensions, getMinTileHeight, getMinTileWidth, TARGET_ASPECT_RATIO } from './gridLayout.ts'
+import { computeSquareLayout, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
 
 type UseGridDimensionsOptions = {
 	/** Element to observe for size changes (its child grid is measured) */
@@ -29,7 +29,7 @@ type UseGridDimensionsOptions = {
 /**
  * Owns the measurement of the grid element and derives the number of columns and
  * rows the grid should use. The heavy lifting is done by the pure
- * {@link computeGridDimensions}; this composable only wires it to the DOM via a
+ * {@link computeSquareLayout}; this composable only wires it to the DOM via a
  * `ResizeObserver` and the relevant reactive inputs.
  *
  * @param options - the reactive layout inputs and template refs
@@ -54,6 +54,7 @@ export function useGridDimensions({
 	const gridHeight = ref(0)
 	const columns = ref(0)
 	const rows = ref(0)
+	const side = ref(0)
 
 	const dpiFactor = computed(() => {
 		if (isStripe.value) {
@@ -75,7 +76,9 @@ export function useGridDimensions({
 	})
 
 	const compact = computed(() => isStripe.value || isSidebar.value)
-	const minWidth = computed(() => getMinTileWidth(compact.value))
+	// ket4tec (NAS_CLOUD#108 п.2): на телефоне в полосу при показе экрана при 200px влезала только своя плитка — собеседника не было видно
+	// ponytail: ширина окна читается один раз на пересчёт; порог 600 и плитка 110 — подбор под iPhone, не под все экраны
+	const minWidth = computed(() => (isStripe.value && window.innerWidth < 600 ? 110 : getMinTileWidth(compact.value)))
 	const minHeight = computed(() => getMinTileHeight(compact.value))
 	const dpiAwareMinWidth = computed(() => minWidth.value / dpiFactor.value)
 	const dpiAwareMinHeight = computed(() => minHeight.value / dpiFactor.value)
@@ -106,22 +109,14 @@ export function useGridDimensions({
 		gridWidth.value = width
 		gridHeight.value = height
 
-		const dimensions = computeGridDimensions({
-			gridWidth: gridWidth.value,
-			gridHeight: gridHeight.value,
-			videoCount: videoCount.value,
-			targetAspectRatio: TARGET_ASPECT_RATIO,
-			minWidth: dpiAwareMinWidth.value,
-			minHeight: dpiAwareMinHeight.value,
-			noLocalVideoReserve: noLocalVideoReserve.value,
-			// Seed the algorithm with the current layout to keep the
-			// anti-flickering hysteresis behaviour.
-			currentColumns: columns.value,
-			currentRows: rows.value,
-		})
+		// ket4tec (NAS_CLOUD#159): квадратные плитки; полоса - одна строка, сторона = её высота
+		const dimensions = isStripe.value
+			? { columns: videoCount.value + 1, rows: 1, side: height }
+			: computeSquareLayout({ gridWidth: width, gridHeight: height, total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1) })
 
 		columns.value = dimensions.columns
 		rows.value = dimensions.rows
+		side.value = dimensions.side
 	}
 
 	const debouncedRecompute = debounce(recompute, 200)
@@ -170,6 +165,7 @@ export function useGridDimensions({
 		gridHeight,
 		columns,
 		rows,
+		side,
 		dpiFactor,
 		minWidth,
 		minHeight,

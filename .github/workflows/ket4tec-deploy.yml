@@ -1,0 +1,26 @@
+# Заготовка выкладки (Djket4/spreed#139, п.2-3). Только вручную. Раннера с доступом к S18 пока нет:
+# до его выдачи (по слову координатора) запуск будет ждать раннера с меткой s18-deploy.
+name: ket4tec-deploy
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Куда выкладывать'
+        type: choice
+        options: [test, prod]
+        default: test
+concurrency:
+  group: ket4tec-deploy-${{ inputs.target }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: [self-hosted, s18-deploy]
+    environment: ${{ inputs.target == 'prod' && 'production' || '' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: TARGET=${{ inputs.target }} ./ket4tec-deploy.sh

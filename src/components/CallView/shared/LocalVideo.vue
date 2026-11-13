@@ -7,10 +7,10 @@
 	<div
 		ref="videoContainer"
 		class="localVideoContainer"
-		:class="videoContainerClass"
+		:class="[videoContainerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo')">
+		@click="$emit('clickVideo', $event)">
 		<img
 			v-if="screenshotModeUrl"
 			class="dev-mode-video--self videoWrapper"
@@ -42,18 +42,22 @@
 		</div>
 		<div v-if="!screenshotModeUrl && !localMediaModel.attributes.videoEnabled && !isSidebar" class="avatar-container">
 			<VideoBackground v-if="isGrid || isStripe" />
-			<AvatarWrapper
-				:id="userId"
-				:token="token"
-				:name="displayName"
-				:source="actorStore.actorType"
-				:size="avatarSize"
-				:loading="isNotConnected"
-				disableMenu
-				disableTooltip />
+			<!-- ket4tec: облако во всех видах (сетка, полоса, докладчик, крупно), не только в сетке -->
+			<K4Face
+				:stream="localMediaModel.attributes.localStream"
+				:on="!!localMediaModel.attributes.audioEnabled"
+				:seed="actorStore.actorId ? actorStore.actorType + '/' + actorStore.actorId : (displayName || '?')"
+				:token="token" />
 		</div>
 
+		<!-- ket4tec: k4stk -->
+		<TileSticker :on="k4stkOn" own />
+		<!-- ket4tec: своя связь пропала после подключения -->
+		<K4Reconnect v-if="k4WasConn && isNotConnected && !isSidebar" title="Нет связи" sub="переподключаемся…" />
+
 		<div class="bottom-bar">
+			<!-- ket4tec: подпись своей плитки, видна и поверх стикера/гифки -->
+			<span v-if="!isSidebar && !isBig && !isPresenterOverlay && (isGrid || isStripe)" class="participant-name k7-self">Вы</span>
 			<NcButton
 				v-if="isBig"
 				variant="tertiary"
@@ -66,13 +70,16 @@
 </template>
 
 <script>
-import { showError, showInfo, TOAST_PERMANENT_TIMEOUT } from '@nextcloud/dialogs'
+import { showError, showInfo } from '@nextcloud/dialogs'
+import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { inject, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
-import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
+import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
+import K4Face from './k4face/K4Face.vue' // ket4tec
+import K4Reconnect from './K4Reconnect.vue' // ket4tec
 import VideoBackground from './VideoBackground.vue'
 import { AVATAR } from '../../../constants.ts'
 import { useActorStore } from '../../../stores/actor.ts'
@@ -80,17 +87,20 @@ import { useCallViewStore } from '../../../stores/callView.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
+import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
 
 export default {
 
 	name: 'LocalVideo',
 
 	components: {
-		AvatarWrapper,
+		K4Face,
 		IconAccountOffOutline,
 		NcButton,
 		VideoBackground,
 		NcLoadingIcon,
+		K4Reconnect,
+		TileSticker,
 	},
 
 	props: {
@@ -171,10 +181,16 @@ export default {
 			containerAspectRatio: null,
 			resizeObserver: null,
 			mouseover: false,
+			k4WasConn: false, // ket4tec
 		}
 	},
 
 	computed: {
+		// ket4tec: k4stk. Моя гифка/стикер вместо камеры (не в боковой панели)
+		k4stkOn() {
+			return !!k4stk.mine && !this.isSidebar
+		},
+
 		stopFollowingLabel() {
 			return t('spreed', 'Back')
 		},
@@ -197,6 +213,7 @@ export default {
 				'presenter-overlay': this.isPresenterOverlay,
 				'hover-shadow': this.isSelectable && this.mouseover,
 				speaking: this.localMediaModel.attributes.speaking,
+				'k4-nomic': !this.localMediaModel.attributes.audioEnabled && !this.isBig, // ket4tec: красная рамка «микрофон выключен»
 			}
 		},
 
@@ -249,6 +266,16 @@ export default {
 	},
 
 	watch: {
+		// ket4tec: плашку обрыва показываем только после первого подключения
+		isNotConnected: {
+			immediate: true,
+			handler(v) {
+				if (!v) {
+					this.k4WasConn = true
+				}
+			},
+		},
+
 		localCallParticipantModel: {
 			immediate: true,
 
@@ -276,12 +303,12 @@ export default {
 					} else if (error.name === 'NotReadableError' || error.name === 'AbortError') {
 						// when camera in use, Chrome gives NotReadableError, Firefox gives AbortError
 						this.notificationHandle = showError(t('spreed', 'Error while accessing camera: It is likely in use by another program'), {
-							timeout: TOAST_PERMANENT_TIMEOUT,
+							timeout: 5000,
 						})
 					} else {
 						console.error('Error while accessing camera: ', error.message, error.name)
 						this.notificationHandle = showError(t('spreed', 'Error while accessing camera'), {
-							timeout: TOAST_PERMANENT_TIMEOUT,
+							timeout: 5000,
 						})
 					}
 				}
@@ -342,8 +369,7 @@ export default {
 		},
 
 		handleStopFollowing() {
-			this.callViewStore.setSelectedVideoPeerId(null)
-			this.callViewStore.stopPresentation(this.token)
+			emit('k4-unpin-video') // ket4tec (NAS_CLOUD#153): единый путь в CallView
 		},
 
 		updateContainerAspectRatio([{ target }]) {
@@ -462,6 +488,7 @@ export default {
 
 .bottom-bar {
 	position: absolute;
+	z-index: 1; // ket4tec: над TileSticker
 	bottom: 0;
 	width: 100%;
 	padding: 0 calc(var(--default-grid-baseline) * 3);
@@ -473,6 +500,9 @@ export default {
 	&--big {
 		justify-content: center;
 	}
+
+	// ket4tec: вид подписи — общий с чужими плитками («нижняя треть», k7call.scss)
+	.k7-self { margin-inline: 0 auto; }
 
 	& &__button {
 		opacity: 0.8;

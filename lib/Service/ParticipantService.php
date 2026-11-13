@@ -1904,6 +1904,22 @@ class ParticipantService {
 	}
 
 	/**
+	 * ket4tec #55: is there any (email) guest in the room? Guests never see chat.
+	 */
+	public function hasGuestWithoutChat(Room $room): bool {
+		$query = $this->connection->getQueryBuilder();
+		$query->select('id')
+			->from('talk_attendees')
+			->where($query->expr()->eq('room_id', $query->createNamedParameter($room->getId())))
+			->andWhere($query->expr()->in('actor_type', $query->createNamedParameter([Attendee::ACTOR_GUESTS, Attendee::ACTOR_EMAILS], IQueryBuilder::PARAM_STR_ARRAY)))
+			->setMaxResults(1);
+		$result = $query->executeQuery();
+		$found = $result->fetchOne() !== false;
+		$result->closeCursor();
+		return $found;
+	}
+
+	/**
 	 * @param Room $room
 	 * @param int $maxAge
 	 * @return Participant[]

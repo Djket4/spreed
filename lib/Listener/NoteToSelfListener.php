@@ -24,6 +24,10 @@ class NoteToSelfListener implements IEventListener {
 
 	#[\Override]
 	public function handle(Event $event): void {
+		// ket4tec: «Личные заметки» сами не создаются (в облаке KET4TEC служебные беседы не показываем).
+		// Явный запрос /room/note-to-self (ensureNoteToSelfExistsForUser) остаётся для клиентов, которые его зовут.
+		return;
+		// @phpstan-ignore-next-line deadCode.unreachable
 		if ($event instanceof BeforeRoomsFetchEvent) {
 			$this->service->initialCreateNoteToSelfForUser($event->getUserId());
 		}

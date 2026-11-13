@@ -34,7 +34,8 @@ const deviceOptions = computed<NcSelectOption[]>(() => {
 	const kindDevices = props.devices.filter((device) => device.kind === props.kind)
 		.map((device) => ({
 			id: device.deviceId,
-			label: device.label || device.fallbackLabel,
+			// ket4tec 9Б п.4: «По умолчанию - Динамик» — дефис в тире
+			label: (device.label || device.fallbackLabel).replace(/ - /g, ' – '),
 		}))
 	if (props.kind === 'audiooutput') {
 		return kindDevices
@@ -62,7 +63,13 @@ const deviceSelectorPlaceholder = computed(() => {
 
 const deviceSelectedOption = computed<NcSelectOption | null>({
 	get: () => {
-		return deviceOptions.value.find((option) => option.id === props.deviceId) ?? null
+		const found = deviceOptions.value.find((option) => option.id === props.deviceId)
+		if (found || deviceOptionsAvailable.value) {
+			return found ?? null
+		}
+		// ket4tec: списка устройств нет (Safari до разрешения) — отключённое поле не должно быть пустым
+		const label = props.kind === 'audioinput' ? 'Микрофон по умолчанию' : props.kind === 'audiooutput' ? 'Динамик по умолчанию' : 'Камера не найдена'
+		return { id: null, label }
 	},
 	set: (value) => {
 		updateDeviceId(value?.id ?? null)

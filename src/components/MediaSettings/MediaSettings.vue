@@ -10,6 +10,7 @@
 		:size="isDialog ? 'large' : undefined"
 		:labelId="isDialog ? dialogHeaderId : undefined"
 		:noClose="hideCloseButton"
+		:closeOnClickOutside="isDialog && !hideCloseButton"
 		@close="handleDialogClose">
 		<div class="media-settings">
 			<h2
@@ -80,6 +81,10 @@
 							disableMenu
 							disableTooltip />
 					</div>
+
+					<p v-if="cameraNoticeText" class="preview__notice" role="status">
+						{{ cameraNoticeText }}
+					</p>
 
 					<!-- Audio and video toggles -->
 					<div class="media-settings__toggles">
@@ -170,6 +175,7 @@
 								:deviceId="videoInputId"
 								@refresh="updateDevices"
 								@update:deviceId="handleVideoInputIdChange" />
+							<FaceFrameSelector />
 							<MediaDevicesSelector
 								v-if="audioOutputSupported"
 								kind="audiooutput"
@@ -204,29 +210,21 @@
 					<!-- Guest display name setting-->
 					<SetGuestUsername v-if="isGuest" compact />
 
-					<!-- Moderator options before starting a call-->
-					<NcCheckboxRadioSwitch
-						v-if="showStartRecordingOption"
-						v-model="isRecordingFromStart"
-						class="checkbox">
-						{{ t('spreed', 'Start recording immediately with the call') }}
-					</NcCheckboxRadioSwitch>
-					<NcCheckboxRadioSwitch
-						v-else-if="hintRecordingOption"
-						:description="t('spreed', 'Recording backend is not installed')"
-						disabled
-						class="checkbox">
-						{{ t('spreed', 'Start recording immediately with the call') }}
-					</NcCheckboxRadioSwitch>
+					<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
 					<!-- Notify call option-->
 					<NcCheckboxRadioSwitch
-						v-if="showNotifyCallOption"
+						v-if="false && showNotifyCallOption /* ket4tec v7: без «Уведомить всех» */"
 						v-model="notifyCall"
+						type="switch"
 						class="checkbox"
 						@update:modelValue="setNotifyCall">
 						{{ t('spreed', 'Notify all participants about this call') }}
 					</NcCheckboxRadioSwitch>
 
+					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна -->
+					<p v-if="isBeforeJoinCall && isGuest && !guestNameStore.guestUserName.length" class="k4-join-hint">
+						Введите имя, чтобы войти
+					</p>
 					<NcButton
 						v-if="showUpdateChangesButton"
 						class="action-button"
@@ -238,7 +236,6 @@
 						v-else-if="isBeforeJoinCall"
 						class="action-button"
 						isMediaSettings
-						:isRecordingFromStart="isRecordingFromStart"
 						:disabled="disabledCallButton"
 						:recordingConsentGiven="recordingConsentGiven"
 						:silentCall="!notifyCall" />
@@ -274,6 +271,7 @@ import SetGuestUsername from '../SetGuestUsername.vue'
 import CallButton from '../TopBar/CallButton.vue'
 import VolumeIndicator from '../UIShared/VolumeIndicator.vue'
 import AdvancedAudioDialog from './AdvancedAudioDialog.vue'
+import FaceFrameSelector from './FaceFrameSelector.vue'
 import MediaDevicesSelector from './MediaDevicesSelector.vue'
 import MediaDevicesSpeakerTest from './MediaDevicesSpeakerTest.vue'
 import MediaSettingsTabs from './MediaSettingsTabs.vue'
@@ -285,10 +283,7 @@ import { useGetToken } from '../../composables/useGetToken.ts'
 import { useIsInCall } from '../../composables/useIsInCall.js'
 import { ATTENDEE, AVATAR, CALL, CONFIG, CONVERSATION, PARTICIPANT, VIRTUAL_BACKGROUND } from '../../constants.ts'
 import BrowserStorage from '../../services/BrowserStorage.js'
-import {
-	getTalkConfig,
-	showTalkFeatureHint,
-} from '../../services/CapabilitiesManager.ts'
+import { getTalkConfig } from '../../services/CapabilitiesManager.ts'
 import { useActorStore } from '../../stores/actor.ts'
 import { useGuestNameStore } from '../../stores/guestName.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
@@ -318,6 +313,7 @@ export default {
 		NcPopover,
 		NcNoteCard,
 		VideoBackground,
+		FaceFrameSelector,
 		VideoBackgroundEditor,
 		VolumeIndicator,
 		SetGuestUsername,
@@ -366,6 +362,7 @@ export default {
 			unsubscribeFromDevices,
 			audioStreamError,
 			videoStreamError,
+			cameraNotice,
 			virtualBackground,
 			registerVideoElement,
 		} = useDevices()
@@ -408,6 +405,7 @@ export default {
 			registerVideoElement,
 			audioStreamError,
 			videoStreamError,
+			cameraNotice,
 			virtualBackground,
 			tabs,
 			dialogHeaderId,
@@ -430,7 +428,6 @@ export default {
 			updatedBackground: undefined,
 			audioDeviceStateChanged: false,
 			videoDeviceStateChanged: false,
-			isRecordingFromStart: false,
 			isPublicShareAuthSidebar: false,
 			isMirrored: false,
 			skipBlurVirtualBackground: false,
@@ -526,17 +523,8 @@ export default {
 			].includes(this.conversation.callRecording)
 		},
 
-		canFullModerate() {
-			return this.conversation.participantType === PARTICIPANT.TYPE.OWNER
-				|| this.conversation.participantType === PARTICIPANT.TYPE.MODERATOR
-		},
-
 		isInLobby() {
 			return this.$store.getters.isInLobby
-		},
-
-		canModerateRecording() {
-			return this.canFullModerate && (getTalkConfig(this.token, 'call', 'recording') || false) && !this.isClassified
 		},
 
 		recordingConsent() {
@@ -563,14 +551,6 @@ export default {
 		showNotifyCallOption() {
 			return !this.hasCall && !this.isPublicShareAuthSidebar
 				&& this.isBeforeJoinCall && !this.isVoiceRoom
-		},
-
-		showStartRecordingOption() {
-			return !this.hasCall && this.canModerateRecording && this.isBeforeJoinCall
-		},
-
-		hintRecordingOption() {
-			return !this.hasCall && this.canFullModerate && !(getTalkConfig(this.token, 'call', 'recording') || false) && this.isBeforeJoinCall && showTalkFeatureHint(34) && !this.isClassified
 		},
 
 		showUpdateChangesButton() {
@@ -615,9 +595,25 @@ export default {
 			return t('spreed', 'Error while accessing microphone')
 		},
 
+		cameraNoticeText() {
+			const n = this.cameraNotice
+			if (!n) {
+				return null
+			}
+			const hung = n.label ? `Камера «${n.label}» не отвечает` : 'Камера не отвечает'
+			if (n.next) {
+				return `${hung}, включаю «${n.next}»`
+			}
+			return n.reload ? `${hung}. Обновите страницу и выберите другую камеру` : `${hung}. Выберите другую камеру`
+		},
+
 		videoStreamErrorMessage() {
 			if (!this.videoStreamError) {
 				return null
+			}
+
+			if (this.videoStreamError.name === 'TimeoutError') {
+				return 'Камера не отвечает. Выберите другую камеру'
 			}
 
 			if (this.videoStreamError.name === 'NotSupportedError' && !window.RTCPeerConnection) {
@@ -703,10 +699,6 @@ export default {
 			}
 		},
 
-		isRecordingFromStart(value) {
-			this.setRecordingConsentGiven(value)
-		},
-
 		isInCall(value) {
 			if (value) {
 				const virtualBackgroundEnabled = BrowserStorage.getItem('virtualBackgroundEnabled') === 'true'
@@ -746,6 +738,12 @@ export default {
 	mounted() {
 		if (!this.isDialog) {
 			this.showMediaSettings()
+		} else {
+			// ket4tec v7: на iOS с живым потоком крестик не получал click, а тап по подложке оставлял пустую страницу
+			// (затухание NcModal поверх живого видео со стеклянными кнопками, поток гасился до того, как шторка ушла).
+			// Тап по крестику или подложке ловим сами по координатам и убираем шторку сразу, поток гасим следом.
+			document.addEventListener('touchstart', this.k7TouchStart, { capture: true, passive: true })
+			document.addEventListener('touchend', this.k7TouchEnd, { capture: true, passive: false })
 		}
 	},
 
@@ -756,6 +754,8 @@ export default {
 		if (!this.isDialog) {
 			this.close()
 		}
+		document.removeEventListener('touchstart', this.k7TouchStart, { capture: true })
+		document.removeEventListener('touchend', this.k7TouchEnd, { capture: true })
 	},
 
 	methods: {
@@ -782,19 +782,51 @@ export default {
 			}
 		},
 
-		close() {
-			if (this.show) {
-				// Disable virtual background and release devices when closing
-				this.clearVirtualBackground()
-				this.unsubscribeFromDevices(PARTICIPANT.PERMISSIONS.MAX_DEFAULT)
+		k7TouchStart(e) {
+			const p = e.touches[0]
+			this.k7Touch = p ? { x: p.clientX, y: p.clientY } : null
+		},
+
+		k7TouchEnd(e) {
+			const p = e.changedTouches[0]
+			const s = this.k7Touch
+			this.k7Touch = null
+			if (!this.show || this.hideCloseButton || !p || !s || Math.hypot(p.clientX - s.x, p.clientY - s.y) > 12) {
+				return
 			}
+			const box = [...document.querySelectorAll('.modal-mask')].find((m) => m.querySelector('.media-settings'))
+			const cont = box?.querySelector('.modal-container')
+			if (!cont || getComputedStyle(box).display === 'none') {
+				return
+			}
+			const inside = (el) => {
+				const r = el?.getBoundingClientRect()
+				return !!r && p.clientX >= r.left && p.clientX <= r.right && p.clientY >= r.top && p.clientY <= r.bottom
+			}
+			const onX = inside(box.querySelector('.modal-container__close'))
+			if (!onX && (inside(cont) || !inside(box))) {
+				return
+			}
+			e.preventDefault() // без click-призрака по списку под шторкой
+			this.handleDialogClose()
+		},
+
+		close() {
+			// ket4tec v7: сначала убрать шторку, поток и фон гасить уже без неё (iOS: пустая страница после закрытия)
+			const wasShown = this.show
 			this.show = false
+			if (wasShown) {
+				this.$nextTick(() => {
+					// Disable virtual background and release devices when closing
+					this.clearVirtualBackground()
+					this.unsubscribeFromDevices(PARTICIPANT.PERMISSIONS.MAX_DEFAULT)
+				})
+			}
 			this.updatedBackground = undefined
 			this.audioDeviceStateChanged = false
 			this.videoDeviceStateChanged = false
 			this.isPublicShareAuthSidebar = false
 			this.isDeviceCheck = false
-			this.isRecordingFromStart = false
 			this.isMirrored = false
 			// Update devices preferences
 			this.updatePreferences('audioinput')
@@ -1058,6 +1090,13 @@ export default {
 		}
 	}
 
+	// ket4tec: окно «Проверить устройства» сразу в финальном размере — без этого оно растёт,
+	// когда браузер выдал доступ к камере и подписи устройств удлинились
+	.modal-container &__content:not(&__content--mobile) {
+		grid-template-columns: minmax(0, 4fr) minmax(0, 3fr);
+		width: min(818px, calc(100vw - 120px));
+	}
+
 	&__settings {
 		max-width: 450px; // 1/2 large modal width
 		display: flex;
@@ -1098,6 +1137,22 @@ export default {
 		height: 100%;
 		border-radius: var(--border-radius-element);
 	}
+
+	// ket4tec: «Камера не отвечает, включаю …» поверх превью
+	&__notice {
+		position: absolute;
+		top: calc(var(--default-grid-baseline) * 3);
+		inset-inline: calc(var(--default-grid-baseline) * 3);
+		z-index: 2;
+		margin: 0;
+		padding: calc(var(--default-grid-baseline) * 2) calc(var(--default-grid-baseline) * 3);
+		border-radius: var(--border-radius-element);
+		background: rgba(0, 0, 0, 0.72);
+		color: #fff;
+		font-size: 15px;
+		line-height: 1.35;
+		text-align: center;
+	}
 }
 
 .action-button {
@@ -1137,4 +1192,19 @@ export default {
 	width: unset !important;
 }
 
+</style>
+
+<style lang="scss">
+// ket4tec 9Б (приёмка 10.11). Вес :root:root:root — поверх k7call.scss, сам k7call.scss не трогаем (там же работает 9А).
+// п.1: микрофон и камера — в нижний угол превью, не на лицо
+:root:root:root body .media-settings__toggles { inset: auto; inset-block-end: 12px; inset-inline-start: 12px; transform: none; gap: 8px; }
+:root:root:root body .media-settings__toggles .button-vue { width: 44px; min-width: 44px; height: 44px; }
+// п.2: длинное имя камеры — многоточие с отступом от стрелки
+:root:root:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected-options { padding-inline-end: 12px !important; }
+// п.26
+.media-settings .k4-join-hint { margin: 10px 0 0; text-align: center; font-size: 14px; color: var(--k7-fg2, var(--color-text-maxcontrast)); }
+@media (max-width: 500px) {
+	:root:root:root body .media-settings__toggles { inset-block-end: 10px; inset-inline-start: 10px; }
+	:root:root:root body .media-settings__toggles .button-vue { width: 40px; min-width: 40px; height: 40px; }
+}
 </style>

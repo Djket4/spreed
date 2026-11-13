@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { markRaw, reactive } from 'vue'
+import { calllogRtc } from '../../calllog.js'
 import EmitterMixin from '../../EmitterMixin.js'
+import { k4log } from '../../k4log.js'
 
 export const ConnectionState = {
 	NEW: 'new',
@@ -191,6 +193,15 @@ CallParticipantModel.prototype = {
 		this._handleMute({ id: this.get('peer').id })
 	},
 
+	// ket4tec (NAS_CLOUD#154): просьба включить микрофон, тот же канал «control», что у forceMute
+	askUnmute() {
+		// По peerId, без Peer: у участника без медиапотоков в MCU peer === null
+		this._webRtc.sendToAll('control', {
+			action: 'askUnmute',
+			peerId: this.get('peerId'),
+		})
+	},
+
 	_handleUnmute(data) {
 		if (!this.get('peer') || this.get('peer').id !== data.id) {
 			return
@@ -276,6 +287,8 @@ CallParticipantModel.prototype = {
 	},
 
 	_handleExtendedIceConnectionStateChange(extendedIceConnectionState) {
+		k4log('ice', { id: this.get('peerId'), st: extendedIceConnectionState })
+		calllogRtc(this.get('peerId'), extendedIceConnectionState)
 		// Ensure that the name is set, as when the MCU is not used it will
 		// not be set later for registered users without microphone nor
 		// camera.

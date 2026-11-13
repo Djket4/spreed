@@ -140,7 +140,8 @@
 					class="top-bar__calendar-events"
 					:token="token" />
 
-				<CallButton v-if="!isInCall" shrinkOnMobile />
+				<!-- ket4tec (владелец 11.11, NAS_CLOUD#109 п.12): кнопка входа одна — большая в центре; в шапке только во встроенной панели -->
+				<CallButton v-if="!isInCall && actorStore.isLoggedIn && isSidebar" shrinkOnMobile />
 
 				<!-- Search messages button -->
 				<NcButton

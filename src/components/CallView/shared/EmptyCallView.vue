@@ -11,7 +11,8 @@
 			'empty-call-view--small': isSmall,
 		}"
 		data-theme-dark>
-		<component :is="emptyCallViewIcon" :size="isSidebar ? 32 : 64" class="empty-call-view__icon" />
+		<!-- ket4tec v7: значок ссылки над заголовком не показываем, остаётся только загрузка -->
+		<component :is="emptyCallViewIcon" v-if="isConnecting || isSidebar" :size="isSidebar ? 32 : 64" class="empty-call-view__icon" />
 		<h2>{{ title }}</h2>
 		<template v-if="!isSmall">
 			<p v-if="message" class="emptycontent-additional">
@@ -20,8 +21,14 @@
 			<NcButton
 				v-if="showLink"
 				variant="primary"
+				class="empty-call-view__link"
+				:title="t('spreed', 'Send link')"
+				:aria-label="t('spreed', 'Send link')"
 				@click.stop="handleCopyLink">
-				{{ t('spreed', 'Copy link') }}
+				<template #icon>
+					<IconLink :size="20" />
+				</template>
+				{{ t('spreed', 'Send link') }}
 			</NcButton>
 		</template>
 	</div>
@@ -37,7 +44,7 @@ import IconPhoneOutline from 'vue-material-design-icons/PhoneOutline.vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { CONVERSATION, PARTICIPANT } from '../../../constants.ts'
 import { isConversationPhoneRoom } from '../../../utils/conversation.ts'
-import { copyConversationLinkToClipboard } from '../../../utils/handleUrl.ts'
+import { copyConversationLinkToClipboard, generateFullConversationLink } from '../../../utils/handleUrl.ts'
 
 export default {
 
@@ -140,7 +147,7 @@ export default {
 				// Rendered via Vue text interpolation - avoid double escaping to correctly render special characters
 				return t('spreed', 'Waiting for {user} to join the call', { user: this.conversation.displayName }, { escape: false })
 			}
-			return t('spreed', 'Waiting for others to join the call …')
+			return t('spreed', 'Waiting for others')
 		},
 
 		message() {
@@ -164,15 +171,8 @@ export default {
 				return ''
 			}
 
-			if (this.isGroupConversation) {
-				return t('spreed', 'You can invite others in the participant tab of the sidebar')
-			}
-
-			if (this.isPublicConversation && this.canInviteOthersInPublicConversations) {
-				return t('spreed', 'You can invite others in the participant tab of the sidebar or share this link to invite others!')
-			}
-
-			return t('spreed', 'Share this link to invite others!')
+			// ket4tec v7: без подсказки про «вкладку участников боковой панели» — на телефоне её нет; ссылка — кнопкой ниже
+			return 
 		},
 
 		showLink() {
@@ -182,7 +182,16 @@ export default {
 
 	methods: {
 		t,
+		// ket4tec v7: телефон — системное «Поделиться» (как «Мой звонок»), компьютер — ссылка в буфер
 		handleCopyLink() {
+			if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+				navigator.share({ title: this.conversation?.displayName, url: generateFullConversationLink(this.token) }).catch((e) => {
+					if (e?.name !== 'AbortError') {
+						copyConversationLinkToClipboard(this.token)
+					}
+				})
+				return
+			}
 			copyConversationLinkToClipboard(this.token)
 		},
 	},

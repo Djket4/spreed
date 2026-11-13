@@ -156,7 +156,7 @@ export function useDocumentTitle() {
 	 * @param title Prefix for the page title e.g. conversation name
 	 */
 	function setPageTitle(title: string) {
-		const newTitle = title ? `${title} - ${defaultPageTitle.value}` : defaultPageTitle.value
+		const newTitle = title ? `${title} — ${defaultPageTitle.value}` : defaultPageTitle.value
 		document.title = (showAsterisk.value && !newTitle.startsWith('* '))
 			? '* ' + newTitle
 			: newTitle
@@ -171,14 +171,16 @@ export function useDocumentTitle() {
 			return document.title
 		}
 		const appNamePrefix = t('spreed', 'Talk') + ' - '
+		// KET4TEC: длинное тире в заголовке («Talk — KET4TEC Cloud», #103)
+		const current = document.title.replaceAll(' — ', ' - ')
+		let result = current
 		// If coming from a "… - Talk - …" page, keep only "Talk - …" part
-		if (document.title.includes(' - ' + appNamePrefix)) {
-			return document.title.substring(document.title.indexOf(' - ' + appNamePrefix) + 3)
+		if (current.includes(' - ' + appNamePrefix)) {
+			result = current.substring(current.indexOf(' - ' + appNamePrefix) + 3)
+		} else if (!current.startsWith(appNamePrefix)) {
+			// When a conversation is opened directly, "Talk - " might be missing from the title
+			result = appNamePrefix + current
 		}
-		// When a conversation is opened directly, "Talk - " might be missing from the title
-		if (!document.title.startsWith(appNamePrefix)) {
-			return appNamePrefix + document.title
-		}
-		return document.title
+		return result.replace(appNamePrefix, t('spreed', 'Talk') + ' — ')
 	}
 }

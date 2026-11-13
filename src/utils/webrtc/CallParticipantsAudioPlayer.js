@@ -119,7 +119,8 @@ CallParticipantsAudioPlayer.prototype = {
 			this._audioNodes.delete(id)
 		}
 
-		if (!stream) {
+		// ket4tec (NAS_CLOUD#108 п.5): поток показа экрана без звука — iOS Safari бросает на createMediaStreamSource
+		if (!stream || !stream.getAudioTracks().length) {
 			return
 		}
 

@@ -499,6 +499,15 @@ class Listener implements IEventListener {
 		}
 	}
 
+	/**
+	 * ket4tec #55: the HPB room message goes to every session, guests included,
+	 * so when any guest of the room lacks the chat permission (default or individual)
+	 * only the "refresh" signal is sent (clients fetch via API, which hides it from guests).
+	 */
+	protected function hidesChatFromGuests(Room $room): bool {
+		return $this->participantService->hasGuestWithoutChat($room);
+	}
+
 	protected function notifyMessageSent(AMessageSentEvent $event): void {
 		if ($event instanceof ASystemMessageSentEvent) {
 			$this->notifySystemMessageSent($event);
@@ -514,7 +523,7 @@ class Listener implements IEventListener {
 			],
 		];
 
-		if ($room->getLobbyState() !== Webinary::LOBBY_NONE) {
+		if ($room->getLobbyState() !== Webinary::LOBBY_NONE || $this->hidesChatFromGuests($room)) {
 			$this->externalSignaling->sendRoomMessage($room, $data);
 			return;
 		}
@@ -577,7 +586,8 @@ class Listener implements IEventListener {
 		];
 
 		if (!in_array($messageType, self::SYSTEM_MESSAGE_TYPE_RELAY, true)
-			|| $room->getLobbyState() !== Webinary::LOBBY_NONE) {
+			|| $room->getLobbyState() !== Webinary::LOBBY_NONE
+			|| $this->hidesChatFromGuests($room)) {
 			$this->externalSignaling->sendRoomMessage($room, $data);
 			return;
 		}
@@ -662,7 +672,7 @@ class Listener implements IEventListener {
 			],
 		];
 
-		if ($room->getLobbyState() !== Webinary::LOBBY_NONE) {
+		if ($room->getLobbyState() !== Webinary::LOBBY_NONE || $this->hidesChatFromGuests($room)) {
 			$this->externalSignaling->sendRoomMessage($room, $data);
 			return;
 		}

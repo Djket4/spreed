@@ -74,6 +74,15 @@ class Participant {
 		return \in_array($participantType, [self::GUEST, self::GUEST_MODERATOR], true);
 	}
 
+	/**
+	 * Guests (incl. email guests) never see chat content, in every conversation
+	 * and call (ket4tec #55, решение Андрея 10.11: «скрытый чат у гостей везде»).
+	 * Users keep the upstream behaviour.
+	 */
+	public function cannotSeeChat(): bool {
+		return \in_array($this->attendee->getActorType(), [Attendee::ACTOR_GUESTS, Attendee::ACTOR_EMAILS], true);
+	}
+
 	public function isSelfJoinedOrGuest(): bool {
 		$participantType = $this->attendee->getParticipantType();
 		return \in_array($participantType, [self::GUEST, self::GUEST_MODERATOR, self::USER_SELF_JOINED], true);

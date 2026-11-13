@@ -1,0 +1,442 @@
+// ket4tec: «Стол» v7 — экраны звонка (09.11.2026). Тёплый тёмный #1a1718 / светлый #f4efe9, Слива, стекло, капсулы.
+// Токены берём из темы облака (--tk-*, custom.css), запасные значения — те же цвета Стола: без темы звонок тёмный.
+// Тема облака (custom.css) ещё красит кнопки панели звонка квадратами по 56 px с !important; здесь они перебиты через #call-container.
+body {
+	--k7-bg: var(--tk-bg, #1a1718);
+	--k7-bg2: var(--tk-bg2, #242021);
+	--k7-bg3: var(--tk-bg3, #2c2627);
+	--k7-fg: var(--tk-fg, #f3eee9);
+	--k7-fg2: var(--tk-fg2, #bdb3ad);
+	--k7-line: var(--tk-line, #ffffff12);
+	--k7-line2: var(--tk-line2, #ffffff1f);
+	--k7-pill: var(--tk-pill, #ffffff1f);
+	--k7-acc: var(--tk-acc, #a86bff);
+	--k7-acc2: var(--tk-acc2, #5b2a86);
+	--k7-grad: linear-gradient(135deg, var(--k7-acc2), var(--k7-acc));
+	--k7-dng: var(--tk-dng, #e5453d);
+	--k7-ok: #2fb36a;
+	--k7-glass: color-mix(in srgb, var(--k7-bg2) 74%, transparent);
+	--k7-tile-a: #3b2f3f;
+	--k7-tile-b: #1d1620;
+	--k7-r-tile: 24px;
+	--k7-font: var(--font-face, 'Medeo Sans', system-ui, sans-serif);
+}
+body.k4-light {
+	--k7-tile-a: #ece3f1;
+	--k7-tile-b: #d9cde7;
+	--k7-glass: color-mix(in srgb, var(--k7-bg2) 78%, transparent);
+}
+
+$glass: blur(24px) saturate(180%);
+
+#content-vue.in-call #call-container {
+	background: var(--k7-bg);
+	font-family: var(--k7-font);
+	--k7-btn: 52px;
+	--bottom-bar-height: calc(var(--k7-btn) + var(--wrapper-padding) * 2 + 12px) !important;
+}
+
+// плитки участников: тёплая поверхность вместо серой, крупное скругление, подпись — стеклянная капсула
+#call-container .video-background,
+#call-container .placeholder-for-promoted {
+	background: linear-gradient(135deg, var(--k7-tile-a), var(--k7-tile-b));
+}
+#call-container :is(.video-container-grid, .videoWrapper, .video, .video-background, .placeholder-for-promoted) {
+	border-radius: var(--k7-r-tile);
+}
+// ket4tec (NAS_CLOUD#112): рамка — ::after плитки; радиус был 8px из VideoVue/LocalVideo (псевдоэлемент в :is() невалиден, правило выше его не красило),
+// плитка 24px: в углах рамка рвалась. Рамка говорящего (акцент) важнее красной «микрофон выключен» (--k7-dng): идёт ниже и перебивает.
+#call-container :is(.video-container, .localVideoContainer):not(.presenter-overlay)::after { border-radius: var(--k7-r-tile); }
+#call-container :is(.video-container, .localVideoContainer).k4-nomic::after { content: ''; box-shadow: inset 0 0 0 3px var(--k7-dng); }
+#call-container :is(.video-container, .localVideoContainer).speaking::after { content: ''; box-shadow: inset 0 0 0 3px var(--k7-acc); }
+#call-container .video-container.hover::after { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--k7-acc) 70%, #fff); }
+// ket4tec (слово владельца 11.11): подпись плитки — «нижняя треть», как в ТВ: тёмная плашка с полосой фирменного градиента слева,
+// имя крупно и жирно; размер от ширины плитки (контейнер — полоса подписи во всю ширину плитки)
+#call-container :is(.wrapper, .localVideoContainer > .bottom-bar) { container-type: inline-size; }
+#call-container .wrapper:not(.wrapper--big) { padding: 0 14px 14px; }
+#call-container .participant-name {
+	position: relative;
+	flex: 0 1 auto;
+	margin-inline: 0 auto;
+	padding: .42em .95em .42em 1.15em;
+	border-radius: 6px 12px 12px 6px;
+	background: linear-gradient(90deg, #140f17eb, #1a1718b8);
+	-webkit-backdrop-filter: blur(14px);
+	backdrop-filter: blur(14px);
+	box-shadow: 0 8px 22px #0007, inset 0 0 0 1px #ffffff14;
+	color: #fff;
+	font-size: clamp(14px, 2.7cqi, 24px);
+	font-weight: 700;
+	letter-spacing: .01em;
+	line-height: 1.25;
+	filter: none;
+	text-shadow: none;
+	&::before { content: ''; position: absolute; inset: 0 auto 0 0; width: .3em; background: var(--k7-grad); }
+}
+#call-container .wrapper .media-indicators > * {
+	border-radius: 999px;
+	background: #1a171899;
+	-webkit-backdrop-filter: blur(14px);
+	backdrop-filter: blur(14px);
+}
+#call-container .wrapper--big .bottom-bar:hover { background: none; }
+#call-container .local-video, #call-container .local-video :is(video, .local-video__container) { border-radius: var(--k7-r-tile); }
+#call-container .local-video { box-shadow: 0 10px 30px #0005, 0 0 0 1px var(--k7-line2); }
+
+// вход в звонок (проверка устройств): крупная карточка, на телефоне — шторка снизу
+:root body .modal-container:has(.media-settings) { border-radius: 28px; background: var(--k7-bg2) !important; color: var(--k7-fg); box-shadow: 0 24px 80px #0007, inset 0 0 0 1px var(--k7-line2); font-family: var(--k7-font); }
+:root body .media-settings { --color-main-text: var(--k7-fg); --color-text-maxcontrast: var(--k7-fg2); --color-primary-element: var(--k7-acc); --color-primary-element-text: #fff; }
+:root body .media-settings__title { margin: 0 0 14px; padding-inline-end: 56px; text-align: start; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.02em; color: var(--k7-fg); }
+:root body .modal-container:has(.media-settings) .modal-container__close { z-index: 3; top: 16px; inset-inline-end: 16px; width: 40px; height: 40px; border-radius: 999px; background: var(--k7-pill); color: var(--k7-fg); }
+// превью заполняет рамку (cover), без полей по бокам
+:root body .media-settings__preview { position: relative; overflow: hidden; border-radius: 24px !important; background: var(--k7-bg3); }
+:root body .media-settings__preview .preview__video { inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; object-position: center; border-radius: inherit; }
+:root:root body .media-settings__preview-mirror.button-vue { top: 12px; inset-inline-end: 12px; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 0 !important; border-radius: 999px !important; background: var(--k7-glass) !important; color: var(--k7-fg) !important; -webkit-backdrop-filter: $glass; backdrop-filter: $glass; box-shadow: inset 0 0 0 1px var(--k7-line2); }
+// мик / камера — круглые 56 px стекло поверх превью
+:root body .media-settings__toggles { bottom: 14px; gap: 12px; padding: 0; background: none; box-shadow: none; }
+:root:root body .media-settings__toggles .button-vue { width: 56px; min-width: 56px; height: 56px; padding: 0; border-radius: 999px !important; border: 0 !important; background: var(--k7-glass) !important; color: var(--k7-fg) !important; -webkit-backdrop-filter: $glass; backdrop-filter: $glass; box-shadow: inset 0 0 0 1px var(--k7-line2); }
+:root:root body .media-settings__toggles .button-vue:is(:has(.microphone-off-icon, .video-off-icon, .video-off-outline-icon), [aria-label^="Включить"]) { background: color-mix(in srgb, var(--k7-dng) 16%, var(--k7-glass)) !important; color: var(--k7-dng) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k7-dng) 40%, transparent) !important; }
+:root:root body .media-settings__toggles .button-vue--vue-error { background: var(--k7-dng) !important; color: #fff !important; }
+// выпадающие списки: одинаковые капсулы 52 px, иконка слева, шеврон справа; справа резерв 62 px под круглую кнопку теста
+:root body .media-settings :is(.media-devices-selector, .face-frame) { position: relative; display: block; margin: 10px 0; }
+:root body .media-settings :is(.media-devices-selector__icon, .face-frame__icon) { position: absolute; z-index: 1; top: 26px; inset-inline-start: 18px; width: 20px; margin: 0; transform: translateY(-50%); color: var(--k7-fg2); pointer-events: none; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .v-select.select { width: 100%; }
+// NcSelect сам гасит фон, поля и тень у одиночного списка (.nc-select.v-select.select:not(.vs--multiple), с !important) — перебиваем весом и !important
+:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 52px !important; min-height: 52px !important; flex-wrap: nowrap; padding: 0 8px 0 48px !important; border: 0 !important; border-radius: 999px !important; background: var(--k7-bg3) !important; box-shadow: inset 0 0 0 1px var(--k7-line2) !important; color: var(--k7-fg); }
+:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select.vs--open .vs__dropdown-toggle { box-shadow: inset 0 0 0 2px var(--k7-acc) !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected-options { flex-wrap: nowrap; min-width: 0; overflow: hidden; padding: 0 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected { display: block; position: static !important; min-width: 0; max-width: 100%; margin: 0 !important; padding: 0 !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--k7-fg) !important; font-size: 15px; font-weight: 600; opacity: 1 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected .name-parts { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+// поиск у списка устройств не нужен (readonly): штатное поле рисует свою рамку поверх капсулы
+:root:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__search { position: absolute !important; width: 0 !important; height: 0 !important; margin: 0 !important; padding: 0 !important; opacity: 0; overflow: hidden; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__clear { display: none !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__actions { padding: 0 6px 0 0 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs--disabled .vs__dropdown-toggle { opacity: .55; }
+:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { position: absolute; top: 6px; inset-inline-end: 44px; width: 40px; min-width: 40px; height: 40px; min-height: 40px; padding: 0; margin: 0; border: 0 !important; border-radius: 999px !important; background: var(--k7-pill) !important; color: var(--k7-fg) !important; }
+// ket4tec: все списки во всю ширину; тест динамика — круг внутри капсулы перед стрелкой
+:root:root body .media-settings .media-devices-selector:has(.media-devices-speaker-test-button) .nc-select.v-select.select .vs__dropdown-toggle { padding-inline-end: 92px !important; }
+// стрелка списка — цвет темы, не системный синий; текст обрезается до стрелки
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__selected-options { flex: 1 1 0 !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .vs__actions { flex: 0 0 auto; color: var(--k7-fg2) !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) :is(.vs__open-indicator, .vs__open-indicator-button, .vs__actions svg) { color: var(--k7-fg2) !important; fill: currentColor !important; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .media-devices-speaker-test-button .button-vue__text { display: none; }
+:root body .media-settings :is(.media-devices-selector, .face-frame) .media-devices-speaker-test-button .equalizer__bar { background: currentColor; }
+// одна вкладка (фоны запрещены темой) — полоса вкладок не нужна; запись без сервера записи — неактивная строка, прячем
+:root body .media-settings .tab-list { display: none !important; }
+:root body .media-settings .tab-panels-container, :root body .media-settings .tab-panel { min-height: 0 !important; padding: 0 !important; }
+:root body .media-settings__settings > .checkbox:has(input:disabled) { display: none !important; }
+:root body .media-settings .checkbox-radio-switch__text { color: var(--k7-fg); font-size: 15px; font-weight: 600; }
+:root body .media-settings .checkbox-radio-switch :is(.checkbox-radio-switch__content, label) { background: none !important; }
+// меню списка (рисуется в body)
+:root body:has(.media-settings) .vs__dropdown-menu--floating.vs__dropdown-menu { padding: 6px !important; border: 0 !important; border-radius: 18px !important; background: var(--k7-bg2) !important; color: var(--k7-fg); box-shadow: 0 16px 48px #0006, inset 0 0 0 1px var(--k7-line2) !important; }
+:root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option { min-height: 48px; padding: 0 14px; border-radius: 14px; color: var(--k7-fg); }
+:root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option--highlight { background: var(--k7-pill); color: var(--k7-fg); }
+:root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option--selected { font-weight: 700; color: var(--k7-acc); }
+// «Начать вызов» — капсула Слива
+:root body .media-settings .button-vue.join-call { border-radius: 999px !important; min-height: 52px; font-weight: 700; border: 0 !important; background: var(--k7-grad) !important; color: #fff !important; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent); }
+// ket4tec (NAS_CLOUD#109 п.14): недоступная кнопка одинакова на телефоне и планшете — без прозрачности (сквозь неё просвечивал список)
+:root:root body .media-settings .button-vue.join-call:disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
+
+// показ экрана: поверхность плитки, а не серый фон
+#call-container .screen-share, #call-container .screen { border-radius: var(--k7-r-tile); }
+
+// нижняя панель: стеклянная капсула по центру, красный круг «покинуть» рядом
+#content-vue #call-container > .bottom-bar {
+	justify-content: center;
+	gap: 10px;
+	padding: 0 var(--wrapper-padding) max(var(--wrapper-padding), env(safe-area-inset-bottom, 0px));
+	overflow: visible;
+	pointer-events: none;
+	background: none;
+}
+#content-vue #call-container > .bottom-bar > * { pointer-events: auto; }
+#content-vue #call-container > .bottom-bar .bottom-bar-call-controls:has(.buttons-bar) {
+	gap: 4px;
+	padding: 6px;
+	border-radius: 999px;
+	background: var(--k7-glass);
+	-webkit-backdrop-filter: $glass;
+	backdrop-filter: $glass;
+	box-shadow: inset 0 1px 0 #ffffff1a, inset 0 0 0 1px var(--k7-line2), 0 12px 32px #0004;
+}
+#content-vue #call-container > .bottom-bar .buttons-bar { gap: 4px !important; }
+#content-vue #call-container > .bottom-bar .bottom-bar-options { gap: 0 !important; }
+// круглые кнопки капсулы (перебивают квадраты 56 темы облака)
+#content-vue #call-container > .bottom-bar :is(
+	.buttons-bar > .button-vue,
+	.local-audio-control-wrapper button:not(.action-item__menutoggle),
+	.local-video-control-wrapper button:not(.action-item__menutoggle),
+	.action-item__menutoggle:not(.audio-selector-button, .video-selector-button):not(:has(.chevron-up-icon, .chevron-down-icon)),
+	.k4-pencil.button-vue,
+	.k4stk-btn.button-vue,
+	.k7-call-settings.button-vue
+) {
+	flex: none !important;
+	width: var(--k7-btn) !important;
+	min-width: var(--k7-btn) !important;
+	height: var(--k7-btn) !important;
+	min-height: var(--k7-btn) !important;
+	padding: 0 !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7-bbg, var(--k7-pill)) !important;
+	color: var(--k7-bfg, var(--k7-fg)) !important;
+	box-shadow: none !important;
+	transition: transform .12s ease-out, background .2s;
+}
+// ket4tec (NAS_CLOUD#106): иконки капсулы крупнее и одного размера. Тема облака (custom css) рисует штатные иконки маской
+// в ::before по 16px — в круге 52px мелко и рядом с нашими 24px (стикеры, карандаш) вразнобой
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__icon > .material-design-icon:not(.chevron-up-icon, .chevron-down-icon, .menu-down-icon) { width: 24px; height: 24px; }
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__icon > .material-design-icon:not(.chevron-up-icon, .chevron-down-icon, .menu-down-icon)::before { width: 24px; height: 24px; mask-size: 24px; -webkit-mask-size: 24px; }
+#content-vue #call-container > .bottom-bar .button-vue[aria-label^="Во весь экран"] .button-vue__icon > .material-design-icon::before { width: 20px; height: 20px; mask-size: 20px; -webkit-mask-size: 20px; }
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__wrapper { justify-content: center; }
+#content-vue #call-container > .bottom-bar .button-vue .button-vue__icon > .volume-indicator-wrapper { transform: scale(1.2); } // микрофон: Talk рисует 20px с индикатором громкости
+#content-vue #call-container > .bottom-bar .k4stk-btn .button-vue__icon > svg { width: 26px; height: 26px; }
+// наведение только там, где есть мышь: на айфоне серый фон «залипал» на последней нажатой кнопке
+@media (hover: hover) { #content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .k4stk-btn.button-vue, .action-item__menutoggle):hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; } }
+#content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue, .k4-pencil.button-vue, .k4stk-btn.button-vue, .local-audio-control-wrapper button, .local-video-control-wrapper button):active:not(:disabled) { transform: scale(.92); }
+// «выключено» (микрофон, камера) — стекло с красноватым оттенком и зачёркнутым значком (сплошная заливка выглядела тяжело, Андрей)
+#content-vue #call-container > .bottom-bar :is(.local-audio-control-wrapper, .local-video-control-wrapper) button:is(:has(.microphone-off-icon, .video-off-icon, .video-off-outline-icon), [aria-label^="Включить микрофон"], [aria-label^="Включить видео"], [aria-label^="Unmute audio"], [aria-label^="Enable video"]) {
+	--k7-bbg: color-mix(in srgb, var(--k7-dng) 16%, var(--k7-glass));
+	--k7-bfg: var(--k7-dng);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k7-dng) 40%, transparent) !important;
+}
+// показ экрана включён — Слива; «Рисовать» — Слива, пока рисую или открыта доска (иначе обычное стекло, тёмной кнопки нет)
+#content-vue #call-container > .bottom-bar :is(.buttons-bar > .button-vue.screensharing-enabled, .k4-pencil.k4-on.button-vue) {
+	background: var(--k7-grad) !important;
+	color: #fff !important;
+}
+// «Вид»: доска на экране — Слива с белым значком, иначе стекло; без фиолетового фона темы облака при открытом меню
+#content-vue #call-container > .bottom-bar :is(.k7-view .action-item__menutoggle, .k7-view.action-item--single).button-vue { background: var(--k7-pill) !important; color: var(--k7-fg) !important; box-shadow: none !important; outline: none !important; }
+#content-vue #call-container > .bottom-bar :is(.k7-view.k7-on .action-item__menutoggle, .k7-view.k7-on.action-item--single).button-vue { background: var(--k7-grad) !important; color: #fff !important; }
+#content-vue #call-container > .bottom-bar :is(.k7-view .action-item__menutoggle, .k7-view.action-item--single) .material-design-icon { color: inherit !important; }
+#content-vue #call-container > .bottom-bar .k4stk-btn.button-vue.k4stk-on { background: var(--k7-grad) !important; color: #fff !important; }
+#content-vue #call-container > .bottom-bar .k4-pencil.k4-on.button-vue:hover:not(:disabled) { filter: brightness(1.12); background: var(--k7-grad) !important; }
+// стрелки выбора устройства — маленькие бейджи у угла
+#content-vue #call-container > .bottom-bar :is(.local-audio-control-wrapper, .local-video-control-wrapper) > .action-item .action-item__menutoggle {
+	border-radius: 999px !important;
+	background: var(--k7-bg) !important;
+	color: var(--k7-fg) !important;
+	box-shadow: 0 0 0 1px var(--k7-line2) !important;
+}
+// завершить звонок — единственный красный
+#content-vue #call-container > .bottom-bar .bottom-bar-options .leave-call.call-button.button-vue:not(.leave-call-actions--split) {
+	width: var(--k7-btn) !important;
+	padding: 0 !important;
+	min-width: var(--k7-btn) !important;
+	height: var(--k7-btn) !important;
+	min-height: var(--k7-btn) !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7-dng) !important;
+	color: #fff !important;
+	box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-dng) 45%, transparent) !important;
+}
+// кнопка — круг фиксированного размера: подпись не помещается («П…»), оставляем иконку (aria-label есть)
+#content-vue #call-container > .bottom-bar .leave-call :is(.button-vue__text, .action-button__text) { display: none !important; }
+// у модератора «Покинуть» составная: красный круг + стрелка меню «Завершить для всех» бейджем у угла, как у микрофона
+#content-vue #call-container > .bottom-bar .leave-call-actions--split { position: relative; display: flex; gap: 0 !important; }
+#content-vue #call-container > .bottom-bar .leave-call-actions--split button.leave-call-button--split.button-vue.action-item {
+	width: var(--k7-btn) !important;
+	min-width: var(--k7-btn) !important;
+	height: var(--k7-btn) !important;
+	min-height: var(--k7-btn) !important;
+	padding: 0 !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7-dng) !important;
+	color: #fff !important;
+	box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-dng) 45%, transparent) !important;
+}
+#content-vue #call-container > .bottom-bar .leave-call-actions--split > div.action-item { position: absolute !important; z-index: 1; top: -8px; inset-inline-end: -8px; } // NAS_CLOUD#109 п.11: бейдж у угла, не на трубке
+#content-vue #call-container > .bottom-bar .leave-call-actions--split > div.action-item .action-item__menutoggle {
+	--button-size: 22px;
+	width: 22px !important;
+	min-width: 22px !important;
+	height: 22px !important;
+	min-height: 22px !important;
+	padding: 0 !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7-bg) !important;
+	color: var(--k7-fg) !important;
+	box-shadow: 0 0 0 1px var(--k7-line2) !important;
+}
+#content-vue #call-container > .bottom-bar .leave-call-actions--split > div.action-item .action-item__menutoggle .material-design-icon svg { width: 16px; height: 16px; }
+#content-vue #call-container > .bottom-bar .bottom-bar-options .leave-call:hover:not(:disabled) { filter: brightness(1.1); }
+// левая группа (развернуть, вид) — стеклянные круги
+#content-vue #call-container > .bottom-bar > .bottom-bar-call-controls:not(:has(.buttons-bar)) { display: flex; gap: 8px; }
+#content-vue #call-container > .bottom-bar > .bottom-bar-call-controls:not(:has(.buttons-bar)) .button-vue {
+	width: 44px;
+	height: 44px;
+	min-height: 44px;
+	border-radius: 999px;
+	background: var(--k7-glass);
+	-webkit-backdrop-filter: $glass;
+	backdrop-filter: $glass;
+	box-shadow: inset 0 0 0 1px var(--k7-line2);
+	color: var(--k7-fg);
+}
+#content-vue.in-call .app-navigation-toggle-wrapper .button-vue { border-radius: 999px; background: var(--k7-pill); color: var(--k7-fg); }
+
+// верхняя панель звонка: прозрачная, управление — капсулы
+#content-vue .top-bar--in-call { background: transparent; color: var(--k7-fg); }
+#content-vue .top-bar--in-call :is(.title, .button-vue, .call-time__text) { color: var(--k7-fg); }
+#content-vue .top-bar--in-call .conversation-header .title { font-weight: 700; letter-spacing: -.012em; }
+#content-vue .top-bar--in-call .top-bar__controls .button-vue--tertiary { border-radius: 999px; background: var(--k7-pill); }
+@media (hover: hover) { #content-vue .top-bar--in-call .top-bar__controls .button-vue--tertiary:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent); } }
+#content-vue .top-bar--in-call .top-bar__controls { gap: 6px; margin-inline-end: 4px; } // +4 — тот же зазор 6 до кнопки чата (она стоит отдельно, абсолютно)
+// «Открыть чат» справа в шапке звонка — та же капсула (штатная прозрачная иконка на светлой теме не видна)
+#content-vue.in-call .app-sidebar__toggle.button-vue { border-radius: 999px !important; background: var(--k7-pill) !important; color: var(--k7-fg) !important; }
+// шапка звонка: таймер, «…» и чат — одна высота 40; слева нет гамбургера — заголовок без отступа под него
+// (тема на ≤430 резервирует 48px под кнопку списка бесед, но в звонке она спрятана — пустое место слева от названия)
+@media (max-width: 700px) { html.k7f #content-vue.in-call .top-bar--in-call .conversation-header { padding-inline-start: 4px; } }
+#content-vue .top-bar--in-call .top-bar__controls :is(.call-time, .button-vue) { height: 40px !important; min-height: 40px !important; }
+#content-vue .top-bar--in-call .top-bar__controls > .button-vue:not(:has(.button-vue__text)), #content-vue .top-bar--in-call .top-bar__controls .action-item .button-vue { width: 40px !important; min-width: 40px !important; }
+#content-vue.in-call .app-sidebar__toggle.button-vue { width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; transform: translateY(-4px); }
+
+// телефон
+@media (max-width: 768px) {
+	// тема облака на телефоне растягивает список бесед на экран, а закрытый сдвигает только на 300 px: в звонке он торчал полосой слева
+	#content-vue.in-call .app-navigation--closed { visibility: hidden; pointer-events: none; transform: translateX(-100%); }
+	body { --k7-r-tile: 20px; }
+	#content-vue.in-call #call-container { --k7-btn: 56px; }
+	#content-vue #call-container > .bottom-bar { gap: 8px; }
+	// п.5: 7 кнопок капсулы + «покинуть» во всю ширину iPhone (402) без обрезки: кнопка = (ширина − поля) / 8, от 40 до 56
+	#content-vue.in-call #call-container { --k7-btn: clamp(40px, calc((100vw - 52px) / 8), 56px); }
+	#content-vue #call-container > .bottom-bar .bottom-bar-call-controls:has(.buttons-bar) { gap: 2px; padding: 4px; }
+	#content-vue #call-container > .bottom-bar .buttons-bar { gap: 2px !important; }
+	// «во весь экран» в Safari на iPhone не работает — кнопку слева не показываем
+	#content-vue #call-container > .bottom-bar > .bottom-bar-call-controls:not(:has(.buttons-bar)) { display: none !important; }
+}
+
+/* телефон: окно проверки устройств — шторка снизу, под шапкой Стола (~110 px); всё внутри шторки, листается сама шторка */
+@media (max-width: 500px) {
+	:root:root body .modal-wrapper:has(.media-settings) { display: flex !important; flex-direction: column; justify-content: flex-end !important; align-items: stretch !important; padding: 0 0 var(--k7-sheet-bottom, 0px) !important; }
+	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
+	// предел высоты — у самой прокрутки, не у контейнера: Safari не сжимает flex-ребёнка под max-height родителя, и листалась маска со всей шторкой
+	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: calc(var(--k7-vh, 100dvh) - 110px - var(--k7-sheet-bottom, 0px)) !important; }
+	// превью камеры — нормальной формы 16:10 (148 px сплющивало лицо, Андрей 10.11); шторка всё равно ниже шапки Стола
+	:root body .media-settings__preview { width: 100% !important; height: auto !important; aspect-ratio: 16 / 10 !important; }
+	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
+	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
+	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
+	:root body .media-settings__toggles { bottom: 10px; }
+	:root:root body .media-settings__toggles .button-vue { width: 48px; min-width: 48px; height: 48px; }
+	:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 48px !important; min-height: 48px !important; }
+	:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { top: 6px; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
+	:root body .media-settings { padding: 20px 16px max(20px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
+	:root body .media-settings__title { font-size: 24px; margin-bottom: 12px; }
+	:root body .media-settings__content--mobile { gap: 12px !important; }
+	:root body .media-settings__preview { margin-inline-end: 0 !important; }
+	:root body .media-settings .media-settings__settings { max-width: none; }
+	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
+	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 4px 0; }
+	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: sticky !important; inset: auto 0 12px 0 !important; z-index: 2; width: 100% !important; min-width: 0 !important; margin: 10px 0 0 !important; box-shadow: 0 0 0 10px var(--k7-bg2), 0 14px 0 10px var(--k7-bg2) !important; }
+}
+
+// светлая и тёмная тема: компоненты звонка стоят в data-theme-dark (белый текст), на светлом фоне Стола он не виден — подставляем цвет темы
+#content-vue .top-bar--in-call, #call-container .empty-call-view:not(.empty-call-view--small) {
+	--color-main-text: var(--k7-fg);
+	--color-text-maxcontrast: var(--k7-fg2);
+	color: var(--k7-fg);
+}
+#content-vue .top-bar--in-call :is(.title, .subtitle, .call-time, .call-time__text, .top-bar__icon-wrapper) { color: var(--k7-fg); }
+#content-vue .top-bar--in-call .conversation-header { min-width: 0; }
+#content-vue .top-bar--in-call .conversation-header .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#call-container .empty-call-view:not(.empty-call-view--small) :is(h2, p, .empty-call-view__icon) { color: var(--k7-fg); }
+// кнопка ссылки — капсула с подписью, не квадрат
+#call-container .empty-call-view .empty-call-view__link.button-vue {
+	width: auto !important;
+	min-width: 0 !important;
+	height: 48px !important;
+	min-height: 48px !important;
+	padding: 0 20px 0 14px !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7-pill) !important;
+	color: var(--k7-fg) !important;
+	font-weight: 600;
+	-webkit-backdrop-filter: $glass;
+	backdrop-filter: $glass;
+	box-shadow: inset 0 0 0 1px var(--k7-line2) !important;
+}
+#call-container .empty-call-view .empty-call-view__link.button-vue .button-vue__text { overflow: visible; }
+// своё превью: cover и скругление 20 px
+#call-container .local-video, #call-container .local-video :is(video, .local-video__container) { border-radius: 20px; }
+#call-container .local-video video { object-fit: cover; }
+
+// ---------- Блок 4: звонок на телефоне ----------
+// выбор устройств — шестерёнкой «Настройки» (шторка устройств), стрелки-меню у микрофона и камеры не нужны
+#content-vue #call-container > .bottom-bar :is(.local-audio-control-wrapper, .local-video-control-wrapper) div.action-item { display: none !important; }
+@media (hover: hover) { #content-vue #call-container > .bottom-bar .k7-call-settings.button-vue:hover:not(:disabled) { background: color-mix(in srgb, var(--k7-fg) 22%, transparent) !important; } }
+#content-vue #call-container > .bottom-bar .k7-call-settings.button-vue:active:not(:disabled) { transform: scale(.92); }
+
+// экран ожидания: коротко, крупная капсула «Отправить ссылку», выше своего превью
+#call-container .empty-call-view:not(.empty-call-view--small):not(.empty-call-view--sidebar) {
+	justify-content: flex-start !important;
+	padding: 18vh 24px 0;
+	gap: 18px;
+	h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+	.emptycontent-additional { margin: 0; font-size: 15px; color: var(--k7-fg2); }
+	.empty-call-view__link.button-vue { align-self: center; min-height: 52px !important; padding: 0 26px !important; border: 0 !important; border-radius: 999px !important; background: var(--k7-grad) !important; color: #fff !important; font-size: 16px; font-weight: 700; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent) !important; }
+}
+
+// реакции — крупными стикерами поверх видео (NAS_CLOUD#18): картинка 96, подпись — капсула под ней
+#call-container .toaster .toast { flex-direction: column; gap: 4px; }
+#call-container .toaster .toast__reaction-img { width: 96px !important; height: 96px !important; filter: drop-shadow(0 6px 16px #0006); }
+#call-container .toaster .toast__reaction { font-size: 80px !important; line-height: 1; filter: drop-shadow(0 6px 16px #0006); }
+#call-container .toaster .toast__name { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+
+// ---------- Блок 9А: панель звонка ----------
+// п.48: без задержки двойного тапа и без выделения текста долгим нажатием
+#content-vue #call-container > .bottom-bar :is(button, .action-item__menutoggle) { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+// п.47: меню «Вид» — тёмное стекло v7, а не белое меню облака
+:root body .v-popper__popper:has(.k7-view-item) .v-popper__inner { border: 0 !important; border-radius: 20px !important; background: var(--k7-bg2) !important; color: var(--k7-fg) !important; box-shadow: 0 18px 50px #0007, inset 0 0 0 1px var(--k7-line2) !important; }
+:root body .v-popper__popper:has(.k7-view-item) .v-popper__arrow-container { display: none; }
+:root body .v-popper__popper:has(.k7-view-item) ul { padding: 6px; }
+:root body .k7-view-item :is(.action-button, button) { min-height: 48px; border-radius: 14px !important; color: var(--k7-fg) !important; background: transparent !important; }
+:root body .k7-view-item :is(.action-button, button):hover { background: var(--k7-pill) !important; }
+:root body .k7-view-item :is(.action-button__text, .action-button__longtext) { color: var(--k7-fg) !important; font-weight: 600; }
+:root body .v-popper__popper .k7-view-item .material-design-icon { color: var(--k7-fg2); }
+:root body .k7-view-item .checkbox-radio-switch__icon, :root body .k7-view-item .action-button__pressed-icon { color: var(--k7-acc) !important; }
+
+// один в звонке: своя камера крупно по центру, «Ждём остальных» и ссылка над ней (Андрей 10.11); полоска со стрелкой не нужна
+#call-container.k7-alone {
+	--k7-alone-top: 170px;
+	.empty-call-view:not(.empty-call-view--small) { justify-content: flex-start !important; padding-top: 96px !important; z-index: 2; pointer-events: none; }
+	.empty-call-view .empty-call-view__link { pointer-events: auto; }
+	#videos .video__promoted { display: none !important; }
+	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px 96px !important; box-sizing: border-box; background: none !important; }
+	.grid-main-wrapper .stripe-controls-position { display: none !important; }
+	:is(.videos-wrapper--stripe, .stripe-wrapper, .stripe-wrapper > .grid) { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; background: none !important; overflow: visible !important; }
+	.grid-main-wrapper.overlap { container-type: size; }
+	// ket4tec (NAS_CLOUD#159): своя камера — квадрат по центру свободного места
+	.stripe-wrapper .grid > .localVideoContainer { position: relative !important; inset: auto !important; flex: none !important; width: min(100cqw, 100cqh) !important; height: min(100cqw, 100cqh) !important; aspect-ratio: 1 !important; margin: 0 !important; }
+}
+
+// ket4tec (NAS_CLOUD#159): камеры — квадраты (решение владельца 12.11); показ экрана и доска — в своих пропорциях
+// крупный кадр камеры (закреплённый, говорящий): квадрат по центру главной области
+#call-container .video__promoted { container-type: size; }
+#call-container .video__promoted > .video-container-big { position: absolute !important; inset: 0 !important; margin: auto !important; padding: 0 !important; width: 100cqmin !important; height: 100cqmin !important; max-width: none !important; }
+// лента (в том числе «Вы»): квадраты высотой с ленту, листается пальцем и колесом
+#call-container .grid-main-wrapper:not(.is-grid) .grid { display: flex !important; gap: var(--grid-gap); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid::-webkit-scrollbar { display: none; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid > * { flex: none !important; position: relative !important; inset: auto !important; width: auto !important; height: 100% !important; aspect-ratio: 1 !important; margin: 0 !important; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid > :first-child { margin-inline-start: auto !important; }
+#call-container .grid-main-wrapper:not(.is-grid) .grid > :last-child { margin-inline-end: auto !important; }
+// сетка: видео — cover по центру квадрата
+#call-container :is(.video-container-grid, .localVideoContainer) video { object-fit: cover; object-position: center; }
+// подпись плитки: длинное имя — многоточие внутри плитки
+#call-container .video-container-grid, #call-container .localVideoContainer { min-width: 0; max-width: 100%; }
+// крупная плитка: подпись и «Открепить» во всю ширину квадрата (отступ под кнопку полосы больше не нужен, полоса отдельно)
+#call-container .wrapper--big { margin: 0 !important; width: 100% !important; padding-inline: 8px; }
+#call-container .wrapper--big .bottom-bar { max-width: 100%; }
+#call-container .wrapper--big .participant-name { min-width: 0; }
+// плитка ленты мала: подпись на всю ширину в своей строке, значки микрофона и камеры под ней
+#call-container .grid-main-wrapper:not(.is-grid) .wrapper:not(.wrapper--big) .bottom-bar { flex-wrap: wrap; row-gap: 2px; }
+#call-container .grid-main-wrapper:not(.is-grid) .wrapper:not(.wrapper--big) .participant-name { flex: 0 1 100%; max-width: 100%; box-sizing: border-box; }
+// ket4tec (NAS_CLOUD#159): таймер с индикатором записи на телефоне обрезался с двух сторон («)6 : 1(») — кнопка не сжимается ниже текста
+#content-vue .top-bar--in-call .top-bar__controls .call-time { flex: none; min-width: max-content; }
+#content-vue .top-bar--in-call .top-bar__controls .call-time .button-vue { width: auto !important; min-width: max-content; padding-inline: 12px; }
+#content-vue .top-bar--in-call .call-time__text { white-space: nowrap; overflow: visible; }

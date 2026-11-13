@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FaceFrame стенд</title>
+<style>
+body { font: 16px system-ui; margin: 12px; background: #111; color: #eee }
+video { width: 100%; max-width: 480px; background: #000; display: block; transform: scaleX(-1) }
+select, button { font-size: 18px; margin: 4px 4px 4px 0 }
+#stats { font: 700 28px/1.3 ui-monospace, monospace; margin-top: 8px; white-space: pre }
+</style>
+</head>
+<body>
+<div>
+	<select id="cam"></select>
+	<select id="level">
+		<option value="off">Выкл</option>
+		<option value="1">1×</option>
+		<option value="auto">Авто</option>
+	</select>
+	<button id="start">Старт</button>
+</div>
+<video id="preview" autoplay muted playsinline></video>
+<div id="stats"></div>
+<script type="module" src="/harness/faceframe.js"></script>
+</body>
+</html>

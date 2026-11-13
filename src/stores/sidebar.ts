@@ -1,3 +1,4 @@
+import { getCurrentUser } from '@nextcloud/auth'
 import { emit } from '@nextcloud/event-bus'
 /**
  * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
@@ -6,9 +7,18 @@ import { emit } from '@nextcloud/event-bus'
 import { defineStore } from 'pinia'
 import BrowserStorage from '../services/BrowserStorage.js'
 
+/**
+ * Открыта ли панель по умолчанию.
+ * ket4tec: гостю — закрыта (имя он вводит в центре комнаты, в панели был дубль), пока сам не откроет
+ */
+export function sidebarOpenByDefault(): boolean {
+	const v = BrowserStorage.getItem('sidebarOpen')
+	return v === null ? !!getCurrentUser() : v !== 'false'
+}
+
 export const useSidebarStore = defineStore('sidebar', {
 	state: () => ({
-		show: BrowserStorage.getItem('sidebarOpen') !== 'false',
+		show: sidebarOpenByDefault(),
 	}),
 
 	actions: {

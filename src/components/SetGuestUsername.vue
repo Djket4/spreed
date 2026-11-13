@@ -132,15 +132,16 @@ function toggleEdit() {
 				v-model="guestUserName"
 				:placeholder="t('spreed', 'Guest')"
 				class="username-form__input"
-				:label="t('spreed', 'Display name (required)')"
+				:label="compact ? 'Ваше имя' /* ket4tec 9Б п.25: длинная подпись обрезалась */ : t('spreed', 'Display name (required)')"
 				:showTrailingButton="!!guestUserName && !compact"
 				trailingButtonIcon="arrowEnd"
 				:trailingButtonLabel="t('spreed', 'Save name')"
 				@trailingButtonClick="!compact ? updateDisplayName() : null"
 				@keydown.enter="!compact ? updateDisplayName() : null"
 				@keydown.esc="toggleEdit" />
+			<!-- ket4tec 9Б п.25: в компактном поле кубик без подписи непонятен — только в правке имени -->
 			<NcButton
-				v-if="isEditingUsername || compact"
+				v-if="isEditingUsername && !compact"
 				variant="tertiary"
 				:aria-label="t('spreed', 'Придумать имя')"
 				:title="t('spreed', 'Придумать имя')"
@@ -150,6 +151,17 @@ function toggleEdit() {
 				</template>
 			</NcButton>
 		</div>
+		<!-- ket4tec (владелец 11.11): «Придумать имя» вернуть — кнопкой с подписью, не голым кубиком (п.25) -->
+		<NcButton
+			v-if="compact"
+			variant="tertiary"
+			class="username-form__dice"
+			@click="guestUserName = funnyName()">
+			<template #icon>
+				<IconDice :size="20" />
+			</template>
+			{{ t('spreed', 'Придумать имя') }}
+		</NcButton>
 
 		<p class="login-info">
 			{{ t('spreed', 'Do you already have an account?') }}
@@ -173,6 +185,11 @@ function toggleEdit() {
 			flex-shrink: 0;
 			margin-inline-end: var(--default-grid-baseline);
 		}
+	}
+
+	&__dice {
+		margin-block-start: 4px;
+		margin-inline-start: calc(var(--default-grid-baseline) * 2 + 20px); // под полем, на одной оси с «У вас уже есть…»
 	}
 }
 

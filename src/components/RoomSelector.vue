@@ -64,6 +64,7 @@ import ConversationsSearchListVirtual from './LeftSidebar/ConversationsList/Conv
 import { useGetToken } from '../composables/useGetToken.ts'
 import { CONVERSATION } from '../constants.ts'
 import { fetchConversations, searchListedConversations } from '../services/conversationsService.ts'
+import { isK7ServiceConversation } from '../utils/conversation.ts'
 
 export default {
 	name: 'RoomSelector',
@@ -146,7 +147,7 @@ export default {
 
 	computed: {
 		availableRooms() {
-			return this.rooms.filter((room) => room.type !== CONVERSATION.TYPE.CHANGELOG
+			return this.rooms.filter((room) => !isK7ServiceConversation(room)
 				&& room.objectType !== CONVERSATION.OBJECT_TYPE.FILE
 				&& room.objectType !== CONVERSATION.OBJECT_TYPE.VIDEO_VERIFICATION
 				&& (!this.currentRoom || this.currentRoom !== room.token)

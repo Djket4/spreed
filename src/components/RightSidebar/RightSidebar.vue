@@ -12,15 +12,14 @@
 		:name="conversation.displayName"
 		:title="conversation.displayName"
 		:class="'active-tab-' + activeTab"
-		:toggleClasses="{ 'chat-button-sidebar-toggle': isInCall }"
+		:toggleClasses="{ 'chat-button-sidebar-toggle': isInCall, 'k7-guest-nochat': isInCall && isChatHidden }"
 		:toggleAttrs="isInCall ? inCallToggleAttrs : undefined"
 		@update:open="handleUpdateOpen"
 		@update:active="handleUpdateActive"
 		@closed="handleClosed">
-		<!-- Use a custom icon when sidebar is used for chat messages during the call -->
+		<!-- ket4tec v7 (решение владельца 10.11): в звонке чата в панели нет — «Участники» и «Файлы» -->
 		<template v-if="isInCall" #toggle-icon>
-			<IconMessageTextOutline :size="20" />
-			<span v-if="unreadMessagesCounter > 0" class="chat-button-unread-marker" />
+			<IconAccountMultipleOutline :size="20" />
 		</template>
 		<template #info>
 			<RightSidebarContent
@@ -55,17 +54,6 @@
 		</NcAppSidebarTab>
 		<template v-else>
 			<NcAppSidebarTab
-				v-if="isInCall"
-				id="chat"
-				key="chat"
-				:order="1"
-				:name="t('spreed', 'Chat')">
-				<template #icon>
-					<IconMessageOutline :size="20" />
-				</template>
-				<ChatView :isVisible="opened" isSidebar />
-			</NcAppSidebarTab>
-			<NcAppSidebarTab
 				v-if="showParticipantsTab"
 				id="participants"
 				key="participants"
@@ -79,8 +67,20 @@
 					:canSearch="canSearchParticipants"
 					:canAdd="canAddParticipants" />
 			</NcAppSidebarTab>
+			<!-- ket4tec (владелец 11.11): гифки и стикеры — вкладкой рядом с участниками, камеры не перекрывает -->
 			<NcAppSidebarTab
-				v-if="showBreakoutRoomsTab"
+				v-if="isInCall && k4stkCan()"
+				id="k4-stickers"
+				key="k4-stickers"
+				:order="3"
+				name="Гифки">
+				<template #icon>
+					<IconStickerEmoji :size="20" />
+				</template>
+				<StickerSheet />
+			</NcAppSidebarTab>
+			<NcAppSidebarTab
+				v-if="showBreakoutRoomsTab && !isInCall"
 				id="breakout-rooms"
 				key="breakout-rooms"
 				ref="breakout-rooms"
@@ -95,7 +95,7 @@
 					:isActive="activeTab === 'breakout-rooms'" />
 			</NcAppSidebarTab>
 			<NcAppSidebarTab
-				v-if="showDetailsTab"
+				v-if="showDetailsTab && !isInCall"
 				id="details-tab"
 				key="details-tab"
 				:order="4"
@@ -122,10 +122,11 @@
 				key="shared-items"
 				ref="sharedItemsTab"
 				:order="5"
-				:name="t('spreed', 'Shared items')">
+				:name="isInCall ? 'Файлы' : t('spreed', 'Shared items')">
 				<template #icon>
 					<NcIconSvgWrapper :svg="IconPermMediaOutline" :size="20" inline />
 				</template>
+				<K4Snaps v-if="isInCall" :active="opened && activeTab === 'shared-items'" />
 				<SharedItemsTab
 					:active="activeTab === 'shared-items'"
 					@showThreadsTab="handleUpdateState('threads')" />
@@ -148,9 +149,9 @@ import IconAccountMultipleOutline from 'vue-material-design-icons/AccountMultipl
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue'
 import IconDotsCircle from 'vue-material-design-icons/DotsCircle.vue'
 import IconInformationOutline from 'vue-material-design-icons/InformationOutline.vue'
-import IconMessageOutline from 'vue-material-design-icons/MessageOutline.vue'
-import IconMessageTextOutline from 'vue-material-design-icons/MessageTextOutline.vue'
-import ChatView from '../ChatView.vue'
+import IconStickerEmoji from 'vue-material-design-icons/StickerEmoji.vue' // ket4tec: k4stk
+import K4Snaps from '../CallView/k4draw/K4Snaps.vue'
+import StickerSheet from '../CallView/k4stk/StickerSheet.vue' // ket4tec: k4stk
 import SetGuestUsername from '../SetGuestUsername.vue'
 import BreakoutRoomsTab from './BreakoutRooms/BreakoutRoomsTab.vue'
 import InternalSignalingHint from './InternalSignalingHint.vue'
@@ -168,7 +169,9 @@ import { ATTENDEE, CONVERSATION, PARTICIPANT, WEBINAR } from '../../constants.ts
 import { getTalkConfig, hasTalkFeature } from '../../services/CapabilitiesManager.ts'
 import { useActorStore } from '../../stores/actor.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts'
+import { isChatHiddenForActor } from '../../utils/chatHidden.ts'
 import { isChannelConversation } from '../../utils/conversation.ts'
+import { state as k4stk, canUse as k4stkCan } from '../CallView/k4stk/useStickers.js' // ket4tec: k4stk
 
 const canStartConversations = getTalkConfig('local', 'conversations', 'can-create')
 const supportConversationCreationAll = hasTalkFeature('local', 'conversation-creation-all')
@@ -179,11 +182,13 @@ export default {
 	name: 'RightSidebar',
 	components: {
 		BreakoutRoomsTab,
-		ChatView,
+		K4Snaps,
 		InternalSignalingHint,
 		LobbyStatus,
 		NcAppSidebar,
 		NcAppSidebarTab,
+		IconStickerEmoji,
+		StickerSheet,
 		NcButton,
 		NcIconSvgWrapper,
 		ParticipantsTab,
@@ -198,8 +203,6 @@ export default {
 		IconCogOutline,
 		IconDotsCircle,
 		IconInformationOutline,
-		IconMessageOutline,
-		IconMessageTextOutline,
 	},
 
 	props: {
@@ -277,7 +280,7 @@ export default {
 			contactsLoading: false,
 			unreadNotificationHandle: null,
 			contentState: 'default',
-			previousActiveTab: this.isInCall ? 'chat' : 'participants',
+			previousActiveTab: 'participants',
 		}
 	},
 
@@ -380,8 +383,12 @@ export default {
 				&& (!isChannelConversation(this.conversation) || this.$store.getters.isModerator)
 		},
 
+		isChatHidden() {
+			return isChatHiddenForActor(this.actorStore.actorType)
+		},
+
 		showSharedItemsTab() {
-			return !this.conversation.remoteServer || hasTalkFeature(this.token, 'federated-shared-items')
+			return !this.isChatHidden && (!this.conversation.remoteServer || hasTalkFeature(this.token, 'federated-shared-items'))
 		},
 
 		showDetailsTab() {
@@ -408,16 +415,26 @@ export default {
 			return this.conversation.unreadMention
 		},
 
+		k4stkOpen() {
+			return this.opened && this.activeTab === 'k4-stickers'
+		},
+
 		inCallToggleAttrs() {
 			return {
 				'data-theme-dark': true,
-				'aria-label': t('spreed', 'Open chat'),
-				title: t('spreed', 'Open chat'),
+				'aria-label': 'Участники и файлы',
+				title: 'Участники и файлы',
 			}
 		},
 	},
 
 	watch: {
+		// ket4tec: k4stk — кнопка «Гифки» в панели звонка подсвечена, пока открыта вкладка
+		k4stkOpen: {
+			immediate: true,
+			handler(v) { k4stk.open = v },
+		},
+
 		conversation(newConversation, oldConversation) {
 			if (newConversation.token === oldConversation.token || !this.showParticipantsTab) {
 				return
@@ -429,11 +446,7 @@ export default {
 			}
 
 			// In other case switch to other tabs
-			if (this.isInCall) {
-				this.activeTab = 'chat'
-			} else {
-				this.activeTab = 'participants'
-			}
+			this.activeTab = this.isInCall ? this.inCallTab() : 'participants'
 		},
 
 		showParticipantsTab: {
@@ -474,22 +487,31 @@ export default {
 
 		isInCall(newValue) {
 			if (newValue) {
-				// Set 'chat' tab as active, and switch to it if sidebar is open
+				// ket4tec v7: в звонке вкладки «Участники» и «Файлы», чата нет
 				this.contentState = 'default'
-				this.activeTab = 'chat'
+				this.activeTab = this.inCallTab()
+				// ket4tec v7: в звонке список участников открыт (владелец 11.11, NAS_CLOUD#109 п.30); на телефоне панель во весь экран — закрыта. После звонка — как была
+				this.k7reopen = this.sidebarStore.show
+				// гостю (нет ни «Участников», ни «Файлов») панель сама не открывается — в ней только «Гифки», по кнопке (владелец 12.11, NAS_CLOUD#149)
+				if (window.innerWidth < 512 || !(this.showParticipantsTab || this.showSharedItemsTab)) {
+					this.sidebarStore.hideSidebar({ cache: false })
+				} else {
+					this.sidebarStore.showSidebar({ cache: false })
+				}
 				return
 			}
 
 			// discard notification if the call ends
 			this.notifyUnreadMessages(null)
-
-			// If 'chat' tab wasn't active, leave it as is
-			if (this.activeTab !== 'chat') {
-				return
+			if (this.k7reopen) {
+				this.k7reopen = false
+				this.sidebarStore.showSidebar({ cache: false })
+			} else {
+				this.sidebarStore.hideSidebar({ cache: false })
 			}
 
-			// In other case switch to other tabs
-			if (!this.isOneToOne) {
+			// после звонка — участники (в один-на-один их нет, остаются «Общие файлы»)
+			if (!this.isOneToOne && this.showParticipantsTab) {
 				this.activeTab = 'participants'
 			}
 		},
@@ -523,9 +545,8 @@ export default {
 			if (newValue && !this.isInCall) {
 				// Switch active tab to participants list if guest was promoted to moderators
 				this.activeTab = 'participants'
-			} else {
-				// Switch active tab to chat if guest was demoted from moderators
-				this.activeTab = 'chat'
+			} else if (this.isInCall) {
+				this.activeTab = this.inCallTab()
 			}
 		},
 	},
@@ -540,12 +561,13 @@ export default {
 
 	methods: {
 		t,
+		k4stkCan,
 
 		handleUpdateOpen(open) {
 			if (open) {
-				// In call ('Open chat') by default
-				if (this.isInCall) {
-					this.activeTab = 'chat'
+				// в звонке по умолчанию «Участники»
+				if (this.isInCall && !['participants', 'shared-items', 'k4-stickers'].includes(this.activeTab)) {
+					this.activeTab = this.inCallTab()
 				}
 				this.sidebarStore.showSidebar()
 			} else {
@@ -594,6 +616,11 @@ export default {
 			}
 		},
 
+		/** Вкладка звонка по умолчанию: «Участники», если их нет — «Файлы». */
+		inCallTab() {
+			return this.showParticipantsTab ? 'participants' : 'shared-items'
+		},
+
 		showSettings() {
 			emit('show-settings', {})
 		},
@@ -609,10 +636,8 @@ export default {
 			}
 			if (message) {
 				this.unreadNotificationHandle = showMessage(message, {
-					onClick: () => {
-						this.handleUpdateActive('chat')
-						this.sidebarStore.showSidebar()
-					},
+					// в звонке чата в панели нет: тост только сообщает
+					onClick: () => this.isInCall || this.sidebarStore.showSidebar(),
 				})
 			}
 		},
@@ -649,28 +674,12 @@ export default {
 	min-height: inherit !important;
 }
 
-.app-sidebar-tabs__content #tab-chat {
-	/* Remove padding to maximize the space for the chat view. */
-	padding: 0;
-	height: 100%;
-}
-
 .app-sidebar-tabs__content #tab-participants {
 	/* Remove padding to maximize the space for the participants list. */
 	padding: var(--default-grid-baseline) 0;
 	height: 100%;
 }
 
-.chat-button-unread-marker {
-	position: absolute;
-	top: 4px;
-	inset-inline-end: 4px;
-	width: 8px;
-	height: 8px;
-	border-radius: 8px;
-	background-color: var(--color-primary-element);
-	pointer-events: none;
-}
 </style>
 
 <style lang="scss">
@@ -678,6 +687,11 @@ export default {
  * NcAppSidebar toggle it rendered on the page outside the sidebar element, so we need global styles here.
  * It is _quite_ safe, as chat-button-sidebar-toggle class is defined here manually, not an internal class.
  */
+/* ket4tec #55: у гостя в звонке кнопки чата нет */
+.chat-button-sidebar-toggle.k7-guest-nochat {
+	display: none !important;
+}
+
 .chat-button-sidebar-toggle {
 	position: relative;
 	// Allow unread counter to overflow rounded button

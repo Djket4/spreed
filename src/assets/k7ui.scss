@@ -1,0 +1,733 @@
+// ket4tec: «Стол» v7 — беседа, диалоги выбора, выпадающие списки (10.11.2026).
+// Токены темы облака --tk-* с запасными значениями Стола (тёмная по умолчанию).
+// Звонок и проверка устройств — в CallView/k7call.scss и MediaSettings, здесь не трогаем.
+body {
+	--k7u-bg: var(--tk-bg, #1a1718);
+	--k7u-bg2: var(--tk-bg2, #242021);
+	--k7u-bg3: var(--tk-bg3, #2c2627);
+	--k7u-fg: var(--tk-fg, #f3eee9);
+	--k7u-fg2: var(--tk-fg2, #bdb3ad);
+	--k7u-line: var(--tk-line, #ffffff12);
+	--k7u-line2: var(--tk-line2, #ffffff1f);
+	--k7u-pill: var(--tk-pill, #ffffff1f);
+	--k7u-acc: var(--tk-acc, #a86bff);
+	--k7u-acc2: var(--tk-acc2, #5b2a86);
+	--k7u-grad: linear-gradient(135deg, var(--k7u-acc2), var(--k7u-acc));
+	--k7u-dng: var(--tk-dng, #e5453d);
+	--k7u-ok: #2fb36a;
+}
+
+$phone: 700px;
+
+// ---------- 1. Беседа: верхняя полоса ----------
+.top-bar:not(.top-bar--in-call):not(.top-bar--sidebar) {
+	background: var(--k7u-bg);
+	border-bottom-color: var(--k7u-line);
+
+	// назад, поиск, «…», ссылка — одинаковые круглые капсулы 40px
+	.top-bar__icon-wrapper--with-action {
+		width: 40px;
+		height: 40px;
+		padding: 0;
+		border-radius: 20px;
+		background: var(--k7u-pill);
+		overflow: hidden;
+
+		.top-bar__icon-back { width: 40px; display: flex; align-items: center; justify-content: center; }
+		.avatardiv, .conversation-icon { display: none; }
+	}
+
+	.top-bar__controls {
+		gap: 8px;
+
+		.button-vue:not(.join-call),
+		.action-item__menutoggle {
+			--button-size: 40px;
+			width: 40px;
+			min-width: 40px;
+			height: 40px;
+			min-height: 40px;
+			padding: 0;
+			border-radius: 20px;
+			background: var(--k7u-pill);
+			color: var(--k7u-fg);
+			border: none;
+		}
+
+		// звонок — зелёная капсула той же высоты; у составной кнопки (модератор) обёртка прозрачная, стрелка меню — правый край капсулы
+		.join-call-actions--split { gap: 0 !important; padding: 0 !important; border: 0 !important; background: none !important; }
+		:is(button.join-call, .start-call-button--split) {
+			--button-size: 40px;
+			width: auto !important;
+			min-width: 56px !important;
+			height: 40px !important;
+			min-height: 40px !important;
+			padding: 0 16px !important;
+			border-radius: 999px !important;
+			background: var(--k7u-ok) !important;
+			border: none !important;
+			color: #fff !important;
+			font-weight: 600;
+			box-shadow: 0 6px 16px color-mix(in srgb, var(--k7u-ok) 35%, transparent) !important;
+		}
+		.start-call-button--split { border-radius: 999px 0 0 999px !important; padding-inline-end: 10px !important; }
+		.join-call-actions--split .action-item__menutoggle {
+			width: 34px !important;
+			min-width: 34px !important;
+			border-radius: 0 999px 999px 0 !important;
+			background: color-mix(in srgb, var(--k7u-ok) 82%, #000) !important;
+			color: #fff !important;
+		}
+	}
+
+	.conversation-header {
+		min-width: 0;
+
+		&__text { align-items: stretch; }
+		.title {
+			font-weight: 600;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
+
+	// узкая колонка беседы (планшет при открытой боковой панели): аватар прячем, иначе название сжимается в ноль
+	container-type: inline-size;
+	@container (max-width: 460px) {
+		.top-bar__icon-wrapper:not(.top-bar__icon-wrapper--with-action) { display: none !important; }
+		.conversation-header { flex: 1 1 0; min-width: 120px; }
+	}
+
+	@media (max-width: $phone) {
+		padding-block: 6px !important;
+		// аватар беседы прячем: слева только «назад» (штатный переключатель панели), дальше название
+		.top-bar__icon-wrapper:not(.top-bar__icon-wrapper--with-action) { display: none !important; }
+		.conversation-header {
+			flex: 1 1 0;
+			min-width: 0;
+			padding-inline-start: 52px !important;
+		}
+		.conversation-header__text { text-align: start; }
+		.top-bar__icon-wrapper { margin-inline-start: 48px !important; }
+		.top-bar__controls {
+			gap: 6px;
+			.join-call-actions--split > div.action-item { display: none !important; }
+			.start-call-button--split { border-radius: 999px !important; padding-inline-end: 16px !important; }
+		}
+	}
+}
+
+// телефон: «назад» к списку бесед — круглая капсула 40 px в ряд с кнопками шапки
+@media (max-width: $phone) {
+	// k7call прячет закрытую панель visibility: hidden — переключатель внутри неё наследует; в беседе он нужен
+	html.k7f.k7-talk-chat #content-vue:not(.in-call) .app-navigation-toggle-wrapper { top: 6px !important; left: 8px !important; visibility: visible; pointer-events: auto; }
+	// «боковая панель» справа в шапке беседы — та же круглая капсула
+	html.k7f.k7-talk-chat #content-vue:not(.in-call) .app-sidebar__toggle.button-vue { top: 6px !important; width: 40px !important; min-width: 40px !important; height: 40px !important; min-height: 40px !important; border-radius: 999px !important; background: var(--k7u-pill) !important; color: var(--k7u-fg) !important; }
+	html.k7f .app-navigation-toggle-wrapper .app-navigation-toggle.button-vue {
+		width: 40px !important;
+		min-width: 40px !important;
+		height: 40px !important;
+		min-height: 40px !important;
+		padding: 0 !important;
+		border-radius: 999px !important;
+		background: var(--k7u-pill) !important;
+		color: var(--k7u-fg) !important;
+	}
+}
+
+// ---------- 1. Беседа: системные сообщения, карточка удаления, разделитель, поле ввода ----------
+// служебная строка — тихая капсула по центру; имя в ней — цвет текста (штатный чип белый, на светлой не виден)
+.message-body.system .system-message:not(:has(.conversation-actions)),
+.message-main__text.system-message:not(:has(.conversation-actions)) {
+	display: block;
+	width: fit-content;
+	max-width: 90%;
+	margin: 2px auto !important;
+	padding: 5px 14px !important;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--k7u-fg) 7%, transparent);
+	color: var(--k7u-fg2) !important;
+	text-align: center;
+	line-height: 1.4;
+}
+.system-message .rich-text--wrapper { text-align: center; }
+// строка с карточкой «будет удалено» — без капсулы, на ширину ленты; сама строка по центру над карточкой
+.message-main__text.system-message:has(.conversation-actions) { width: auto !important; max-width: none !important; margin: 4px 0 !important; padding: 0 !important; background: none !important; color: var(--k7u-fg2) !important; text-align: center; }
+.system-message .nc-chip { display: inline !important; height: auto !important; padding: 0 !important; background: none !important; }
+.system-message .nc-chip__text { display: inline !important; max-width: none !important; padding: 0 !important; color: var(--k7u-fg) !important; font-weight: 600; }
+.system-message .nc-chip__icon { display: none !important; }
+.message-body.system .message-main__info { display: none; }
+
+// «будет автоматически удалено»: карточка на ширину ленты, две капсулы с полным текстом
+.conversation-actions {
+	box-sizing: border-box;
+	width: auto !important;
+	max-width: none !important;
+	margin: 12px 16px !important;
+	padding: 16px !important;
+	border-radius: 22px !important;
+	background: var(--k7u-bg) !important;
+	border: 1px solid var(--k7u-line2) !important;
+	box-shadow: none !important;
+	text-align: center;
+
+	p { margin: 0; color: var(--k7u-fg2) !important; font-size: 14px; line-height: 1.4; }
+
+	&__buttons {
+		display: flex !important;
+		gap: 8px;
+		margin-top: 12px;
+
+		.button-vue {
+			flex: 1 1 0;
+			min-width: 0 !important;
+			min-height: 44px !important;
+			padding: 0 12px !important;
+			border-radius: 999px !important;
+			font-weight: 600;
+			background: var(--k7u-pill) !important;
+			border: 0 !important;
+			color: var(--k7u-fg) !important;
+		}
+		.button-vue__text { overflow: visible !important; white-space: nowrap; font-size: 14px !important; }
+		.button-vue__icon { display: none !important; }
+		// «Удалить» — красный контур, «Оставить» — нейтральная
+		.button-vue--error {
+			background: transparent !important;
+			box-shadow: inset 0 0 0 1.5px var(--k7u-dng) !important;
+			color: var(--k7u-dng) !important;
+		}
+	}
+}
+
+.message-unread-marker {
+	&::before { border-top: 1px solid var(--k7u-acc) !important; opacity: .5; }
+	&__wrapper { background: var(--k7u-bg) !important; }
+	&__text { color: var(--k7u-acc) !important; font-size: 12px; font-weight: 600; }
+}
+
+// поле ввода — капсула; тема облака на телефоне держит 32 px (вес html[data-k7-app]), перебиваем
+html.k7f .new-message-form {
+	align-items: center;
+	gap: 4px;
+
+	.rich-contenteditable__input {
+		box-sizing: border-box;
+		min-height: 44px !important;
+		padding: 11px 14px 11px 42px !important;
+		border-radius: 22px !important;
+		border: 1px solid var(--k7u-line2) !important;
+		background: var(--k7u-bg3) !important;
+		color: var(--k7u-fg);
+		line-height: 20px !important;
+	}
+	// подсказка «Напишите сообщение…» — штатная высота считается от других отступов и резала строку снизу
+	.rich-contenteditable__input--empty::before { height: auto !important; line-height: 20px; }
+	.new-message-form__emoji-picker { bottom: auto !important; top: 50% !important; transform: translateY(-50%); inset-inline-start: 2px; }
+}
+
+// ---------- 2–3. Шторки: создание обсуждения, открытые обсуждения ----------
+@media (max-width: $phone) {
+	// шторка снизу: шапка Стола (~110 px) остаётся видна над затемнением
+	:is(.new-group-conversation, .k7-sheet) .modal-wrapper { align-items: flex-end !important; padding: 0 !important; }
+	.new-group-conversation .modal-wrapper .modal-container,
+	.k7-sheet .modal-wrapper .modal-container {
+		position: fixed !important;
+		inset: 110px 0 var(--k7-sheet-bottom) 0 !important;
+		width: 100% !important;
+		max-width: none !important;
+		height: auto !important;
+		max-height: none !important;
+		border-radius: 28px 28px var(--k7-sheet-radius-b) var(--k7-sheet-radius-b) !important;
+		padding-top: 8px;
+		background: var(--k7u-bg2) !important;
+		box-shadow: 0 -12px 60px #0006, inset 0 0 0 1px var(--k7u-line2) !important;
+	}
+}
+
+.new-group-conversation {
+	.modal-container { background: var(--k7u-bg); color: var(--k7u-fg); border-radius: 24px; }
+	.modal-container__content { overflow-x: hidden; }
+
+	h2.nc-dialog-alike-header {
+		text-align: start;
+		font-size: 24px;
+		font-weight: 700;
+		padding-inline: 20px calc(40px + 20px);
+	}
+
+	.modal-container .modal-wrapper .modal-close,
+	.modal-close {
+		border-radius: 20px;
+		background: var(--k7u-pill);
+	}
+
+	// поля — капсулы v7 вместо штатной рамки 2 px
+	:is(.input-field__input, .textarea__input, textarea) {
+		border: 1px solid var(--k7u-line2) !important;
+		border-radius: 18px !important;
+		background: var(--k7u-bg3) !important;
+		box-shadow: none !important;
+		color: var(--k7u-fg) !important;
+	}
+	.input-field:not(.input-field--leading-icon) .input-field__input { padding-inline-start: 16px !important; }
+	:is(.input-field__input, .textarea__input, textarea):focus { border-color: var(--k7u-acc) !important; box-shadow: 0 0 0 1px var(--k7u-acc) !important; }
+	:is(.input-field__label, .textarea__label) { margin-inline-start: 12px; }
+
+	.new-group-conversation__footer {
+		box-shadow: none;
+		border-top: 1px solid var(--k7u-line);
+		gap: 8px;
+		.button-vue { min-height: 52px; border-radius: 26px !important; }
+		@media (max-width: $phone) {
+			// «Добавить участников» — во всю ширину сверху, «Создать обсуждение» — под ней (в ряд подпись обрезалась)
+			flex-direction: column-reverse;
+			align-items: stretch;
+			.button-vue { width: 100% !important; max-width: none !important; }
+			.button-vue:not(.button-vue--primary) { min-height: 44px; }
+		}
+		.button-vue--primary {
+			background: var(--k7u-grad) !important;
+			color: #fff !important;
+			border: none;
+			font-weight: 600;
+			padding-inline: 24px;
+		}
+	}
+}
+
+.conversation-type-selector {
+	grid-template-columns: 1fr !important;
+	gap: 8px;
+
+	@media (max-width: $phone) {
+		grid-template-columns: 1fr !important;
+	}
+
+	&__option {
+		min-width: 0;
+		border: 1px solid var(--k7u-line2) !important;
+		border-radius: 20px !important;
+		background: var(--k7u-bg2) !important;
+		color: var(--k7u-fg);
+
+		&--active { border: 2px solid var(--k7u-acc) !important; }
+	}
+	&__description { color: var(--k7u-fg2) !important; }
+}
+
+.k7-sheet {
+	.selector__search :is(input, .input-field__input) {
+		min-height: 48px;
+		border-radius: 24px;
+		background: var(--k7u-bg2);
+	}
+	.empty-content__name { font-size: 16px !important; font-weight: 600; margin-top: 8px; }
+	.empty-content__icon { display: none; }
+	.empty-content__description { font-size: 13px; color: var(--k7u-fg2); }
+}
+
+// ---------- 4. NcSelect / NcActions / NcModal ----------
+html.k7f body .v-popper__popper .v-popper__inner,
+.vs__dropdown-menu {
+	background: var(--k7u-bg2) !important;
+	color: var(--k7u-fg) !important;
+	border: 1px solid var(--k7u-line2) !important;
+	border-radius: 18px !important;
+	box-shadow: 0 12px 40px #00000066;
+	overflow: hidden;
+}
+
+// NcSelect рисует меню рамкой 2 px цвета текста (.nc-select__dropdown.vs__dropdown-menu, !important)
+body .vs__dropdown-menu.nc-select__dropdown,
+body .vs__dropdown-menu {
+	border: 1px solid var(--k7u-line2) !important;
+	box-shadow: 0 16px 48px #0006 !important;
+	outline: none !important;
+}
+
+.vs__dropdown-menu {
+	padding: 6px;
+
+	.vs__dropdown-option {
+		min-height: 48px;
+		display: flex;
+		align-items: center;
+		border-radius: 14px;
+		color: var(--k7u-fg);
+	}
+	.vs__dropdown-option--highlight { background: var(--k7u-pill) !important; color: var(--k7u-fg) !important; }
+}
+
+.vs__open-indicator { fill: var(--k7u-fg) !important; }
+.vs__open-indicator path, .vs__clear svg path { fill: currentColor; }
+
+.v-popper__popper .action-item,
+.v-popper__popper .action-button { min-height: 48px; }
+.v-popper__popper .action-button,
+.v-popper__popper .action-link {
+	border-radius: 14px;
+	color: var(--k7u-fg);
+}
+.v-popper__popper .action-button:hover,
+.v-popper__popper .action-link:hover { background: var(--k7u-pill); }
+.v-popper__popper .action-button__icon,
+.v-popper__popper .action-button .material-design-icon { color: var(--k7u-fg2); }
+.v-popper__popper .action-button--active, .v-popper__popper [aria-current] { color: var(--k7u-fg); }
+
+.modal-mask .modal-container {
+	background: var(--k7u-bg) !important;
+	color: var(--k7u-fg);
+	border-radius: 24px !important;
+	border: 1px solid var(--k7u-line);
+}
+// крестик «Нового обсуждения» — круглая серая кнопка, как в «Проверке устройств» и настройках (блок 7)
+:root:root body .modal-mask.new-group-conversation .modal-container__close.button-vue {
+	z-index: 3;
+	top: 16px !important;
+	inset-inline-end: 16px !important;
+	width: 40px !important;
+	min-width: 40px !important;
+	height: 40px !important;
+	padding: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7u-pill) !important;
+	color: var(--k7u-fg) !important;
+}
+.modal-mask .modal-header .modal-name,
+.modal-mask .dialog__name { color: var(--k7u-fg); }
+
+// ---------- Параметры обсуждения (NcAppSettingsDialog): на телефоне — шторка под шапкой Стола ----------
+@media (max-width: $phone) {
+	:is(.modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container), .modal-mask#k7-app-settings, .modal-mask:has(#k7-app-settings)) {
+		.modal-wrapper { align-items: flex-end !important; padding: 0 !important; }
+		.modal-container {
+			position: fixed !important;
+			inset: 110px 0 var(--k7-sheet-bottom) 0 !important;
+			width: 100% !important;
+			max-width: none !important;
+			height: auto !important;
+			max-height: none !important;
+			border-radius: 28px 28px var(--k7-sheet-radius-b) var(--k7-sheet-radius-b) !important;
+			background: var(--k7u-bg2) !important;
+			box-shadow: 0 -12px 60px #0006, inset 0 0 0 1px var(--k7u-line2) !important;
+		}
+		.dialog__name, h2.dialog__name {
+			padding: 22px 64px 8px 20px !important;
+			font-size: 24px !important;
+			font-weight: 700 !important;
+			letter-spacing: -.02em;
+			text-align: start;
+		}
+		.modal-container__close {
+			top: 16px !important;
+			inset-inline-end: 16px !important;
+			width: 40px !important;
+			height: 40px !important;
+			border-radius: 999px !important;
+			background: var(--k7u-pill) !important;
+		}
+		.dialog__content, .app-settings__content { background: none !important; }
+	}
+}
+
+// ---------- Строка поиска: фильтр, «новая беседа», «Настройки» — круглые капсулы 40 px; пустой низ списка не занимает место ----------
+html.k7f .new-conversation :is(.filters .action-item__menutoggle, .actions .action-item__menutoggle, .k7-settings-button.button-vue) {
+	width: 40px !important;
+	min-width: 40px !important;
+	height: 40px !important;
+	min-height: 40px !important;
+	padding: 0 !important;
+	border-radius: 999px !important;
+	background: var(--k7u-pill) !important;
+	color: var(--k7u-fg) !important;
+}
+html.k7f .navigation-bottom:not(:has(button)) { display: none !important; }
+
+// ---------- Окна настроек (Настройки, Параметры обсуждения): строки NcFormBox — плитки v7, кнопки — капсулы ----------
+// классы NcFormBox — CSS-модули с хэшем (_ncFormBox_xxxx), поэтому [class*=…]
+:is(.modal-mask#k7-app-settings, .modal-mask:has(#k7-app-settings), .modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container)) {
+	.app-settings-section__name { font-size: 20px !important; font-weight: 700 !important; letter-spacing: -.015em; color: var(--k7u-fg) !important; }
+	[class*="_ncFormBox_col_"] { gap: 3px !important; border: 0 !important; background: none !important; }
+	// плитка = прямой ребёнок колонки ([class*="_formBoxItem_"] задело бы и внутренние _formBoxItem__content_ и т.п.)
+	[class*="_ncFormBox_col_"] > * {
+		box-sizing: border-box;
+		min-height: 56px;
+		padding: 12px 16px !important;
+		border: 0 !important;
+		border-radius: 8px !important;
+		background: var(--k7u-bg3) !important;
+		box-shadow: none !important;
+		color: var(--k7u-fg) !important;
+		&:first-child { border-top-left-radius: 20px !important; border-top-right-radius: 20px !important; }
+		&:last-child { border-bottom-left-radius: 20px !important; border-bottom-right-radius: 20px !important; }
+		&:hover, &:has(:focus-visible) { background: color-mix(in srgb, var(--k7u-fg) 8%, var(--k7u-bg3)) !important; }
+	}
+	[class*="_ncFormBox_col_"] > * [class*="_formBoxItem__"] { padding: 0 !important; margin: 0 !important; border: 0 !important; background: none !important; max-width: none !important; }
+	[class*="_formBoxItem__element_"] { color: var(--k7u-fg) !important; font-size: 15px; font-weight: 600; }
+	[class*="_formBoxItem__description_"] { color: var(--k7u-fg2) !important; font-size: 13px; line-height: 1.35; }
+	[class*="_formGroup__label_"] { color: var(--k7u-fg) !important; font-size: 15px; font-weight: 700; }
+	// «список / пузыри» — две капсулы поровну, не вылезают за край
+	[class*="_ncFormBox_row_"] { display: flex !important; gap: 8px !important; border: 0 !important; background: none !important; }
+	[class*="_ncFormBox_row_"] > .button-vue { flex: 1 1 0 !important; min-width: 0 !important; height: 44px !important; border: 0 !important; border-radius: 999px !important; }
+	[class*="_ncFormBox_row_"] > .button-vue { padding-inline: 10px !important; }
+	[class*="_ncFormBox_row_"] > .button-vue .button-vue__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px !important; }
+	// пункты левого меню (компьютер) — переносом, а не обрезкой
+	.navigation-list__link { height: auto !important; min-height: 40px; padding-block: 8px !important; display: flex !important; align-items: center; margin-bottom: 4px; }
+	.navigation-list__link-text { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.25; }
+	[class*="_ncFormBox_row_"] > .button-vue--secondary { background: var(--k7u-bg3) !important; color: var(--k7u-fg) !important; }
+	// одиночная кнопка раздела («Проверка устройств») — нейтральная капсула
+	.app-settings-section__content > .button-vue--secondary {
+		min-height: 48px !important;
+		margin-top: 10px;
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--k7u-pill) !important;
+		color: var(--k7u-fg) !important;
+		font-weight: 600;
+	}
+}
+
+// ---------- Список бесед в одну строку (блок 3) ----------
+// вариант аватарки «только буква» — html.k7-ava-letter (по умолчанию эмодзи)
+html.k7-ava-letter .conversation-icon .k7-ava {
+	.k7-ava__emoji { display: none !important; }
+	.k7-ava__letter { display: inline !important; }
+}
+// телефон: карточка 40 + 4 + 4 = 48 (+2+2 обёртка = 52 — ровно высота строки виртуального списка)
+@media (max-width: 700px) {
+	html.k7f[data-k7-app="spreed"] .conversation .list-item { padding-block: 4px !important; }
+}
+
+// ---------- Шторки над нижней панелью Safari (блок 4) ----------
+// --k7-vv-gap и html.k7-ios-bar ставит main.js. В iOS 26 панель Safari плавает поверх страницы — шторка поднимается над ней
+:root { --k7-sheet-bottom: var(--k7-vv-gap, 0px); --k7-sheet-radius-b: 0px; }
+html.k7-ios-bar { --k7-sheet-bottom: max(var(--k7-ios-pill, 0px), var(--k7-vv-gap, 0px)); --k7-sheet-radius-b: 28px; }
+// поле ввода чата — над свёрнутой пилюлей Safari
+html.k7f.k7-ios-bar .new-message-form { margin-bottom: var(--k7-ios-pill, 0px); }
+// пока открыта шторка, страница под ней не листается и не тянется резинкой (iOS уводил шторку вместе с вьюпортом)
+html.k7f:has(.modal-mask), html.k7f:has(.modal-mask) body { overflow: hidden !important; overscroll-behavior: none; }
+html.k7f .modal-mask, html.k7f .modal-mask .modal-wrapper { overflow: hidden !important; overscroll-behavior: contain; }
+html.k7f .modal-mask .modal-container__content { overscroll-behavior: contain; }
+
+// ---------- Поля ввода — общее правило облака (блок 4) ----------
+// Капсула 56, подпись внутри капсулы: пустое поле — по центру, при фокусе или вводе — вверху внутри капсулы, мельче.
+// Без выреза в рамке (штатная подпись NcTextField/NcTextArea садится на рамку с фоном).
+html.k7f body {
+	.input-field__main-wrapper:has(> .input-field__label) {
+		height: auto !important; // штатно 44 — капсула 56 вылезала вниз и съедала отступ до следующего поля
+		padding: 0 !important;
+		.input-field__input {
+			height: 56px !important;
+			padding-block: 20px 4px !important;
+			border: 0 !important;
+			border-radius: 999px !important;
+			background: var(--k7u-bg3) !important;
+			box-shadow: inset 0 0 0 1px var(--k7u-line2) !important;
+			font-size: 16px !important;
+			line-height: 24px;
+		}
+		.input-field__input:focus { box-shadow: inset 0 0 0 2px var(--k7u-acc) !important; }
+		.input-field__input::placeholder { color: transparent !important; } // подпись внутри капсулы и есть подсказка — плейсхолдер поверх неё не нужен
+		.input-field__label {
+			inset-block-start: 50% !important;
+			transform: translateY(-50%);
+			margin-inline-start: 20px !important;
+			padding: 0 !important;
+			background: none !important;
+			border-radius: 0 !important;
+			font-size: 16px !important;
+			font-weight: 500 !important;
+			line-height: 20px !important;
+			color: var(--k7u-fg2) !important;
+		}
+		// пустое поле — подпись по центру и в фокусе (курсор встаёт по центру рядом с ней); с текстом — вверху, мельче
+		.input-field__input:placeholder-shown { padding-block: 16px !important; }
+		.input-field__input:not(:placeholder-shown) + .input-field__label {
+			inset-block-start: 8px !important;
+			transform: none;
+			font-size: 12px !important;
+			line-height: 16px !important;
+		}
+		:is(.input-field__icon--trailing, .input-field__trailing-button) { inset-block-start: 6px !important; }
+	}
+	.input-field:not(.input-field--leading-icon) .input-field__main-wrapper:has(> .input-field__label) .input-field__input { padding-inline-start: 20px !important; }
+
+	.textarea__main-wrapper:has(> .textarea__label) {
+		.textarea__input {
+			min-height: 56px !important;
+			height: 56px;
+			max-height: 160px;
+			field-sizing: content;
+			padding: 24px 20px 8px !important;
+			border: 0 !important;
+			border-radius: 24px !important;
+			background: var(--k7u-bg3) !important;
+			box-shadow: inset 0 0 0 1px var(--k7u-line2) !important;
+			font-size: 16px !important;
+			line-height: 22px;
+			resize: none;
+		}
+		.textarea__input:focus { box-shadow: inset 0 0 0 2px var(--k7u-acc) !important; }
+		.textarea__input::placeholder { color: transparent !important; }
+		.textarea__label {
+			inset-block-start: 18px !important;
+			margin-inline-start: 20px !important;
+			padding: 0 !important;
+			background: none !important;
+			font-size: 16px !important;
+			font-weight: 500 !important;
+			line-height: 20px !important;
+			color: var(--k7u-fg2) !important;
+		}
+		.textarea__input:placeholder-shown { padding-top: 17px !important; }
+		.textarea__input:not(:placeholder-shown) + .textarea__label {
+			inset-block-start: 8px !important;
+			font-size: 12px !important;
+			line-height: 16px !important;
+		}
+	}
+}
+
+// окно создания обсуждения: картинка — круг 72 рядом с кнопками, а не серый круг 180
+html.k7f .new-group-conversation {
+	.avatar__container { flex-direction: row !important; align-items: center; gap: 14px; }
+	.avatar__preview { width: 72px !important; height: 72px !important; padding: 0 !important; }
+	.avatar__preview .conversation-icon { --icon-size: 72px !important; }
+	.avatar__preview-emoji { font-size: 40px !important; }
+	.avatar__buttons { flex-wrap: wrap; gap: 8px !important; }
+	.avatar__buttons .button-vue { border-radius: 999px !important; background: var(--k7u-pill) !important; color: var(--k7u-fg) !important; }
+	.avatar__warning { display: none; }
+}
+
+// ---------- Тосты Talk (showSuccess/showError/showInfo) — капсула как у Стола (блок 4) ----------
+// Снизу по центру, тёмная капсула, сама исчезает (таймер штатный). Крестик оставлен маленьким кругом:
+// у части сообщений Talk таймера нет (TOAST_PERMANENT_TIMEOUT), без крестика их не закрыть.
+html.k7f body .toastify.dialogs {
+	position: fixed !important;
+	inset: auto auto calc(24px + env(safe-area-inset-bottom, 0px) + var(--k7-sheet-bottom, 0px)) 50% !important;
+	transform: translateX(-50%) !important;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: max-content;
+	max-width: min(92vw, 520px);
+	min-height: 44px;
+	margin: 0 !important;
+	padding: 10px 10px 10px 20px !important;
+	border: 0 !important;
+	border-radius: 999px !important;
+	background: #2b2527 !important;
+	color: #fff !important;
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.3;
+	box-shadow: 0 10px 30px #0006 !important;
+	&::before { display: none !important; } // цветная полоса слева
+	&.toast-error { background: #4a1f1d !important; }
+	.toast-close {
+		flex: none;
+		width: 28px !important;
+		height: 28px !important;
+		min-width: 28px;
+		margin: 0 !important;
+		border-radius: 999px !important;
+		background-color: #ffffff1f !important;
+		background-size: 12px !important;
+		opacity: .8;
+		filter: invert(1);
+	}
+}
+// в беседе снизу поле сообщения — тосты (в т.ч. постоянное «браузер не поддерживается») поднимаем над ним, а не поверх
+html.k7f body:has(#content-vue:not(.in-call) .new-message-form) .toastify.dialogs {
+	inset-block-end: calc(96px + env(safe-area-inset-bottom, 0px) + var(--k7-sheet-bottom, 0px)) !important;
+}
+// в звонке снизу панель управления — тосты уходят наверх, под верхнюю панель звонка (не перекрывая название и таймер)
+html.k7f body:has(#content-vue.in-call) .toastify.dialogs {
+	// верх = низ панели звонка, его замеряет main.js (--k7-toast-top); запас — на случай, пока замера нет
+	inset: var(--k7-toast-top, calc(128px + env(safe-area-inset-top, 0px))) auto auto 50% !important;
+}
+
+// пока открыта доска/рисование, наверху лежит панель рисования, внизу по центру — инструменты: тосты («Сохранено в Файлы · открыть») уходят в правый нижний угол
+@media (min-width: 701px) {
+	html.k7f body:has(.k4-dockwrap):has(#content-vue) .toastify.dialogs {
+		inset: auto 16px calc(24px + env(safe-area-inset-bottom, 0px)) auto !important; // #109 п.9: справа — слева при открытой боковой панели тост ложился на микрофон
+		transform: none !important;
+		max-width: min(360px, max(200px, calc(50vw - 280px)));
+	}
+}
+
+// ket4tec (NAS_CLOUD#109 п.9): на телефоне тост при доске — над доком и плашкой инструмента, а не на плитках камер
+@media (max-width: 700px) {
+	html.k7f body:has(.k4-dockwrap):has(#content-vue) .toastify.dialogs {
+		inset: auto auto calc(var(--k4-sb, 76px) + 128px) 50% !important;
+	}
+}
+
+html.k7f .new-group-conversation .input-field + :is(.textarea, .new-group-conversation__error),
+html.k7f .new-group-conversation .input-field ~ .textarea { margin-top: 10px !important; }
+
+// ---------- Блок 5: пузыри сообщений — мягкие капсулы без рамки, хвостик — меньший угол у края отправителя ----------
+html.k7f .message--sided > .message-body {
+	padding: 8px 14px !important;
+	border: 0 !important;
+	border-radius: 22px !important;
+}
+html.k7f .message--sided.incoming > .message-body { border-start-start-radius: 8px !important; background: var(--k7u-bg3) !important; }
+html.k7f .message--sided.outgoing > .message-body { border-start-end-radius: 8px !important; background: color-mix(in srgb, var(--k7u-acc) 16%, var(--k7u-bg2)) !important; }
+
+// ---------- Блок 5: меню (NcActions) на телефоне — шторка снизу над панелью Safari ----------
+@media (max-width: $phone) {
+	html.k7f body .v-popper__popper.action-item__popper {
+		position: fixed !important;
+		inset: auto 0 var(--k7-sheet-bottom, 0px) 0 !important;
+		transform: none !important;
+		box-shadow: 0 0 0 100vmax #0006;
+		.v-popper__arrow-container { display: none !important; }
+		.v-popper__wrapper { width: 100%; }
+		.v-popper__inner {
+			width: 100%;
+			max-width: none !important;
+			max-height: calc(var(--k7-vh, 100dvh) - 110px - var(--k7-sheet-bottom, 0px)) !important;
+			overflow-y: auto !important;
+			overscroll-behavior: contain;
+			padding: 10px 8px max(10px, env(safe-area-inset-bottom, 0px)) !important;
+			border: 0 !important;
+			border-radius: 28px 28px var(--k7-sheet-radius-b, 0px) var(--k7-sheet-radius-b, 0px) !important;
+			box-shadow: 0 -12px 60px #0006, inset 0 0 0 1px var(--k7u-line2) !important;
+		}
+		:is(.action-button, .action-link, .action-router) { min-height: 52px; font-size: 16px; }
+		.action-button__longtext-wrapper, .action-button__text { white-space: normal; }
+	}
+}
+
+// ---------- Блок 5: круглая кнопка разделов Стола (#k7-fab) в списке бесед на телефоне ----------
+// меньше и ниже правого края времени; у списка запас снизу, чтобы последняя беседа выезжала из-под кнопки
+@media (max-width: $phone) {
+	html.k7f[data-k7-app="spreed"] #k7.k7-phone .k7-fan { width: 60px !important; height: 60px !important; right: 12px !important; }
+	html.k7f[data-k7-app="spreed"] .left-sidebar .scroller { padding-bottom: 88px; box-sizing: border-box; }
+}
+
+// ---------- Правки обхода 10.11 ----------
+// Вторичные кнопки главной Talk (Мой звонок / Новое обсуждение / Проверка устройств): в тёмной теме были тускло-фиолетовые
+html.k7f .talk-dashboard__actions .button-vue--secondary {
+	background: var(--k7u-bg3) !important;
+	color: var(--k7u-fg) !important;
+	box-shadow: inset 0 0 0 1px var(--k7u-line2);
+}
+// аватар-заглушка (буква): светлая буква на тонированном акцентом круге, а не тёмно-фиолетовая на тёмном
+// NAS_CLOUD#109 п.4: буква на сплошном акценте, как аватарка в шапке Стола (была блёклая)
+html.k7f .avatardiv .avatardiv__initials-wrapper { background: var(--k7u-acc) !important; }
+html.k7f .avatardiv .avatardiv__initials { color: #fff !important; opacity: 1 !important; }
+// NAS_CLOUD#110 Б5: аватарка с меню контакта — та же буква, но под NcAvatar (его картинка сервера скрыта, меню и статус остаются)
+html.k7f .avatar-wrapper[data-k4ini] .avatardiv { background: transparent !important; }
+html.k7f .avatar-wrapper[data-k4ini] .avatardiv img { opacity: 0; }
+html.k7f .avatar-wrapper[data-k4ini]::before { content: attr(data-k4ini); position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: var(--k7u-acc); color: #fff; font-size: calc(var(--avatar-size) * .45); line-height: 1; pointer-events: none; }
+// «Настройка приложения «Конференции» не завершена» — у нас сигналинг встроенный (без High-performance backend), для пользователя это не ошибка
+.internal-warning { display: none !important; }
+// вкладки правой панели: подпись не обрезаем
+.app-sidebar-tabs__tab-caption { overflow: visible !important; text-overflow: clip !important; white-space: nowrap; }
+// NAS_CLOUD#109 п.13: три вкладки в звонке на iPad — «Участники (2)» обрезалось; вкладки по ширине подписи, а не поровну
+.app-sidebar-tabs__nav button[class*='sidebarTabsButton'] { flex: 1 1 auto !important; }
+.app-sidebar-tabs__nav [class*='sidebarTabsButton__name'] { overflow: visible !important; text-overflow: clip !important; }

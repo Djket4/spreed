@@ -5,16 +5,21 @@
 
 import { createSharedComposable } from '@vueuse/core'
 import createHark from 'hark'
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, markRaw, onScopeDispose, ref, watch } from 'vue'
 import { PARTICIPANT } from '../constants.ts'
 import { useSoundsStore } from '../stores/sounds.js'
 import attachMediaStream from '../utils/attachmediastream.js'
+import FaceFrame from '../utils/media/pipeline/FaceFrame.js'
 import TrackToStream from '../utils/media/pipeline/TrackToStream.js'
 import VirtualBackground from '../utils/media/pipeline/VirtualBackground.js'
 import { callParticipantsAudioPlayer, mediaDevicesManager } from '../utils/webrtc/index.js'
 
 /** Permissions bitmask of each active subscriber */
 const subscribersPermissions = []
+/** ket4tec: сколько подписчиков «пассивные» (кнопки нижней панели в звонке): им нужны списки устройств, но не свой getUserMedia. */
+let passiveSubscribers = 0
+/** Свои потоки превью (второй getUserMedia, второй запрос камеры на iPhone) нужны, только если есть непассивный подписчик (шторка устройств). */
+const streamsWanted = () => subscribersPermissions.length > passiveSubscribers
 const videoElement = ref(null)
 
 /**
@@ -44,10 +49,18 @@ export const useDevices = createSharedComposable(function() {
 	const currentVolume = ref(-100)
 	const currentThreshold = ref(-100)
 	const virtualBackground = ref(null)
+	const faceFrame = ref(null)
 	const audioStream = ref(null)
 	const audioStreamError = ref(null)
 	const videoStream = ref(null)
 	const videoStreamError = ref(null)
+	// ket4tec: камера не ответила за 4 с — { label, next } для превью (см. MediaDevicesManager)
+	const cameraNotice = ref(null)
+	let cameraNoticeTimer
+	mediaDevicesManager.on('cameraNotResponding', (manager, notice) => {
+		clearTimeout(cameraNoticeTimer)
+		cameraNotice.value = notice
+	})
 
 	const devices = computed(() => {
 		return mediaDevicesManager.attributes.devices
@@ -143,10 +156,12 @@ export const useDevices = createSharedComposable(function() {
 	 * Streams are started based on the combined (OR) permissions of all subscribers
 	 *
 	 * @param {number} permissions - requested permission (for call - attendee check, for device preview - MAX_DEFAULT)
+	 * @param passive
 	 * @public
 	 */
-	function subscribeToDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT) {
+	function subscribeToDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT, passive = false) {
 		subscribersPermissions.push(permissions)
+		passive && passiveSubscribers++
 		if (!initialized) {
 			initializeDevices()
 		} else {
@@ -161,9 +176,10 @@ export const useDevices = createSharedComposable(function() {
 	 * If reduced permissions no longer allow a stream, that stream should be stopped
 	 *
 	 * @param {number} permissions bitmask, must match the value passed to subscribeToDevices
+	 * @param passive
 	 * @public
 	 */
-	function unsubscribeFromDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT) {
+	function unsubscribeFromDevices(permissions = PARTICIPANT.PERMISSIONS.MAX_DEFAULT, passive = false) {
 		const index = subscribersPermissions.indexOf(permissions)
 		if (index === -1) {
 			console.error('Attempt to unsubscribe from devices with unknown permissions')
@@ -171,8 +187,14 @@ export const useDevices = createSharedComposable(function() {
 		}
 
 		subscribersPermissions.splice(index, 1)
+		passive && passiveSubscribers--
 		if (subscribersPermissions.length === 0) {
 			stopDevices()
+			return
+		}
+		if (!streamsWanted()) {
+			stopAudioStream()
+			stopVideoStream()
 			return
 		}
 
@@ -277,14 +299,32 @@ export const useDevices = createSharedComposable(function() {
 			}
 		}
 
-		virtualBackground.value = new VirtualBackground()
+		// ket4tec #43: объекты конвейера не реактивны. Через Proxy ref() источник запоминался как Proxy,
+		// а события шли от сырого объекта (обработчики привязаны в конструкторе) — TrackToStream
+		// отбрасывал трек от VirtualBackground, и превью оставалось пустым.
+		faceFrame.value = markRaw(new FaceFrame())
+		virtualBackground.value = markRaw(new VirtualBackground())
+		faceFrame.value.connectTrackSink('default', virtualBackground.value)
 		// The virtual background should be enabled and disabled as needed by components
 		virtualBackground.value.setEnabled(false)
 
-		videoTrackToStream.value = new TrackToStream()
+		videoTrackToStream.value = markRaw(new TrackToStream())
 		videoTrackToStream.value.addInputTrackSlot('video')
 
 		virtualBackground.value.connectTrackSink('default', videoTrackToStream.value, 'video')
+		// ket4tec #43: выход цепочки (кадр по лицу, размытие) приходит позже setVideoStream.
+		// Новый поток или замена трека в нём -> переподключаем <video>: WebKit не перерисовывает
+		// превью после removeTrack/addTrack в уже назначенном srcObject.
+		const reattachPreview = () => {
+			const stream = videoTrackToStream.value?.getStream()
+			if (!stream || !videoElement.value || !videoStream.value) {
+				return
+			}
+			videoElement.value.srcObject = null
+			attachMediaStream(stream, videoElement.value, { autoplay: true, mirror: true, muted: true })
+		}
+		videoTrackToStream.value.on('streamSet', reattachPreview)
+		videoTrackToStream.value.on('trackReplaced', reattachPreview)
 
 		mediaDevicesManager.enableDeviceEvents()
 		updateAudioStream()
@@ -333,6 +373,10 @@ export const useDevices = createSharedComposable(function() {
 
 		videoTrackToStream.value = null
 
+		if (faceFrame.value) {
+			faceFrame.value.destroy()
+			faceFrame.value = null
+		}
 		if (virtualBackground.value) {
 			virtualBackground.value.destroy()
 			virtualBackground.value = null
@@ -412,7 +456,7 @@ export const useDevices = createSharedComposable(function() {
 			return
 		}
 
-		if (!hasAudioPermission()) {
+		if (!hasAudioPermission() || !streamsWanted()) {
 			return
 		}
 
@@ -438,9 +482,10 @@ export const useDevices = createSharedComposable(function() {
 		mediaDevicesManager.getUserMedia({ audio: true })
 			.then((stream) => {
 				audioStreamError.value = null
-				if (!initialized) {
+				if (!initialized || !streamsWanted()) {
 					// The promise was fulfilled once the stream is no
 					// longer needed, so just discard it.
+					// ket4tec: и когда шторку устройств закрыли, а в звонке остались только пассивные подписчики
 					stream.getTracks().forEach((track) => track.stop())
 				} else {
 					setAudioStream(stream)
@@ -468,12 +513,11 @@ export const useDevices = createSharedComposable(function() {
 			return
 		}
 		if (!stream) {
-			virtualBackground.value._setInputTrack('default', null)
+			faceFrame.value._setInputTrack('default', null)
 			return
 		}
 
-		virtualBackground.value._setInputTrack('default', videoStream.value.getVideoTracks()[0])
-
+		faceFrame.value._setInputTrack('default', videoStream.value.getVideoTracks()[0])
 		const options = { autoplay: true, mirror: true, muted: true }
 		attachMediaStream(videoTrackToStream.value.getStream(), videoElement.value, options)
 	}
@@ -482,7 +526,7 @@ export const useDevices = createSharedComposable(function() {
 	 * Stop and remove video stream
 	 */
 	function stopVideoStream() {
-		virtualBackground.value._setInputTrack('default', null)
+		faceFrame.value._setInputTrack('default', null)
 		if (!videoStream.value) {
 			return
 		}
@@ -516,7 +560,7 @@ export const useDevices = createSharedComposable(function() {
 			return
 		}
 
-		if (!hasVideoPermission()) {
+		if (!hasVideoPermission() || !streamsWanted()) {
 			return
 		}
 
@@ -541,9 +585,15 @@ export const useDevices = createSharedComposable(function() {
 		mediaDevicesManager.getUserMedia({ video: true })
 			.then((stream) => {
 				videoStreamError.value = null
-				if (!initialized) {
+				if (cameraNotice.value) {
+					cameraNoticeTimer = setTimeout(() => {
+						cameraNotice.value = null
+					}, 4000)
+				}
+				if (!initialized || !streamsWanted()) {
 					// The promise was fulfilled once the stream is no
 					// longer needed, so just discard it.
+					// ket4tec: и когда шторку устройств закрыли, а в звонке остались только пассивные подписчики
 					stream.getTracks().forEach((track) => track.stop())
 				} else {
 					setVideoStream(stream)
@@ -579,6 +629,7 @@ export const useDevices = createSharedComposable(function() {
 		audioStreamError,
 		videoStream,
 		videoStreamError,
+		cameraNotice,
 		// MediaSettings only
 		updatePreferences,
 		virtualBackground,

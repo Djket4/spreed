@@ -639,7 +639,7 @@ class SignalingController extends OCSController {
 		try {
 			// Add an update of the room participants at the end of the waiting
 			$room = $this->manager->getRoomForSession($this->userId, $sessionId);
-			$data[] = ['type' => 'usersInRoom', 'data' => $this->getUsersInRoom($room, $pingTimestamp)];
+			$data[] = ['type' => 'usersInRoom', 'data' => $this->getUsersInRoom($room, $pingTimestamp, $sessionId)];
 		} catch (RoomNotFoundException) {
 			$this->banIpIfGuestGotBanned($token);
 			$data[] = ['type' => 'usersInRoom', 'data' => []];
@@ -682,7 +682,7 @@ class SignalingController extends OCSController {
 	 * @param int $pingTimestamp
 	 * @return list<TalkSignalingSession>
 	 */
-	protected function getUsersInRoom(Room $room, int $pingTimestamp): array {
+	protected function getUsersInRoom(Room $room, int $pingTimestamp, ?string $ownSessionId = null): array {
 		$usersInRoom = [];
 		// Get participants active in the last 40 seconds (an extra time is used
 		// to include other participants pinging almost at the same time as the
@@ -692,10 +692,24 @@ class SignalingController extends OCSController {
 		// "- 1" is needed because only the participants whose last ping is
 		// greater than the given timestamp are returned.
 		$participants = $this->participantService->getParticipantsForAllSessions($room, $timestamp - 1);
+
+		// ket4tec #55: guest without chat sees only sessions in the call and their own
+		$hideNotInCall = false;
+		foreach ($participants as $participant) {
+			if ($participant->getSession()?->getSessionId() === $ownSessionId) {
+				$hideNotInCall = $participant->cannotSeeChat();
+				break;
+			}
+		}
+
 		foreach ($participants as $participant) {
 			$session = $participant->getSession();
 			if (!$session instanceof Session) {
 				// This is just to make Psalm happy, since we select by session it's always with one.
+				continue;
+			}
+
+			if ($hideNotInCall && $session->getInCall() === Participant::FLAG_DISCONNECTED && $session->getSessionId() !== $ownSessionId) {
 				continue;
 			}
 

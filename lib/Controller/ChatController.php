@@ -403,6 +403,11 @@ class ChatController extends AEnvironmentAwareOCSController {
 		$parent = $parentMessage = null;
 		$creationDateTime = $this->timeFactory->getDateTime('now', new \DateTimeZone('UTC'));
 
+		if ($replyTo !== 0 && $this->participant->cannotSeeChat()) {
+			// ket4tec #55 (NAS_CLOUD#110 А1): ответ вернул бы в `parent` текст и автора скрытого сообщения
+			return new DataResponse(['error' => 'reply-to'], Http::STATUS_FORBIDDEN);
+		}
+
 		if ($replyTo !== 0) {
 			try {
 				$resolvedReplyTo = $this->resolveReplyTo($replyTo, $replyToToken, $actorType, $actorId, $creationDateTime);
@@ -888,6 +893,10 @@ class ChatController extends AEnvironmentAwareOCSController {
 		int $markNotificationsAsRead = 1,
 		int $threadId = 0,
 	): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return $this->emptyChatResponse($lookIntoFuture, $timeout);
+		}
+
 		$limit = min(200, max(1, $limit));
 		$timeout = min(30, $timeout);
 
@@ -993,6 +1002,10 @@ class ChatController extends AEnvironmentAwareOCSController {
 	public function summarizeChat(
 		int $fromMessageId,
 	): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse(null, Http::STATUS_NO_CONTENT);
+		}
+
 		if ($this->room->isClassified()) {
 			// The chat of a classified conversation can not be summarized
 			return new DataResponse([
@@ -1107,6 +1120,17 @@ class ChatController extends AEnvironmentAwareOCSController {
 		}
 
 		return new DataResponse($data, Http::STATUS_CREATED);
+	}
+
+	/**
+	 * Guest without the chat permission: nothing to see (ket4tec #55).
+	 * Long polling is emulated with a sleep so the client does not spin.
+	 */
+	protected function emptyChatResponse(int $lookIntoFuture, int $timeout): DataResponse {
+		if ($lookIntoFuture) {
+			sleep(max(0, min(30, $timeout)));
+		}
+		return $this->prepareCommentsAsDataResponse([]);
 	}
 
 	/**
@@ -1279,6 +1303,10 @@ class ChatController extends AEnvironmentAwareOCSController {
 		int $limit = 50,
 		int $threadId = 0,
 	): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse([], Http::STATUS_OK);
+		}
+
 		$limit = min(100, max(0, $limit));
 
 		if ($this->room->isFederatedConversation()) {
@@ -1941,7 +1969,7 @@ class ChatController extends AEnvironmentAwareOCSController {
 		$attendee = $this->participant->getAttendee();
 
 		$headers = $lastCommonRead = [];
-		if ($attendee->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
+		if ($attendee->getReadPrivacy() === Participant::PRIVACY_PUBLIC && !$this->participant->cannotSeeChat()) {
 			$lastCommonRead[$this->room->getId()] = $this->chatManager->getLastCommonReadMessage($this->room);
 			$headers = ['X-Chat-Last-Common-Read' => (string)$lastCommonRead[$this->room->getId()]];
 		}
@@ -2036,6 +2064,10 @@ class ChatController extends AEnvironmentAwareOCSController {
 		'token' => '[a-z0-9]{4,30}',
 	])]
 	public function getObjectsSharedInRoomOverview(int $limit = 7): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse([], Http::STATUS_OK);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\ChatController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\ChatController::class);
@@ -2124,6 +2156,10 @@ class ChatController extends AEnvironmentAwareOCSController {
 		'token' => '[a-z0-9]{4,30}',
 	])]
 	public function getObjectsSharedInRoom(string $objectType, int $lastKnownMessageId = 0, int $limit = 100): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse([], Http::STATUS_OK);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\ChatController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\ChatController::class);
@@ -2340,6 +2376,10 @@ class ChatController extends AEnvironmentAwareOCSController {
 		'token' => '[a-z0-9]{4,30}',
 	])]
 	public function mentions(string $search, int $limit = 20, bool $includeStatus = false): DataResponse {
+		if ($this->participant->cannotSeeChat()) {
+			return new DataResponse([], Http::STATUS_OK);
+		}
+
 		if ($this->room->isFederatedConversation()) {
 			/** @var \OCA\Talk\Federation\Proxy\TalkV1\Controller\ChatController $proxy */
 			$proxy = \OCP\Server::get(\OCA\Talk\Federation\Proxy\TalkV1\Controller\ChatController::class);

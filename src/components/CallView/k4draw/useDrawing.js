@@ -2,9 +2,13 @@
  * ket4tec: k4draw. Рисование поверх показа экрана: транспорт (сигналинг HPB, протокол v1) и состояние.
  * Один модуль на всех: слой, док и кнопка в панели звонка работают с одним `state` и одним набором показов.
  */
+import { generateOcsUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
+import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
-import { callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
+import { useTokenStore } from '../../../stores/token.ts'
+import { k4log } from '../../../utils/k4log.js'
+import { beforeLeaveCall, callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 
 export const PALETTE = ['#ffd84d', '#ff9a66', '#6cc4ff', '#ff8fc7', '#7fd6d0', '#b98bff', '#a6e36b', '#ff6b6b']
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
@@ -28,6 +32,28 @@ const RE_Q = 10000 // нет `last` за 10 с после `h` -> повторн�
 const OLD_QUIET = 3000 // отправитель без `last` (старый): 3 с тишины = синхронизирован
 const IDLE_GC = 60000 // записи buckets/pings молчащих авторов чистим через 60 с
 const R_LIMIT = 30000 // длина JSON одного `r`
+export const WSZ = [1, 2, 4] // толщина пометки: тонкая / средняя / толстая (множитель к базовой)
+/**
+ * @param k ключ
+ */
+function ls(k) {
+	try {
+		return localStorage.getItem('k4draw.' + k)
+	} catch (e) {
+		return null
+	}
+}
+/**
+ * @param k ключ
+ * @param v значение
+ */
+function lsSet(k, v) {
+	try {
+		localStorage.setItem('k4draw.' + k, v)
+	} catch (e) {
+		// хранилище закрыто: выбор живёт до перезагрузки
+	}
+}
 
 /** Реактивное состояние для UI (кнопка, док). Данные пометок реактивными не делаем: рендерит слой руками. */
 export const state = reactive({
@@ -35,11 +61,45 @@ export const state = reactive({
 	tool: 'laser', // laser | fade | marker | arrow | frame | text | eraser
 	tsz: 'm', // размер текста s | m | l
 	tl: 0, // сколько секунд живёт текст (0 = остаётся)
-	ft: 3, // сколько секунд живёт «гаснущий» маркер
+	ft: 3.5, // сколько секунд живёт линия указки; выбора нет (владелец 11.11)
 	big: null, // sessionId показывающего, чей показ сейчас крупно
 	keys: {}, // sessionId показывающего -> ключ показа (известен, когда пришёл `h`)
 	undo: 0, // сколько своих пометок можно отменить в крупном показе
+	board: null, // sessionId того, кто открыл доску (одна на звонок; открыта — у всех, локально не сворачивается)
+	bg: null, // фон доски «Показать всем»: { t: 's' снимок | 'm' картинка из беседы, id }
+	gd: true, // гости рисуют (переключает модератор)
+	col: PALETTE.includes(ls('col')) ? ls('col') : '', // свой цвет пометок ('' = цвет автора, назначенный автоматически)
+	sz: WSZ.includes(+ls('sz')) ? +ls('sz') : 1, // своя толщина
 })
+
+// ── доска и права ──
+// Доска — тот же показ, только без экрана: ключ `sid:b<время>`, соотношение сторон задаёт открывший (`h.ar`).
+export const isBoard = (k) => /:b\d+$/.test(k || '')
+const MODS = [1, 2, 6] // владелец, модератор, гость-модератор
+/**
+ *
+ * @param sid
+ */
+function attendee(sid) {
+	const nc = callParticipantCollection.get(sid)?.attributes.nextcloudSessionId
+	return nc ? store.getters.findParticipant(useTokenStore().token, { sessionId: nc }) : null
+}
+export const amMod = () => !!store.getters.isModerator
+export const amGuest = () => useActorStore().actorType !== 'users'
+// модератор только по типу 1/2/6: из списка участников, а у гостя (списка нет) — из сигналинга (webrtc.js usersChanged)
+const isMod = (sid) => (sid === me() ? amMod() : MODS.includes(attendee(sid)?.participantType ?? callParticipantCollection.get(sid)?.attributes.participantType))
+export const isGuestSid = (sid) => (sid === me() ? amGuest() : (attendee(sid) ? ['guests', 'emails'].includes(attendee(sid).actorType) : !callParticipantCollection.get(sid)?.attributes.userId))
+/** Можно ли мне рисовать сейчас. */
+export const canDraw = () => state.gd || !amGuest()
+/**
+ *
+ * @param k
+ * @param cols
+ */
+function hOf(k, cols) {
+	const s = shows.get(k)
+	return { op: 'h', k, ...(shows.get(k)?.presenter === me() && !k.startsWith(me() + ':') ? { ho: 1 } : {}), ...(cols ? { cols } : {}), ...(s?.ar ? { ar: s.ar } : {}), ...(s?.bg ? { bg: s.bg } : {}), gd: state.gd ? 1 : 0 }
+}
 
 /**
  * FNV-1a, как в прототипе.
@@ -56,8 +116,20 @@ export function hash(s) {
 }
 
 const shows = new Map() // k -> { k, presenter, marks: Map(key -> mark), hist: [], authors: {}, cols: {} }
+if (typeof window !== 'undefined') {
+	window.__k4draw = { state, shows } // только для проверок
+}
 const listeners = new Set()
-const emit = (ev) => listeners.forEach((f) => f(ev))
+// ket4tec (NAS_CLOUD#114): любое изменение рисунка поднимает show.dirty; сбрасывает успешный снимок (sendSnap)
+const INK = new Set(['add', 'upd', 'del', 'pts', 'end'])
+/**
+ *
+ * @param ev
+ */
+function emit(ev) {
+	INK.has(ev.t) && ev.show && (ev.show.dirty = true)
+	listeners.forEach((f) => f(ev))
+}
 /**
  * @param {Function} fn слушатель событий {t, ...}
  */
@@ -84,6 +156,7 @@ let lastQ = 0
 let lastGc = 0
 const buckets = new Map() // автор -> { t, n } token bucket приёма
 const pings = new Map() // автор -> время активных отметок
+const closedK = new Set() // ключи закрытых досок: `h`, пришедший после `H`, доску не открывает
 
 const hpb = () => !!sig && typeof sig.doSend === 'function'
 const me = () => (sig || k4drawSignaling())?.getSessionId() || ''
@@ -194,7 +267,7 @@ function assignCol(show, sid) {
 	clearTimeout(colsTimer)
 	colsTimer = setTimeout(() => {
 		colsTimer = 0
-		myK && show.k === myK && enqueue({ op: 'h', k: myK, cols: colsOut(show) })
+		myK && show.k === myK && enqueue(hOf(myK, colsOut(show)))
 	}, 300)
 }
 
@@ -246,6 +319,7 @@ function applyCols(show, cols) {
  * @param data
  */
 function wire(data) {
+	(data.op === 'h' || data.op === 'H' || data.op === 'q') && k4log('board.out', { op: data.op, k: data.k })
 	sig.doSend({ type: 'message', message: { recipient: { type: 'call' }, data: { type: 'k4draw', v: 1, ...data } } })
 }
 
@@ -267,12 +341,14 @@ function enqueue(data) {
 			if (data.op === 'p') {
 				const room = MAX_PTS_STROKE * 2 - queue[i].pts.length
 				let pts = room > 0 ? queue[i].pts.concat(data.pts.slice(0, room)) : queue[i].pts
+				const pr = queue[i].pr && data.pr && room > 0 ? queue[i].pr.concat(data.pr.slice(0, room / 2)) : undefined
 				// при переполнении у arrow/frame важен конец: последняя пара заменяется актуальной (marker: хвост отбрасывается)
 				const tool = shows.get(data.k)?.marks.get(me() + '/' + data.id)?.tool
 				if ((tool === 'arrow' || tool === 'frame') && data.pts.length > Math.max(room, 0) && data.pts.length >= 2) {
 					pts = pts.slice(0, -2).concat(data.pts.slice(-2))
 				}
-				queue[i] = { ...queue[i], pts }
+				queue[i] = { ...queue[i], pts, pr: pts.length === queue[i].pts.length ? queue[i].pr : pr }
+				queue[i].pr || delete queue[i].pr
 			} else {
 				queue[i] = data
 			}
@@ -289,11 +365,12 @@ function enqueue(data) {
  */
 function rekey() {
 	const sid = me()
-	if (!myK || !sid || myK.startsWith(sid + ':')) {
+	// доска, переданная мне (moveBoard): ключ чужой по задумке, переименовывать нельзя
+	if (!myK || !sid || myK.startsWith(sid + ':') || shows.get(myK)?.presenter === sid) {
 		return
 	}
 	const old = myK
-	myK = sid + ':' + Date.now()
+	myK = sid + (isBoard(old) ? ':b' : ':') + Date.now() // доска остаётся доской
 	const s = shows.get(old)
 	if (s) {
 		shows.delete(old)
@@ -304,7 +381,7 @@ function rekey() {
 	state.keys[sid] = myK
 	queue = queue.map((q) => (q.k === old ? { ...q, k: myK } : q))
 	snap = null
-	wire({ op: 'h', k: myK })
+	wire(hOf(myK))
 }
 
 /**
@@ -319,8 +396,8 @@ function flush() {
 		const d = queue[0]
 		if (d.op === 'p' && d.pts.length > MAX_PTS_MSG * 2) {
 			// лишнее остаётся в очереди для следующей пачки
-			queue.unshift({ ...d, pts: d.pts.slice(0, MAX_PTS_MSG * 2) })
-			queue[1] = { ...d, pts: d.pts.slice(MAX_PTS_MSG * 2) }
+			queue.unshift({ ...d, pts: d.pts.slice(0, MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(0, MAX_PTS_MSG) } : {}) })
+			queue[1] = { ...d, pts: d.pts.slice(MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(MAX_PTS_MSG) } : {}) }
 		}
 		wire(queue.shift())
 		tokens--
@@ -394,6 +471,7 @@ function onMsg(d) {
 	apply(d, from)
 }
 
+const pendG = new Map() // перенос рамки, пришедший раньше её снимка: ключ пометки → две точки
 const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : null)
 const okPts = (a, max) => Array.isArray(a) && a.length > 0 && a.length % 2 === 0 && a.length <= max * 2 && a.every((v) => typeof v === 'number' && isFinite(v))
 /**
@@ -418,6 +496,29 @@ function stop(m) {
 }
 
 /**
+ * Выбрать свой цвет и запомнить.
+ *
+ * @param c цвет из PALETTE или '' (автоматический)
+ */
+export function setColor(c) {
+	state.col = PALETTE.includes(c) ? c : ''
+	lsSet('col', state.col)
+}
+
+/**
+ * Выбрать свою толщину и запомнить.
+ *
+ * @param n 1 | 2 | 4
+ */
+export function setSize(n) {
+	state.sz = WSZ.includes(n) ? n : 1
+	lsSet('sz', state.sz)
+}
+
+/** Цвет моих новых пометок. */
+export const myColor = () => state.col || identity(me()).color
+
+/**
  * Забыть показ и его ключ: новый слой снова спросит `q`.
  *
  * @param presenter
@@ -428,6 +529,7 @@ function dropShow(presenter) {
 	old && shows.delete(old.k)
 	delete state.keys[presenter]
 	delete syncs[presenter]
+	pendG.clear() // отложенные переносы относятся к ушедшему показу
 }
 
 /**
@@ -445,6 +547,13 @@ function setShow(presenter, k) {
 }
 
 const isTemp = (tool) => tool === 'laser' || tool === 'fade'
+const bOrd = (k) => k.slice(k.lastIndexOf(':') + 2) + k // порядок досок: время открытия из ключа `sid:b<мс>`, при равенстве — ключ
+/**
+ * Сколько живёт линия указки, мс: выбор автора 3/5/10 с; без ttl (старый клиент) — 0,65 с.
+ *
+ * @param {object} m пометка
+ */
+export const laserLife = (m) => (m.ttl ? m.ttl * 1000 : LASER_LIFE)
 const cntKey = (by, tool) => by + '|' + isTemp(tool)
 
 /**
@@ -484,7 +593,7 @@ function endMark(show, m) {
 	stop(m)
 	m.done = true
 	if (m.tool === 'laser') {
-		m.timer = setTimeout(() => drop(show, m), LASER_LIFE + 100)
+		m.timer = setTimeout(() => drop(show, m), laserLife(m) + 100)
 	} else if (m.tool === 'fade' || (m.tool === 'text' && m.ttl)) {
 		m.timer = setTimeout(() => {
 			m.fading = true
@@ -543,7 +652,21 @@ function idle(show, m, from) {
  */
 function apply(d, from) {
 	const op = d.op
+	;(op === 'h' || op === 'H' || op === 'q') && k4log('board.in', { op, from, k: d.k })
+	if (op === 'G') {
+		if (isMod(from)) {
+			state.gd = !!d.on
+			gdOk = !d.on && isBoard(d.k) ? d.k : ''
+			!canDraw() && (state.mode = false)
+		}
+		return
+	}
 	if (op === 'q') {
+		// модератор напоминает новичку, что гости не рисуют
+		if (!state.gd && amMod() && performance.now() - (apply.g || 0) > Q_GAP) {
+			apply.g = performance.now()
+			enqueue({ op: 'G', on: 0, ...(gdOk && { k: gdOk }) })
+		}
 		if (myK && !qTimer) {
 			// несколько `q` в окне — один ответ, не чаще раза в Q_GAP
 			qTimer = setTimeout(() => {
@@ -562,25 +685,81 @@ function apply(d, from) {
 		return
 	}
 	if (op === 'h') {
-		if (d.k.startsWith(from + ':')) {
+		if (closedK.has(d.k)) {
+			return // доску уже закрыли: запоздалый `h` её не воскрешает
+		}
+		if (isBoard(d.k) && !state.gd && isGuestSid(from) && d.k !== gdOk) {
+			return // гости сейчас не рисуют — и доску не открывают (NAS_CLOUD#110 А2); доску гостя, открытую до запрета, новичку подтверждает модератор (`k` в `G`)
+		}
+		// ket4tec: k4draw. `ho`: новый владелец доски после ухода открывшего. Открывшего, пока он в звонке, не сместить.
+		// Двое взяли доску одновременно (выбор разошёлся): младший по pickOwner уступает, старший объявляет ещё раз;
+		// остальные верят последнему объявлению — так же лечится и чужая заявка, которую настоящий владелец не видел.
+		// ponytail: сходится, пока сигналинг раздаёт сообщения звонка всем в одном порядке (один HPB); при нескольких HPB без общего порядка нужен счётчик эпох в `h`
+		const live = (s) => s === me() || !!callParticipantCollection.get(s)
+		const cur0 = shows.get(d.k)
+		const was = cur0?.presenter
+		const ho = d.ho === 1 && isBoard(d.k) && from !== me() && live(from)
+			&& (!was || !live(was) || (!d.k.startsWith(was + ':') && (was !== me() || ord(from, was) < 0)))
+		if (d.ho === 1 && !ho && was === me() && myK === d.k && performance.now() - (apply.h || 0) > Q_GAP) {
+			apply.h = performance.now()
+			enqueue(hOf(myK, colsOut(cur0))) // доска моя: напоминаю тем, кто поверил заявке
+		}
+		if (cur0 && was !== from && (ho || d.k.startsWith(from + ':'))) {
+			if (!live(from)) {
+				return // запоздалый `h` ушедшего открывшего доску у нового владельца не отнимает
+			}
+			moveBoard(cur0, from) // в т.ч. открывший никуда не уходил и объявил снова: прежний ключ у временного владельца снимается
+		}
+		if (d.k.startsWith(from + ':') || ho) {
+			const cur = state.board && state.board !== from && state.keys[state.board]
+			if (isBoard(d.k) && isBoard(cur) && cur !== d.k) {
+				// двое открыли доску одновременно: у всех остаётся более ранняя по ключу (время, затем id), вторая гаснет без `H`
+				// прежняя побеждает, только пока её владелец в звонке: зависшая доска ушедшего новую не блокирует
+				if (bOrd(cur) < bOrd(d.k) && (state.board === me() || callParticipantCollection.get(state.board))) {
+					return
+				}
+				cur === myK ? dropMine() : boardGone(state.board)
+			}
+			isBoard(d.k) || sharers.add(from)
+			!isBoard(d.k) && isBoard(state.keys[from]) && passBoard(from) // доску ему передали, не зная о показе экрана (`h` был в пути): выбираю заново
 			state.keys[from] !== d.k && setShow(from, d.k)
-			applyCols(shows.get(d.k), d.cols) // повторный `h` того же ключа состояние не сбрасывает
+			const s = shows.get(d.k)
+			applyCols(s, d.cols) // повторный `h` того же ключа состояние не сбрасывает
+			if (isBoard(d.k)) {
+				const ar = Math.min(3, Math.max(0.33, Number(d.ar) || 1))
+				if (s.ar !== ar) {
+					s.ar = ar
+					emit({ t: 'show', show: s })
+				}
+				s.bg = okBg(d.bg)
+				state.bg = s.bg
+				state.board !== from && k4log('board.state', { board: from })
+				state.board = from
+			}
+			'gd' in d && isMod(from) && (state.gd = !!d.gd) && (gdOk = '')
 		}
 		return
 	}
+	op === 'H' && !isBoard(d.k) && d.k.startsWith(from + ':') && sharers.delete(from)
 	const show = shows.get(d.k)
 	if (!show) {
 		return
 	}
 	identity(from) // запомнить имя автора, пока он в звонке
+	if (!state.gd && (op === 's' || op === 't' || op === 'g' || op === 'm') && isGuestSid(from)) {
+		return // гости сейчас не рисуют
+	}
 	switch (op) {
 		case 's': {
 			if (!idOk(d.id) || !TOOLS.includes(d.tool)) {
 				return
 			}
-			const ttl = d.tool === 'fade' ? Math.min(30, Math.max(1, Number(d.ttl) || 3)) : 0
+			// ttl: «гаснет» старых клиентов и линия указки (у старых указка без ttl — прежние 0,65 с)
+			const ttl = d.tool === 'fade' ? Math.min(30, Math.max(1, Number(d.ttl) || 3)) : d.tool === 'laser' ? Math.min(30, Math.max(0, Number(d.ttl) || 0)) : 0
 			const m = addMark(show, from, d.id, d.tool, ttl)
 			if (m) {
+				m.col = PALETTE.includes(d.c) ? d.c : '' // свой цвет автора; чужое значение -> цвет автора
+				m.wm = WSZ.includes(d.w) ? d.w : 1
 				idle(show, m, from)
 				emit({ t: 'add', show, mark: m })
 			}
@@ -596,19 +775,25 @@ function apply(d, from) {
 			if (m.tool === 'arrow' || m.tool === 'frame') {
 				P = [m.pts[0] || P[0], P[P.length - 1]]
 				m.pts = P
-			} else if (m.pts.length + P.length <= MAX_PTS_STROKE) {
-				P.forEach((p) => {
-					m.pts.push(p)
-					m.ts.push(now)
-				})
+			} else {
 				if (m.tool === 'laser') {
-					while (m.ts.length && now - m.ts[0] > LASER_LIFE) {
+					// сначала устаревший хвост: иначе длинная указка упирается в MAX_PTS_STROKE и замирает
+					while (m.ts.length && now - m.ts[0] > laserLife(m)) {
 						m.ts.shift()
 						m.pts.shift()
 					}
 				}
-			} else {
-				return
+				if (m.pts.length + P.length > MAX_PTS_STROKE) {
+					return
+				}
+				// нажим пера (необязательный `pr`, 0..1 на точку): толщина линии
+				const pr = Array.isArray(d.pr) && d.pr.length === P.length && (m.tool === 'marker' || m.tool === 'fade') ? d.pr.map((v) => num(v) ?? 0.5) : null
+				pr && !m.pr && !m.pts.length && (m.pr = [])
+				P.forEach((p, i) => {
+					m.pts.push(p)
+					m.ts.push(now)
+					m.pr?.push(pr ? pr[i] : 0.5)
+				})
 			}
 			idle(show, m, from)
 			emit({ t: 'pts', show, mark: m })
@@ -635,14 +820,14 @@ function apply(d, from) {
 			if (m) {
 				clearTimeout(m.timer)
 				m.fading = false
-				Object.assign(m, { ttl, x, y, size: d.size, text, pts: [[x, y]] })
+				Object.assign(m, { ttl, x, y, size: d.size, text, pts: [[x, y]], col: PALETTE.includes(d.c) ? d.c : '' })
 				emit({ t: 'upd', show, mark: m })
 			} else {
 				m = addMark(show, from, d.id, 'text', ttl)
 				if (!m) {
 					return
 				}
-				Object.assign(m, { x, y, size: d.size, text, pts: [[x, y]] })
+				Object.assign(m, { x, y, size: d.size, text, pts: [[x, y]], col: PALETTE.includes(d.c) ? d.c : '' })
 				emit({ t: 'add', show, mark: m })
 			}
 			endMark(show, m)
@@ -650,8 +835,16 @@ function apply(d, from) {
 		}
 		case 'g': {
 			// перенос или новый размер готовой рамки/стрелки автора: две точки целиком
-			const m = idOk(d.id) && show.marks.get(from + '/' + d.id)
-			if (!m || !m.done || (m.tool !== 'frame' && m.tool !== 'arrow') || !okPts(d.pts, 2) || d.pts.length !== 4) {
+			if (!idOk(d.id) || !okPts(d.pts, 2) || d.pts.length !== 4) {
+				return
+			}
+			const m = show.marks.get(from + '/' + d.id)
+			if (!m) {
+				// пометка ещё не пришла снимком `r` (вошли посреди показа): применим, когда придёт
+				pendG.size < 200 && pendG.set(from + '/' + d.id, pairs(d.pts))
+				return
+			}
+			if (!m.done || (m.tool !== 'frame' && m.tool !== 'arrow')) {
 				return
 			}
 			m.pts = pairs(d.pts)
@@ -683,13 +876,32 @@ function apply(d, from) {
 					m && drop(show, m, true)
 				})
 			}
+			// ket4tec: k4draw. Ластик модератора: чужие пометки парами [автор, id]
+			if (Array.isArray(d.of) && isMod(from)) {
+				d.of.slice(0, 200).forEach((p) => {
+					const m = Array.isArray(p) && typeof p[0] === 'string' && p[0].length <= 300 && idOk(p[1]) && show.marks.get(p[0] + '/' + p[1])
+					m && PERM.concat('text').includes(m.tool) && drop(show, m, true)
+				})
+			}
 			break
 		case 'X':
 			show.marks.forEach((m) => m.by === from && drop(show, m, true))
 			break
 		case 'Z':
-			if (from === show.presenter) {
+			// «Очистить всё»: модератор; показывающий экран — на своём показе
+			if ((show.k.startsWith(from + ':') && !isBoard(show.k)) || isMod(from)) { // по ключу: id сессии показывающего мог смениться (rekey)
 				show.marks.forEach((m) => drop(show, m, true))
+			}
+			break
+		case 'H': // доску закрыли: открывший — у всех (или передал, `ho`); любой, кому можно рисовать, — тоже у всех (правило 11.11)
+			if (!isBoard(show.k)) {
+				break
+			}
+			if (from === show.presenter) {
+				d.ho === 1 ? passBoard(from) : boardGone(from)
+			} else if (state.gd || !isGuestSid(from)) {
+				// владелец закрывает штатно и повторяет `H` всем (кто пропустил первое); остальные — сразу у себя
+				show.k === myK ? closeBoard() : boardGone(show.presenter)
 			}
 			break
 		case 'S': // снимок сохранён: только для счётчика и тоста
@@ -715,17 +927,23 @@ function apply(d, from) {
 					if (!m) {
 						return
 					}
+					m.col = PALETTE.includes(r.c) ? r.c : ''
+					m.wm = WSZ.includes(r.w) ? r.w : 1
 					if (txt) {
 						Object.assign(m, { x: num(r.x), y: num(r.y), size: r.size, text: r.text.trim() })
 						m.pts = [[m.x, m.y]]
 					} else {
-						m.pts = pairs(r.pts)
+						const g = (r.tool === 'frame' || r.tool === 'arrow') && pendG.get(m.key)
+						m.pts = g || pairs(r.pts)
+						pendG.delete(m.key)
+						Array.isArray(r.pr) && r.pr.length === m.pts.length && r.tool === 'marker' && (m.pr = r.pr.map((v) => num(v) ?? 0.5))
 					}
 					if (typeof r.name === 'string' && !show.authors[r.author]) {
 						show.authors[r.author] = { name: r.name.slice(0, 60), key: String(r.uid || r.name).slice(0, 60) }
 					}
 					emit({ t: 'add', show, mark: m })
-					endMark(show, m)
+					// вошли посреди штриха: он открыт, автор дошлёт точки (`p`) и конец (`e`); молчит — закроет idle
+					r.u === 1 && !txt ? idle(show, m, r.author) : endMark(show, m)
 				})
 			}
 			break
@@ -741,7 +959,7 @@ function startSnap() {
 	if (!myK) {
 		return
 	}
-	enqueue({ op: 'h', k: myK, cols: colsOut(shows.get(myK)) })
+	enqueue(hOf(myK, colsOut(shows.get(myK))))
 	snap = { k: myK, parts: buildState(shows.get(myK)), i: 0, again: false }
 }
 
@@ -752,13 +970,14 @@ function startSnap() {
  * @param m
  */
 function ser(show, m) {
-	if (!m || !(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || !m.done || !m.pts.length) {
+	if (!m || !(PERM.includes(m.tool) || (m.tool === 'text' && !m.ttl)) || (!m.done && m.tool === 'text') || !m.pts.length) {
 		return null
 	}
 	const a = show.authors[m.by] || {}
+	const cw = { ...(m.col ? { c: m.col } : {}), ...(m.wm > 1 ? { w: m.wm } : {}) }
 	return m.tool === 'text'
-		? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key }
-		: { id: m.id, author: m.by, tool: m.tool, ttl: 0, pts: m.pts.flat().map((v) => +v.toFixed(4)), name: a.name, uid: a.key }
+		? { id: m.id, author: m.by, tool: 'text', ttl: 0, x: m.x, y: m.y, size: m.size, text: m.text, name: a.name, uid: a.key, ...cw }
+		: { id: m.id, author: m.by, tool: m.tool, ttl: 0, ...cw, pts: m.pts.flat().map((v) => +v.toFixed(4)), ...(m.pr ? { pr: m.pr.map((v) => +v.toFixed(2)) } : {}), name: a.name, uid: a.key, ...(m.done ? {} : { u: 1 }) } // u: штрих ещё рисуют
 }
 
 /**
@@ -811,6 +1030,7 @@ function buildState(show) {
 
 /** Показывающий начал показ: объявить ключ. */
 export function startShow() {
+	isBoard(myK) && closeBoard() // показ экрана закрывает свою доску
 	if (myK) {
 		return
 	}
@@ -826,10 +1046,17 @@ export function startShow() {
 /**
  *
  */
-export function endShow() {
-	if (!myK) {
+export async function endShow() {
+	if (!myK || isBoard(myK)) {
 		return
 	}
+	// ket4tec (NAS_CLOUD#114): пометки изменились после последнего снимка — снимок, пока они не пропали
+	const k = myK
+	await snapIfDirty(myShow())
+	if (myK !== k) {
+		return // пока ждали, показ сменился
+	}
+	hpb() && wire({ op: 'H', k: myK }) // остальным: экран больше не показываю, доску мне передавать можно
 	dropShow(me())
 	queue = queue.filter((q) => q.k !== myK)
 	snap = null
@@ -953,12 +1180,13 @@ function local(show, data) {
  * @param show
  * @param tool
  * @param p
+ * @param pr
  */
-export function strokeStart(show, tool, p) {
+export function strokeStart(show, tool, p, pr) {
 	const id = rid()
-	local(show, { op: 's', id, tool, ttl: tool === 'fade' ? state.ft : 0 })
+	local(show, { op: 's', id, tool, ttl: tool === 'laser' ? state.ft : 0, ...(state.col ? { c: state.col } : {}), ...(state.sz > 1 ? { w: state.sz } : {}) })
 	const m = show.marks.get(me() + '/' + id)
-	strokePoint(show, m, p)
+	strokePoint(show, m, p, pr)
 	return m
 }
 
@@ -967,9 +1195,10 @@ export function strokeStart(show, tool, p) {
  * @param show
  * @param m
  * @param p
+ * @param pr
  */
-export function strokePoint(show, m, p) {
-	m && !m.done && local(show, { op: 'p', id: m.id, pts: [r4(p[0]), r4(p[1])] })
+export function strokePoint(show, m, p, pr) {
+	m && !m.done && local(show, { op: 'p', id: m.id, pts: [r4(p[0]), r4(p[1])], ...(pr === undefined ? {} : { pr: [+Math.min(1, Math.max(0, pr)).toFixed(2)] }) })
 }
 
 /**
@@ -1011,7 +1240,7 @@ export function textPut(show, t) {
 		return
 	}
 	const id = t.id || rid()
-	local(show, { op: 't', id, x: r4(t.x), y: r4(t.y), size: t.size, text, ttl: old ? old.ttl : state.tl })
+	local(show, { op: 't', id, x: r4(t.x), y: r4(t.y), size: t.size, text, ttl: old ? old.ttl : state.tl, ...(state.col ? { c: state.col } : {}) })
 	const m = show.marks.get(me() + '/' + id)
 	if (m && !old) {
 		show.hist.push(m.key)
@@ -1059,7 +1288,10 @@ export function cursor(show, p) {
  * @param marks
  */
 export function eraseMarks(show, marks) {
-	marks.length && local(show, { op: 'x', ids: marks.map((m) => m.id) })
+	// чужие пометки (ластик модератора) уходят парами [автор, id]; приёмник проверяет, что отправитель модератор
+	const own = marks.filter((m) => m.by === me())
+	const of = amMod() ? marks.filter((m) => m.by !== me()).map((m) => [m.by, m.id]) : []
+	;(own.length || of.length) && local(show, { op: 'x', ...(own.length ? { ids: own.map((m) => m.id) } : {}), ...(of.length ? { of } : {}) })
 }
 
 /**
@@ -1091,7 +1323,380 @@ export function clearMine() {
  * @param show
  */
 export function clearAll(show = showOf(state.big)) {
-	show && show.k === myK && local(show, { op: 'Z' }) // по ключу: id сессии мог смениться посреди показа
+	show && canClearAll(show) && local(show, { op: 'Z' })
+}
+
+/**
+ * «Очистить всё» доступно: модератору; показывающему экран — на своём показе (по ключу: id сессии мог смениться).
+ *
+ * @param show
+ */
+export function canClearAll(show = showOf(state.big)) {
+	return !!show && (amMod() || (show.k === myK && !isBoard(show.k)))
+}
+
+/**
+ * Модератор: гости рисуют или нет.
+ *
+ * @param {boolean} on
+ */
+export function setGuestsDraw(on) {
+	state.gd = !!on
+	gdOk = on ? '' : guestBoard() // помню сам: после выхода и возврата в звонок доску гостя снова приму и подтвержу новичкам
+	hpb() && enqueue({ op: 'G', on: on ? 1 : 0, ...(gdOk && { k: gdOk }) })
+}
+
+/**
+ * Открыть доску у всех.
+ *
+ * @param {number} ar соотношение сторон доски (ширина / высота) у открывшего
+ * @param {object|null} bg фон доски «Показать всем»
+ */
+export function openBoard(ar, bg = null) {
+	if (myK || state.board === me() || !canDraw()) {
+		return
+	}
+	if (!acquire()) {
+		release()
+		return
+	}
+	snapped = false
+	myK = me() + ':b' + Date.now()
+	setShow(me(), myK)
+	shows.get(myK).ar = Math.min(3, Math.max(0.33, +ar.toFixed(3)))
+	shows.get(myK).bg = bg
+	state.bg = bg
+	k4log('board.state', { board: me(), own: 1 })
+	state.board = me()
+	// закрыть-и-открыть в одном такте (смена фона) слой не пересоздаёт, join() не зовётся, а boardGone() обнулил big
+	state.big = me()
+	wire(hOf(myK))
+	state.mode = canDraw()
+}
+
+/**
+ * ket4tec (NAS_CLOUD#114): тихий снимок, если на показе есть рисунок и он менялся после последнего снимка; ждём до 4 с.
+ *
+ * @param s показ
+ */
+async function snapIfDirty(s) {
+	if (s && s.perm > 0 && s.dirty) {
+		await Promise.race([autoSnap?.(), new Promise((r) => setTimeout(r, 4000))]).catch(() => {})
+	}
+}
+
+/** Закрыть доску у всех; с изменённым рисунком — сначала тихий снимок (делает тот, кто закрывает). */
+export async function requestCloseBoard() {
+	await snapIfDirty(showOf(state.board))
+	closeBoard()
+}
+
+/**
+ * Закрыть доску у всех. Своя — штатно; чужая — `H` всем, владелец, получив его, закрывает и повторяет `H`.
+ *
+ * @param {boolean} pass не закрывать, а передать доску следующему в звонке (я ухожу из звонка)
+ */
+export function closeBoard(pass = false) {
+	if (!isBoard(myK)) {
+		const k = state.keys[state.board]
+		if (!pass && state.board && canDraw()) {
+			isBoard(k) && hpb() && wire({ op: 'H', k })
+			boardGone(state.board)
+		}
+		return
+	}
+	const k = myK
+	wire({ op: 'H', k, ...(pass ? { ho: 1 } : {}) })
+	dropMine()
+	pass && closedK.delete(k) // передал, а не закрыл: вернусь в звонок — приму её от нового владельца
+}
+
+/**
+ * Своя доска гаснет у меня (остальным — `H` в closeBoard или правило двух досок).
+ *
+ * @param {boolean} gone доска закрыта; false — уступил её другому владельцу, показ остаётся
+ */
+function dropMine(gone = true) {
+	const k = myK
+	queue = queue.filter((q) => q.k !== k)
+	snap = null
+	clearTimeout(qTimer)
+	qTimer = 0
+	clearTimeout(colsTimer)
+	colsTimer = 0
+	myK = null
+	// после смены сессии (rekey) доска значится и под прежним id — снять все записи, иначе state.board не обнулится
+	gone && Object.keys(state.keys).filter((p) => state.keys[p] === k).forEach(boardGone)
+	release()
+}
+
+const rank = (s) => (isGuestSid(s) ? 2 : 0) + (isMod(s) ? 0 : 1)
+const ord = (a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0) // старшинство претендентов на доску: у всех клиентов одно
+
+/**
+ * ket4tec: k4draw. Следующий владелец доски: сначала модераторы с учёткой, потом остальные с учёткой,
+ * гости только если учёток не осталось; внутри ранга по sessionId — все клиенты выбирают одинаково без сообщений.
+ *
+ * @param excl кто уходит
+ */
+function pickOwner(excl) {
+	// про других — по экранному потоку, не по state.keys: зритель доски ключ чужого показа уже забыл, и выбор у клиентов разошёлся бы
+	// выбор без согласования: у кого `h`/`H` показа ещё в пути, выберет иначе. Сводят два правила в приёме `h`: из двух взявших остаётся старший, а доску, отданную показывающему, выбирают заново
+	const sharing = (s) => (s === me() ? !!myK && !isBoard(myK) : sharers.has(s) || !!callParticipantCollection.get(s)?.attributes.screen)
+	return [me(), ...callParticipantCollection.callParticipantModels.map((m) => m.attributes.peerId)]
+		.filter((s) => s && s !== excl && !sharing(s) && (state.gd || !isGuestSid(s))) // показывающему экран не передаём: ключ доски затёр бы его показ; гостю при запрете — тоже (его `h` отбросят)
+		.sort(ord)[0]
+}
+
+/**
+ * Показ доски переходит к новому владельцу: пометки те же, ключ прежний.
+ *
+ * @param show
+ * @param next
+ */
+function moveBoard(show, next) {
+	const old = show.presenter
+	next !== me() && myK === show.k && dropMine(false) // уступил: доску больше не объявляю (по myK, не по old — после смены сессии old ещё прежний)
+	delete state.keys[old]
+	delete syncs[old]
+	show.presenter = next
+	state.keys[next] = show.k
+	syncs[next] = { t: performance.now(), done: true, old: false, n: 0 }
+	state.board === old && (state.board = next)
+	state.big === old && (state.big = next)
+	if (next === me()) {
+		myK !== show.k && acquire() // доска уже моя (сменилась сессия) — второй раз не держу
+		snapped = false
+		myK = show.k
+		enqueue(hOf(myK, colsOut(show))) // новичкам и тем, кто пропустил уход: теперь доску держу я
+	}
+	emit({ t: 'show', show })
+}
+
+/**
+ * Открывший доску ушёл: передать следующему, а если больше никого нет — доска закрывается.
+ *
+ * @param old кто открывал
+ */
+export function passBoard(old) {
+	if (myK && state.keys[old] === myK) {
+		return // доска моя, `old` — мой прежний id после смены сессии (rekey): передавать нечего
+	}
+	const show = shows.get(state.keys[old])
+	const next = show && isBoard(show.k) && pickOwner(old)
+	next ? moveBoard(show, next) : boardGone(old)
+}
+
+let autoSnap = null
+/**
+ * snapshot.js регистрирует автоснимок (без цикла импортов).
+ *
+ * @param f функция снимка
+ */
+export function setAutoSnap(f) {
+	autoSnap = f
+}
+let snapped = false // автоснимок уже сделан при выходе из звонка
+// До выхода из звонка (список участников и холст ещё целы): последний на доске с рисунком снимает её в Файлы, ждём до 4 с
+beforeLeaveCall.fn = async () => {
+	const s = myShow()
+	if (!s || !isBoard(s.k) || s.perm <= 0 || !s.dirty || snapped || callParticipantCollection.callParticipantModels.length) {
+		return
+	}
+	snapped = true
+	await snapIfDirty(s)
+}
+let gdRoom = '' // комната, к которой относится state.gd
+let gdOk = '' // ключ доски гостя, открытой до запрета: её `h` принимаем и при запрете (сообщает модератор)
+/**
+ * Доска гостя, которая сейчас открыта у меня (модератор шлёт её ключ вместе с запретом).
+ *
+ * @return {string} ключ или ''
+ */
+function guestBoard() {
+	const k = state.board && isGuestSid(state.board) && state.keys[state.board]
+	return isBoard(k) ? k : ''
+}
+// кто объявил показ экрана и не снял его: по сообщениям (у всех в одном порядке), а не по потоку — поток доходит позже
+const sharers = new Set()
+let others = 0 // сколько других в звонке было видно в последний раз (при выходе из звонка список уже пуст)
+
+/** Выход из звонка: своя доска уходит к следующему, если никого — закрывается. */
+function leaveBoard() {
+	isBoard(myK) && closeBoard(others > 0)
+	// чужая доска не переезжает в следующий звонок; запрет гостям модератор хранит сам (в другой комнате его сбросит watchCall), остальным пришлют заново
+	// ponytail: запрет живёт в памяти вкладки — перезагрузка страницы единственного модератора его снимает; хранить в комнате на сервере, если понадобится
+	amMod() || (gdOk = '')
+	sharers.clear() // пропущу чужой `H` — вернувшись, спрошу `q`, показывающие объявят показ заново
+	Object.assign(state, { board: null, bg: null, gd: amMod() ? state.gd : true })
+}
+
+/**
+ * Доска ушла (закрыли или открывший ушёл из звонка).
+ *
+ * @param sid кто открывал
+ */
+export function boardGone(sid) {
+	isBoard(state.keys[sid]) && closedK.add(state.keys[sid])
+	state.keys[sid] === gdOk && (gdOk = '') // доску гостя закрыли: подтверждать больше нечего
+	dropShow(sid)
+	if (state.board === sid) {
+		k4log('board.state', { board: null, gone: sid })
+		state.board = null
+		state.bg = null
+	}
+	if (state.big === sid) {
+		state.big = null
+		state.mode = false
+		state.undo = 0
+	}
+}
+
+// ket4tec (NAS_CLOUD#106): доска у всех 4:3, как лист. От окна открывшего выходило до 3:1 — на iPhone узкая полоса
+const boardAr = () => 4 / 3
+
+/**
+ * ket4tec (NAS_CLOUD#91/#92): фон доски — картинка. Только снимок доски этого звонка или картинка из сообщения беседы,
+ * адрес каждый собирает сам (гость тоже, по сессии участника).
+ *
+ * @param {object} bg из сообщения `h`
+ * @return {{ t: string, id: number }|null}
+ */
+function okBg(bg) {
+	return bg && (bg.t === 's' || bg.t === 'm') && Number.isSafeInteger(bg.id) && bg.id > 0 ? { t: bg.t, id: bg.id } : null
+}
+
+/**
+ * Адрес картинки фона доски / превью в панели.
+ *
+ * @param {{ t: string, id: number }} bg фон
+ * @param {number} size сторона превью, px
+ */
+export function bgUrl(bg, size = 1600) {
+	return generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/' + (bg.t === 's' ? 'snapshot' : 'image') + '/{id}', { token: useTokenStore().token, id: bg.id }) + '?size=' + size
+}
+
+/**
+ * «Показать всем»: картинка во весь экран доски у всех, рисуют поверх тем же «Рисовать».
+ * Доска чужая — не перехватываем; своя — рисунок поверх прежней картинки уходит в Снимки, доска открывается заново.
+ *
+ * @param {{ t: string, id: number }} bg снимок (`s`) или картинка из беседы (`m`)
+ * @param {() => Promise<unknown>} [beforeOpen] открыть картинку гостям; вызывается после снимка старой доски
+ * @return {Promise<string>} '' — показано, иначе причина
+ */
+export async function showImage(bg, beforeOpen) {
+	const err = canShow(bg)
+	if (err) {
+		return err
+	}
+	bg = okBg(bg)
+	const s = myShow()
+	const busy = 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
+	if (s && isBoard(s.k)) {
+		if (s.bg?.t === bg.t && s.bg?.id === bg.id) {
+			return ''
+		}
+		if (s.perm > 0) {
+			// не сохранилось — рисунок не трогаем
+			const ok = await Promise.resolve(autoSnap?.()).catch(() => false)
+			if (ok === false) {
+				return 'Не удалось сохранить доску — попробуйте ещё раз'
+			}
+		}
+		// пока ждали снимок, доска могла смениться
+		const cur = myShow()
+		if (state.board !== me() || !cur || cur.k !== s.k) {
+			return busy
+		}
+		closeBoard()
+	}
+	// beforeOpen — открыть картинку гостям: только после снимка старой доски, иначе при сбое снимка картинка уже доступна
+	if (beforeOpen) {
+		try {
+			await beforeOpen()
+		} catch (e) {
+			console.error('k4draw show image', e)
+			return 'Не получилось показать картинку'
+		}
+		if (state.board && state.board !== me()) {
+			return busy
+		}
+	}
+	openBoard(boardAr(), bg)
+	return state.board === me() ? '' : 'Доска не открылась'
+}
+
+/**
+ * Дешёвая проверка до показа (до отметки «выведено» на сервере).
+ *
+ * @param {{ t: string, id: number }} bg снимок или картинка из беседы
+ * @return {string} '' — можно, иначе причина
+ */
+export function canShow(bg) {
+	if (!okBg(bg) || !hasHpb()) {
+		return 'Показ недоступен в этом звонке'
+	}
+	if (state.board && state.board !== me()) {
+		return 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
+	}
+	return ''
+}
+
+/** Кнопка «Доска»: открыть у всех / закрыть у всех. */
+export function toggleBoard() {
+	if (!state.board) {
+		openBoard(boardAr())
+	} else if (canDraw()) {
+		state.mode = false
+		requestCloseBoard()
+	}
+}
+/** Кнопку «Доска» показываем: есть HPB, и мне можно рисовать (или доска уже открыта). */
+export const boardBtn = () => hasHpb() && (!!state.board || canDraw())
+
+let views = 0 // смонтированные виды звонка
+/**
+ * Пока идёт звонок: слушать сигналинг (о доске узнаём без экрана), новичком спросить `q`.
+ *
+ * @return {Function} отписка
+ */
+export function watchCall() {
+	let held = false
+	let n = 0
+	views++
+	const room = useTokenStore().token
+	room !== gdRoom && (state.gd = true) && (gdOk = '') // запрет гостям — только в своей комнате (NAS_CLOUD#110 В6)
+	gdRoom = room
+	const seen = setInterval(() => {
+		const n = callParticipantCollection.callParticipantModels.length
+		sharers.forEach((s) => callParticipantCollection.get(s) || sharers.delete(s)) // вышел из звонка, не сняв показ
+		// новичок (или вернувшийся Safari с новой сессией) мог пропустить `h` и свои `q`: доску объявляю заново, слой сам спросит пометки
+		n > others && isBoard(myK) && enqueue(hOf(myK, colsOut(shows.get(myK))))
+		others = n
+	}, 2000)
+	const t = setInterval(() => {
+		if (!held) {
+			held = acquire()
+			held || release()
+			return
+		}
+		me() && n < 3 && wire({ op: 'q' })
+		++n >= 3 && clearInterval(t)
+	}, 2000)
+	return () => {
+		clearInterval(t)
+		clearInterval(seen)
+		views--
+		held && release()
+		if (!views) {
+			others = Math.max(others, callParticipantCollection.callParticipantModels.length)
+			// некому передать доску: снимок рисунка в Файлы, пока холст ещё в DOM
+			const s = myShow()
+			s && isBoard(s.k) && s.perm > 0 && s.dirty && !others && !snapped && autoSnap?.() // запасной путь
+		}
+		// звонок ушёл (а не перерисовка вида звонка): доска переходит дальше по звонку или, если никого нет, закрывается
+		setTimeout(() => views || leaveBoard(), 1500)
+	}
 }
 
 /**
@@ -1101,7 +1706,10 @@ export function clearAll(show = showOf(state.big)) {
  */
 export function sendSnap(n) {
 	const show = showOf(state.big)
-	show && local(show, { op: 'S', n })
+	if (show) {
+		show.dirty = false // снимок сохранён
+		local(show, { op: 'S', n })
+	}
 }
 
 export const isPresenter = () => !!state.big && state.big === me()
@@ -1133,4 +1741,3 @@ function spring(z, w, d, n = 40) {
 }
 export const SP = { in: spring(0.78, 16, 0.48), menu: spring(0.72, 20, 0.36), pop: spring(0.5, 22, 0.5) }
 export const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
-export const LIFE = LASER_LIFE

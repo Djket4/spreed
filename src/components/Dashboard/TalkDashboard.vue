@@ -5,7 +5,8 @@
 <script lang="ts" setup>
 import type { Conversation } from '../../types/index.ts'
 
-import { showError } from '@nextcloud/dialogs'
+import { getRequestToken } from '@nextcloud/auth'
+import { showError, showSuccess } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
 import { isRTL, t } from '@nextcloud/l10n'
 import { generateUrl, imagePath } from '@nextcloud/router'
@@ -15,12 +16,11 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import NcButton from '@nextcloud/vue/components/NcButton'
-import NcInputField from '@nextcloud/vue/components/NcInputField'
-import NcPopover from '@nextcloud/vue/components/NcPopover'
 import IconArrowLeft from 'vue-material-design-icons/ArrowLeft.vue'
 import IconArrowRight from 'vue-material-design-icons/ArrowRight.vue'
 import IconCalendarBlankOutline from 'vue-material-design-icons/CalendarBlankOutline.vue'
-import IconList from 'vue-material-design-icons/FormatListBulleted.vue'
+import IconCheck from 'vue-material-design-icons/Check.vue'
+import IconClose from 'vue-material-design-icons/Close.vue'
 import IconMicrophoneOutline from 'vue-material-design-icons/MicrophoneOutline.vue'
 import IconPhoneOutline from 'vue-material-design-icons/PhoneOutline.vue'
 import IconPlus from 'vue-material-design-icons/Plus.vue'
@@ -38,7 +38,7 @@ import { useDashboardStore } from '../../stores/dashboard.ts'
 import { hasUnreadMentions } from '../../utils/conversation.ts'
 import { convertToUnix } from '../../utils/formattedTime.ts'
 import generatePassword from '../../utils/generatePassword.ts'
-import { copyConversationLinkToClipboard } from '../../utils/handleUrl.ts'
+import { generateFullConversationLink } from '../../utils/handleUrl.ts'
 
 const supportsUpcomingReminders = hasTalkFeature('local', 'upcoming-reminders')
 const canModerateSipDialOut = hasTalkFeature('local', 'sip-support-dialout')
@@ -148,30 +148,162 @@ const filteredConversations = computed(() => {
 		.sort((conversation1, conversation2) => conversation2.lastActivity - conversation1.lastActivity)
 })
 
+const meetingOpen = ref(false)
+const meetingBusy = ref(false)
+let meetingGen = 0 // ket4tec (NAS_CLOUD#110 Б6): номер открытия формы — ответ прошлого открытия её не заполняет
+const meetingToken = ref('')
+const meetingLink = ref('')
+const meetingPassword = ref('')
+// 'copied' | 'ready' (clipboard write failed: user has to tap "Copy")
+const meetingCopyState = ref<'copied' | 'ready'>('copied')
+const meetingInput = ref<HTMLInputElement | null>(null)
+
+// ket4tec: «Мой звонок» — постоянная ссылка на личную открытую беседу «Личные переговоры» (NAS_CLOUD#100).
+// Ссылку выдаёт приложение «Стол» (/apps/ket4tec_launchpad/api/links, создаёт беседу при первом обращении); нет приложения — нет кнопки.
+// Берём заранее: iOS Safari пускает «Поделиться» и буфер только прямо в обработчике нажатия.
+const myCallLink = ref('')
+fetch(generateUrl('/apps/ket4tec_launchpad/api/links'), { headers: { Accept: 'application/json', requesttoken: getRequestToken() ?? '' } })
+	.then((r) => (r.ok ? r.json() : null))
+	.then((d) => { myCallLink.value = d?.call || '' })
+	.catch(() => {})
+
 /**
- * Creates a new group conversation and navigates to the conversation page.
+ * Телефон — системное «Поделиться», компьютер (или «Поделиться» нет) — ссылка в буфер.
+ */
+function shareMyCall() {
+	const url = myCallLink.value
+	if (navigator.share && (isMobile.value || matchMedia('(pointer: coarse)').matches)) {
+		navigator.share({ title: t('spreed', 'Personal call'), url }).catch((e) => {
+			if (e?.name !== 'AbortError') {
+				copyMyCall(url)
+			}
+		})
+		return
+	}
+	copyMyCall(url)
+}
+
+/**
+ * @param url ссылка на беседу
+ */
+function copyMyCall(url: string) {
+	navigator.clipboard.writeText(url).then(() => showSuccess(t('spreed', 'Link copied')), () => showError(t('spreed', 'The link could not be copied')))
+}
+
+/**
+ * Opens the "new meeting" window with an empty form.
+ */
+async function openMeeting() {
+	meetingGen++
+	conversationName.value = ''
+	meetingToken.value = ''
+	meetingOpen.value = true
+	await nextTick()
+	meetingInput.value?.focus()
+}
+
+/**
+ * Closes the "new meeting" window (a created conversation stays in the list).
+ */
+function closeMeeting() {
+	meetingOpen.value = false
+}
+
+/**
+ * Text that goes to the clipboard: the link and, if forced, the password.
+ */
+function meetingClipboardText() {
+	return meetingPassword.value
+		? meetingLink.value + '\n' + t('spreed', 'Password: {password}', { password: meetingPassword.value }, { escape: false, sanitize: false })
+		: meetingLink.value
+}
+
+/**
+ * Copies the link again (user gesture, so plain writeText works everywhere).
+ */
+async function copyMeetingAgain() {
+	try {
+		await navigator.clipboard.writeText(meetingClipboardText())
+		meetingCopyState.value = 'copied'
+	} catch {
+		showError(t('spreed', 'The link could not be copied'))
+	}
+}
+
+/**
+ * Creates the instant meeting conversation and copies its link, without joining the call.
+ * The clipboard write starts synchronously in the click handler (iOS Safari drops the user gesture
+ * after the first network await), its content is a promise resolved once the conversation exists.
  */
 async function startMeeting() {
+	if (meetingBusy.value) {
+		return
+	}
+	meetingBusy.value = true
+	const gen = meetingGen
+	let resolveText!: (text: string) => void
+	let rejectText!: (error: unknown) => void
+	const textPromise = new Promise<string>((resolve, reject) => {
+		resolveText = resolve
+		rejectText = reject
+	})
+	let clipboardWrite: Promise<void> | null = null
+	try {
+		if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+			clipboardWrite = navigator.clipboard.write([
+				new ClipboardItem({ 'text/plain': textPromise.then((text) => new Blob([text], { type: 'text/plain' })) }),
+			])
+			// handled below, avoid an unhandled rejection if creation fails first
+			clipboardWrite.catch(() => {})
+		}
+	} catch {
+		clipboardWrite = null
+	}
+
 	try {
 		const password = forcePasswordProtection ? await generatePassword() : undefined
 		const conversation = await store.dispatch('createGroupConversation', {
 			// TRANSLATORS: Section header for meeting-related settings; also a static name fallback for instant meeting conversation
-			roomName: conversationName.value || t('spreed', 'Meeting'),
+			roomName: conversationName.value.trim() || t('spreed', 'Meeting'),
 			roomType: CONVERSATION.TYPE.PUBLIC,
 			objectType: CONVERSATION.OBJECT_TYPE.INSTANT_MEETING,
 			objectId: convertToUnix(new Date()).toString(),
 			password,
 		})
-		await copyConversationLinkToClipboard(conversation.token, undefined, undefined, password)
-		await router.push({
-			name: 'conversation',
-			params: { token: conversation.token },
-			hash: '#direct-call',
-		})
+		if (gen !== meetingGen) {
+			rejectText(new Error('stale'))
+			return
+		}
+		meetingToken.value = conversation.token
+		meetingLink.value = generateFullConversationLink(conversation.token)
+		meetingPassword.value = password ?? ''
+		resolveText(meetingClipboardText())
+		try {
+			await clipboardWrite
+			meetingCopyState.value = clipboardWrite ? 'copied' : 'ready'
+		} catch {
+			meetingCopyState.value = 'ready'
+		}
 	} catch (error) {
+		rejectText(error)
 		console.error('Error creating conversation:', error)
 		showError(t('spreed', 'Error while creating the conversation'))
+	} finally {
+		meetingBusy.value = false
 	}
+}
+
+/**
+ * Goes to the created meeting and starts the call.
+ */
+async function joinMeeting() {
+	const token = meetingToken.value
+	closeMeeting()
+	await router.push({
+		name: 'conversation',
+		params: { token },
+		hash: '#direct-call',
+	})
 }
 
 /**
@@ -218,36 +350,27 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 				{{ t('spreed', 'Hello, {displayName}', { displayName: actorStore.displayName }, { escape: false }) }}
 			</h2>
 			<div class="talk-dashboard__actions">
-				<NcPopover
+				<NcButton
 					v-if="canStartConversations && isCallEnabled"
 					class="talk-dashboard__action"
-					popupRole="dialog">
-					<template #trigger>
-						<NcButton variant="primary">
-							<template #icon>
-								<IconVideoOutline />
-							</template>
-							{{ t('spreed', 'Start meeting now') }}
-						</NcButton>
+					variant="primary"
+					@click="openMeeting">
+					<template #icon>
+						<IconVideoOutline />
 					</template>
-					<div
-						role="dialog"
-						aria-labelledby="instant_meeting_dialog"
-						class="instant-meeting__dialog"
-						aria-modal="true">
-						<strong>{{ t('spreed', 'Give your meeting a title') }}</strong>
-						<NcInputField
-							id="room-name"
-							v-model="conversationName"
-							:placeholder="t('spreed', 'Meeting')"
-							@keyup.enter="startMeeting" />
-						<NcButton
-							variant="primary"
-							@click="startMeeting">
-							{{ t('spreed', 'Create and copy link') }}
-						</NcButton>
-					</div>
-				</NcPopover>
+					{{ t('spreed', 'Start meeting') }}
+				</NcButton>
+				<NcButton
+					v-if="myCallLink && isCallEnabled"
+					class="talk-dashboard__action k7-mycall"
+					variant="secondary"
+					:title="t('spreed', 'Permanent link to your personal call')"
+					@click="shareMyCall">
+					<template #icon>
+						<IconPhoneOutline :size="20" />
+					</template>
+					{{ t('spreed', 'My call link') }}
+				</NcButton>
 				<NcButton
 					v-if="canStartConversations"
 					class="talk-dashboard__action"
@@ -256,15 +379,6 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 						<IconPlus :size="20" />
 					</template>
 					{{ t('spreed', 'New conversation') }}
-				</NcButton>
-
-				<NcButton
-					class="talk-dashboard__action"
-					@click="EventBus.emit('open-conversations-list:show')">
-					<template #icon>
-						<IconList :size="20" />
-					</template>
-					{{ t('spreed', 'Join conversations') }}
 				</NcButton>
 
 				<NcButton
@@ -288,6 +402,81 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 				</NcButton>
 			</div>
 		</div>
+		<Teleport to="body">
+			<div
+				v-if="meetingOpen"
+				class="k7-meet"
+				@keydown.esc.stop="closeMeeting">
+				<div class="k7-meet__scrim" @click="closeMeeting" />
+				<div
+					class="k7-meet__sheet"
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="k7-meet-title">
+					<button
+						type="button"
+						class="k7-meet__x"
+						:aria-label="t('spreed', 'Close')"
+						@click="closeMeeting">
+						<IconClose :size="22" />
+					</button>
+					<template v-if="!meetingToken">
+						<h2 id="k7-meet-title" class="k7-meet__title">
+							{{ t('spreed', 'New meeting') }}
+						</h2>
+						<label class="k7-meet__label" for="k7-meet-name">{{ t('spreed', 'Meeting name') }}</label>
+						<input
+							id="k7-meet-name"
+							ref="meetingInput"
+							v-model="conversationName"
+							class="k7-meet__input"
+							type="text"
+							maxlength="255"
+							:placeholder="t('spreed', 'Meeting')"
+							@keydown.enter.prevent="startMeeting">
+						<button
+							type="button"
+							class="k7-meet__btn k7-meet__btn--primary"
+							:disabled="meetingBusy"
+							@click="startMeeting">
+							{{ t('spreed', 'Create') }}
+						</button>
+					</template>
+					<template v-else>
+						<div class="k7-meet__done">
+							<span class="k7-meet__check"><IconCheck :size="30" /></span>
+							<h2 id="k7-meet-title" class="k7-meet__title">
+								{{ meetingCopyState === 'copied' ? t('spreed', 'Link copied') : t('spreed', 'Link is ready') }}
+							</h2>
+						</div>
+						<div class="k7-meet__link" :title="meetingLink">
+							{{ meetingLink }}
+						</div>
+						<div v-if="meetingPassword" class="k7-meet__password">
+							{{ t('spreed', 'Password: {password}', { password: meetingPassword }, { escape: false, sanitize: false }) }}
+						</div>
+						<button
+							type="button"
+							class="k7-meet__btn k7-meet__btn--soft"
+							@click="copyMeetingAgain">
+							{{ meetingCopyState === 'copied' ? t('spreed', 'Copy again') : t('spreed', 'Copy') }}
+						</button>
+						<button
+							type="button"
+							class="k7-meet__btn k7-meet__btn--primary"
+							@click="joinMeeting">
+							{{ t('spreed', 'Enter') }}
+						</button>
+						<button
+							type="button"
+							class="k7-meet__btn k7-meet__btn--soft"
+							@click="closeMeeting">
+							{{ t('spreed', 'Close') }}
+						</button>
+					</template>
+				</div>
+			</div>
+		</Teleport>
 		<div class="talk-dashboard__items">
 			<div v-if="hasMeetings" class="event-section">
 				<DashboardSection
@@ -646,14 +835,6 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 	line-height: 20px;
 }
 
-.instant-meeting__dialog {
-	padding: calc(var(--default-grid-baseline) * 2);
-	display: flex;
-	flex-direction: column;
-	gap: var(--default-grid-baseline) ;
-	align-items: center;
-}
-
 // Override NcButton styles for narrow screen size
 @media screen and (max-width: $breakpoint-mobile-small) {
 	.talk-dashboard__actions {
@@ -670,5 +851,218 @@ function scrollEventCards({ direction }: { direction: 'backward' | 'forward' }) 
 			padding-inline-end: calc(var(--default-grid-baseline) * 2);
 		}
 	}
+}
+</style>
+
+<style lang="scss">
+// ket4tec: «Стол» v7 — окно новой встречи. Токены темы облака (--tk-*), запасные — цвета Стола (тёмная).
+.k7-meet {
+	--m-bg: var(--k7-bg2, var(--tk-bg2, #242021));
+	--m-bg3: var(--k7-bg3, var(--tk-bg3, #2c2627));
+	--m-fg: var(--k7-fg, var(--tk-fg, #f3eee9));
+	--m-fg2: var(--k7-fg2, var(--tk-fg2, #bdb3ad));
+	--m-line: var(--k7-line2, var(--tk-line2, #ffffff1f));
+	--m-pill: var(--k7-pill, var(--tk-pill, #ffffff1f));
+	--m-acc: var(--k7-acc, var(--tk-acc, #a86bff));
+	--m-grad: linear-gradient(135deg, #5B2A86, #A86BFF);
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: flex-end;
+	padding-bottom: var(--k7-sheet-bottom, 0px);
+	justify-content: center;
+	color: var(--m-fg);
+
+	&__scrim {
+		position: absolute;
+		inset: 0;
+		background: #0008;
+		backdrop-filter: blur(6px);
+	}
+
+	&__sheet {
+		position: relative;
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 28px 20px calc(20px + env(safe-area-inset-bottom));
+		background: var(--m-bg);
+		border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0);
+		box-shadow: 0 -12px 60px #0006, inset 0 0 0 1px var(--m-line);
+	}
+
+	&__x {
+		position: absolute;
+		top: 12px !important;
+		inset-inline-end: 12px;
+		width: 40px !important;
+		height: 40px !important;
+		display: grid;
+		place-items: center;
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--m-pill) !important;
+		color: var(--m-fg) !important;
+		cursor: pointer;
+	}
+
+	&__title {
+		margin: 0;
+		padding-inline-end: 44px;
+		font-size: 22px;
+		font-weight: 700;
+		color: var(--m-fg);
+	}
+
+	&__label {
+		color: var(--m-fg2);
+		font-size: 14px;
+	}
+
+	&__input {
+		box-sizing: border-box;
+		width: 100% !important;
+		height: 52px !important;
+		margin: 0 !important;
+		padding: 0 20px !important;
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--m-bg3) !important;
+		color: var(--m-fg) !important;
+		font-size: 16px !important; // 16px: iOS does not zoom the page on focus
+		box-shadow: inset 0 0 0 1px var(--m-line) !important;
+
+		&:focus {
+			outline: none;
+			box-shadow: inset 0 0 0 2px var(--m-acc);
+		}
+	}
+
+	&__btn {
+		height: 52px !important;
+		min-height: 52px !important;
+		margin: 0 !important;
+		border: 0 !important;
+		border-radius: 999px !important;
+		font-size: 16px !important;
+		font-weight: 700 !important;
+		cursor: pointer;
+
+		&--primary {
+			background: var(--m-grad) !important;
+			color: #fff !important;
+			box-shadow: 0 8px 22px #5b2a8666;
+		}
+
+		&--soft {
+			background: var(--m-pill) !important;
+			color: var(--m-fg) !important;
+		}
+
+		&:disabled {
+			opacity: .6;
+			cursor: default;
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--m-acc);
+			outline-offset: 2px;
+		}
+	}
+
+	&__done {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding-inline-end: 44px;
+
+		.k7-meet__title { padding-inline-end: 0; white-space: nowrap; }
+	}
+
+	&__check {
+		flex: none;
+		width: 44px;
+		height: 44px;
+		display: grid;
+		place-items: center;
+		border-radius: 999px;
+		background: #2fb36a;
+		color: #fff;
+	}
+
+	&__link {
+		padding: 14px 20px;
+		border-radius: 999px;
+		background: var(--m-bg3);
+		color: var(--m-fg2);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		user-select: all;
+	}
+
+	&__password {
+		text-align: center;
+		color: var(--m-fg);
+		font-weight: 600;
+		user-select: all;
+	}
+}
+
+@media (min-width: 700px) {
+	.k7-meet {
+		align-items: center;
+
+		&__sheet {
+			width: 420px;
+			border-radius: 28px;
+			padding-bottom: 24px;
+			box-shadow: 0 24px 80px #0007, inset 0 0 0 1px var(--m-line);
+		}
+	}
+}
+// ket4tec: заглушки с картинками (встречи, упоминания, напоминания) не показываем — списки с данными остаются.
+// Раньше это делала тема облака; для форка её правила главной выключены (html:not(.k7f)), поэтому здесь.
+html.k7f .talk-dashboard__items:not(:has(.dashboard-section--list)),
+html.k7f .talk-dashboard-wrapper :is(.event-section, .talk-dashboard__chats > div):not(:has(.dashboard-section--list)) { display: none !important; }
+
+// ket4tec: главная Talk на телефоне — «Начать встречу» во всю ширину (Слива), под ней две капсулы в ряд
+@media (max-width: 700px) {
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions {
+		display: grid !important;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		width: 100%;
+		margin: 0;
+	}
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > * { width: auto !important; min-width: 0 !important; height: auto !important; margin: 0 !important; flex: none !important; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :first-child { grid-column: 1 / -1; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > .k7-mycall { grid-column: 1 / -1; } // «Мой звонок» во всю ширину под «Начать встречу»
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions .button-vue {
+		box-sizing: border-box;
+		width: 100% !important;
+		height: 52px !important;
+		min-height: 52px !important;
+		padding: 0 10px !important;
+		border: 0 !important;
+		border-radius: 999px !important;
+		background: var(--tk-bg2, #242021) !important;
+		color: var(--tk-fg, #f3eee9) !important;
+		box-shadow: inset 0 0 0 1px var(--tk-line2, #ffffff1f) !important;
+	}
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :first-child.button-vue,
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :first-child .button-vue {
+		background: linear-gradient(135deg, #5B2A86, #A86BFF) !important;
+		color: #fff !important;
+		box-shadow: 0 8px 22px #5b2a8655 !important;
+	}
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions .button-vue__wrapper { justify-content: center; gap: 6px; width: 100%; }
+	// две капсулы в ряд — без значков, иначе «Проверка устройств» не влезает в 402 px
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :not(:first-child) { padding-inline: 8px !important; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :not(:first-child) .button-vue__icon { display: none !important; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions > :not(:first-child) .button-vue__text { letter-spacing: -.01em; }
+	html.k7f .talk-dashboard-wrapper .talk-dashboard__actions .button-vue__text { min-width: 0; margin: 0 !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px !important; font-weight: 600 !important; }
 }
 </style>

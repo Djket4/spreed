@@ -4,10 +4,11 @@
  */
 import axios from '@nextcloud/axios'
 import { showError, showSuccess } from '@nextcloud/dialogs'
-import { generateOcsUrl } from '@nextcloud/router'
+import { generateOcsUrl, generateUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
 import { useActorStore } from '../../../stores/actor.ts'
-import { localScreen, myId, onDraw, sendSnap, SP, state } from './useDrawing.js'
+import { useTokenStore } from '../../../stores/token.ts'
+import { amGuest, bgUrl, localScreen, myId, onDraw, sendSnap, setAutoSnap, SP, state } from './useDrawing.js'
 
 export const snap = reactive({ n: 0, k: '', busy: false })
 const PERM = ['marker', 'arrow', 'frame', 'text']
@@ -29,7 +30,7 @@ export function watchSnaps() {
 		}
 		snap.n = Math.max(snap.n, ev.n)
 		if (ev.by !== myId()) {
-			showSuccess(`Снимок в выжимке — ${esc(ev.name)}`)
+			showSuccess(`Снимок сохранён — ${esc(ev.name)}`)
 		}
 	})
 }
@@ -55,14 +56,16 @@ function loadImg(src) {
  * @return {Promise<Blob>} PNG
  */
 async function render(all = false) {
-	const ink = document.querySelector('.k4-layer .k4-ink')
-	const video = ink?.closest('.screenContainer')?.querySelector('video')
-	if (!ink || !video || !video.videoWidth) {
+	const ink = document.querySelector('.k4-board .k4-ink') || document.querySelector('.k4-layer .k4-ink')
+	const board = !!ink?.closest('.k4-board')
+	const video = board ? null : ink?.closest('.screenContainer')?.querySelector('video')
+	if (!ink || (!board && (!video || !video.videoWidth))) {
 		throw new Error('no video')
 	}
-	const vw = video.videoWidth
-	const vh = video.videoHeight
 	const surf = ink.parentElement
+	// доска: кадра нет, PNG вдвое крупнее холста на экране
+	const vw = board ? Math.round(surf.clientWidth * 2) : video.videoWidth
+	const vh = board ? Math.round(surf.clientHeight * 2) : video.videoHeight
 	const W = surf.clientWidth || vw
 	const H = surf.clientHeight || vh
 	const k = vw / W
@@ -70,7 +73,18 @@ async function render(all = false) {
 	cv.width = vw
 	cv.height = vh
 	const ctx = cv.getContext('2d')
-	ctx.drawImage(video, 0, 0, vw, vh)
+	if (board) {
+		ctx.fillStyle = getComputedStyle(surf).backgroundColor
+		ctx.fillRect(0, 0, vw, vh)
+		if (state.bg) {
+			// фон «Показать всем»: как на экране, целиком по центру (тот же сервер — холст не «грязный»)
+			const im = await loadImg(bgUrl(state.bg))
+			const f = Math.min(vw / im.naturalWidth, vh / im.naturalHeight)
+			ctx.drawImage(im, (vw - im.naturalWidth * f) / 2, (vh - im.naturalHeight * f) / 2, im.naturalWidth * f, im.naturalHeight * f)
+		}
+	} else {
+		ctx.drawImage(video, 0, 0, vw, vh)
+	}
 
 	// штрихи: клон постоянных групп, computed-стили вшиваем (CSS слоя в изолированный SVG не попадёт)
 	const NS = 'http://www.w3.org/2000/svg'
@@ -165,47 +179,62 @@ function fly(blob, btn) {
 	}
 }
 
+/** Имя файла снимка по времени. */
+function fileName() {
+	const d = new Date()
+	const p2 = (n) => String(n).padStart(2, '0')
+	return `Снимок ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}-${p2(d.getSeconds())}.png`
+}
+
 /**
+ * Кнопка снимка в капсуле: доска или кадр показа с пометками → сервер (Talk/Recording/<token>/Снимки/, к выжимке звонка).
+ * На телефоне — ещё системное «Поделиться», гостю на компьютере — скачать (своих Файлов у гостя нет).
+ *
  * @param {string} token комнаты
- * @param {HTMLElement|null} btn кнопка «В выжимку» (цель анимации)
+ * @param {HTMLElement|null} btn кнопка (цель анимации)
+ * @param {boolean} quiet автоснимок при выходе: без «Поделиться», скачивания и тоста об ошибке
+ * @return {Promise<boolean>} сохранён ли на сервере
  */
-export async function takeSnapshot(token, btn) {
+export async function shoot(token, btn = null, quiet = false) {
 	if (snap.busy || !state.big) {
-		return
+		console.warn('k4draw shoot skip', { busy: snap.busy, big: !!state.big })
+		return false
 	}
 	snap.busy = true
 	try {
-		const blob = await render()
+		const blob = await render(true)
+		fly(blob, btn)
+		// ket4tec (NAS_CLOUD#103 п.40): снимок тихо уходит в Файлы, без системного окна «Поделиться»; гостю (у него нет Файлов) — скачать
+		if (!quiet && amGuest()) {
+			save(blob)
+		}
 		const fd = new FormData()
 		fd.append('image', blob, 'snapshot.png')
-		fly(blob, btn)
 		const res = await axios.post(generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/snapshot', { token }), fd)
-		if (res.data?.ocs?.data?.chat === false) {
-			showSuccess('Снимок сохранён в записи, в чат не отправлен')
-		} else {
-			sendSnap(snap.n + 1)
-			showSuccess('Снимок в выжимке')
-		}
+		const id = res.data?.ocs?.data?.id
+		sendSnap(snap.n + 1)
+		const link = id && !amGuest() ? generateUrl('/f/{id}', { id }) : ''
+		showSuccess(link ? 'Сохранено · открыть' : 'Сохранено', link ? { onClick: () => window.open(link, '_blank', 'noopener') } : {})
+		return true
 	} catch (e) {
-		console.error('k4draw snapshot', e)
-		showError('Снимок не сохранился')
+		console.error('k4draw shoot', e)
+		quiet || showError('Снимок не сохранился')
+		return false
 	} finally {
 		snap.busy = false
 	}
 }
 
 /**
- * PNG в «Загрузки».
+ * PNG скачивается (гость, приложение для Мака).
  *
  * @param {Blob} blob
  */
 function save(blob) {
 	const url = URL.createObjectURL(blob)
 	const a = document.createElement('a')
-	const d = new Date()
-	const p2 = (n) => String(n).padStart(2, '0')
 	a.href = url
-	a.download = `Снимок показа ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}-${p2(d.getSeconds())}.png`
+	a.download = fileName()
 	document.body.append(a)
 	a.click()
 	a.remove()
@@ -286,3 +315,6 @@ export async function screenSnapshot(png) {
 		snap.busy = false
 	}
 }
+
+// ket4tec: k4draw. Последний уходит из звонка с рисунком на доске: снимок в Файлы без вопросов
+setAutoSnap(() => shoot(useTokenStore().token, null, true))

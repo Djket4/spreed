@@ -334,13 +334,9 @@ class RoomShareProviderTest extends TestCase {
 		$this->participantService->method('getParticipantBySession')
 			->willThrowException(new ParticipantNotFoundException());
 
-		$share = $this->provider->getShareByToken('sharetoken');
-
-		$this->assertTrue($share->isPasswordProtected());
-		$this->assertTrue($share->isPasswordHashed());
-		$this->assertSame($hash, $share->getPassword());
-		$this->assertNull($this->session->get(PublicShareController::DAV_AUTHENTICATED_FRONTEND));
-		$this->assertNull($this->session->get('public_link_authenticated'));
+		// ket4tec (NAS_CLOUD#110 А4): не участнику файл по ссылке не отдаём и в публичной комнате
+		$this->expectException(ShareNotFound::class);
+		$this->provider->getShareByToken('sharetoken');
 	}
 
 	public static function dataGetShareByTokenWithRoomPasswordForParticipant(): array {

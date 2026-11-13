@@ -8,12 +8,15 @@ import { reactive } from 'vue'
 import BrowserStorage from '../../services/BrowserStorage.js'
 import {
 	getFirstAvailableMediaDevice,
+	isVirtualCamera,
 	listMediaDevices,
 	populateMediaDevicesPreferences,
 	promoteMediaDevice,
 } from '../../services/mediaDevicePreferences.ts'
 import { isSafari } from '../browserCheck.ts'
+import { calllog } from '../calllog.js'
 import EmitterMixin from '../EmitterMixin.js'
+import { k4log } from '../k4log.js'
 
 /**
  * Special string to set null device ids in local storage (as only strings are
@@ -133,6 +136,64 @@ export default function MediaDevicesManager() {
 		this.attributes.videoInputId = null
 	}
 }
+
+const CAMERA_TIMEOUT_MS = 4000
+const CAMERA_TIMEOUT = Symbol('camera timeout')
+
+/**
+ * ket4tec: CAMERA_TIMEOUT через CAMERA_TIMEOUT_MS после того, как разрешение на камеру выдано
+ * (пока висит запрос разрешения, ожидание не идёт). Если браузер не говорит о разрешении (Firefox) —
+ * не срабатывает никогда.
+ *
+ * @return {Promise<symbol>}
+ */
+async function cameraTimeout() {
+	let status
+	try {
+		status = await navigator.permissions.query({ name: 'camera' })
+	} catch {
+		return new Promise(() => {})
+	}
+	if (status.state !== 'granted') {
+		await new Promise((resolve) => {
+			status.addEventListener('change', function onChange() {
+				if (status.state === 'granted') {
+					status.removeEventListener('change', onChange)
+					resolve()
+				}
+			})
+		})
+	}
+	await new Promise((resolve) => setTimeout(resolve, CAMERA_TIMEOUT_MS))
+	return CAMERA_TIMEOUT
+}
+
+/**
+ * ket4tec: проба камеры в одноразовом скрытом iframe (своя очередь getUserMedia, зависший запрос уходит вместе с iframe).
+ *
+ * @param {object|boolean} video ограничения видео
+ * @return {Promise<symbol|string>} CAMERA_TIMEOUT, если камера не ответила; иначе 'ok' или 'error' (ошибку покажет основной запрос)
+ */
+async function probeCamera(video) {
+	const frame = document.createElement('iframe')
+	frame.allow = 'camera'
+	frame.setAttribute('aria-hidden', 'true')
+	frame.style.display = 'none'
+	document.body.append(frame)
+	try {
+		const answer = frame.contentWindow.navigator.mediaDevices.getUserMedia({ video })
+			.then((stream) => {
+				stream.getTracks().forEach((track) => track.stop())
+				return 'ok'
+			}, () => 'error')
+		return await Promise.race([answer, cameraTimeout()])
+	} catch {
+		return 'error'
+	} finally {
+		frame.remove()
+	}
+}
+
 MediaDevicesManager.prototype = {
 
 	get(key) {
@@ -522,7 +583,9 @@ MediaDevicesManager.prototype = {
 
 		this._stopIncompatibleTracks(constraints)
 
-		return navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+		return this._getUserMediaWithCameraFallback(constraints).then((stream) => {
+			calllog('gum_ok', { a: stream.getAudioTracks().length, v: stream.getVideoTracks().length })
+			k4log('media.ok', { tracks: stream.getTracks().map((track) => track.kind + ':' + String(track.label).slice(0, 40)) })
 			this._registerStream(stream)
 
 			// In Firefox the dialog to grant media permissions allows the user
@@ -537,6 +600,8 @@ MediaDevicesManager.prototype = {
 
 			return stream
 		}).catch((error) => {
+			calllog('gum_err', { name: String(error?.name ?? 'Error').slice(0, 40), a: !!constraints.audio, v: !!constraints.video })
+			k4log('media.err', { name: error?.name, msg: String(error?.message).slice(0, 100), a: !!constraints.audio, v: !!constraints.video })
 			// The list of devices is also updated in case of failure, as even
 			// if getting the stream failed the permissions may have been
 			// permanently granted.
@@ -544,6 +609,63 @@ MediaDevicesManager.prototype = {
 
 			throw error
 		})
+	},
+
+	/**
+	 * ket4tec: камера без источника (NDI, OBS) вешает getUserMedia навсегда, а Chrome держит запросы кадра
+	 * в одной очереди — за зависшим не пройдёт и следующий. Поэтому подозрительную камеру (виртуальную или
+	 * неизвестную «по умолчанию») сначала пробуем в одноразовом iframe: не ответила за CAMERA_TIMEOUT_MS —
+	 * iframe убираем вместе с запросом и берём следующую камеру, физические раньше виртуальных.
+	 * Ход виден превью через событие «cameraNotResponding».
+	 *
+	 * @param {object} constraints уже с deviceId
+	 * @param {Set<string>} tried камеры, которые не ответили
+	 * @return {Promise<MediaStream>}
+	 */
+	async _getUserMediaWithCameraFallback(constraints, tried = new Set()) {
+		if (!constraints.video) {
+			return navigator.mediaDevices.getUserMedia(constraints)
+		}
+		const isOuterCall = tried.size === 0
+		const deviceId = constraints.video.deviceId?.exact
+		// до первого перечисления устройств название берём из сохранённых предпочтений
+		const known = [...this.attributes.devices, ...this._preferenceVideoInputList].find((device) => device.kind === 'videoinput' && device.deviceId === deviceId)
+		if ((!known || isVirtualCamera(known)) && await probeCamera(constraints.video) === CAMERA_TIMEOUT) {
+			const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput' && device.deviceId)
+			const hungId = deviceId ?? devices[0]?.deviceId ?? ''
+			tried.add(hungId)
+			const hung = devices.find((device) => device.deviceId === hungId)
+			const next = devices
+				.filter((device) => !tried.has(device.deviceId))
+				.sort((a, b) => isVirtualCamera(a) - isVirtualCamera(b))[0]
+			console.warn('Camera does not respond: ' + (hung?.label || hungId) + (next ? ', trying ' + next.label : ''))
+			k4log('media.cameraTimeout', { hung: hung?.label || hungId, next: next?.label || null })
+			this._trigger('cameraNotResponding', [{ label: hung?.label || '', next: next?.label || null }])
+			if (!next) {
+				throw new DOMException('Camera does not respond', 'TimeoutError')
+			}
+			const video = constraints.video === true ? {} : { ...constraints.video }
+			video.deviceId = { exact: next.deviceId }
+			const stream = await this._getUserMediaWithCameraFallback({ ...constraints, video }, tried)
+			if (isOuterCall) {
+				// ответившая камера становится выбранной и первой в предпочтениях, зависшая уходит ниже
+				this.set('videoInputId', stream.getVideoTracks()[0]?.getSettings().deviceId || next.deviceId)
+				const promote = () => this.updatePreferences('videoinput')
+				;(this._pendingEnumerateDevicesPromise ?? Promise.resolve()).then(promote, promote)
+			}
+			return stream
+		}
+
+		// физическая камера тоже может зависнуть; тогда очередь кадра занята до перезагрузки страницы
+		const pending = navigator.mediaDevices.getUserMedia(constraints)
+		const stream = await Promise.race([pending, cameraTimeout()])
+		if (stream !== CAMERA_TIMEOUT) {
+			return stream
+		}
+		pending.then((late) => late.getTracks().forEach((track) => track.stop()), () => {})
+		k4log('media.cameraTimeout', { hung: known?.label || '', next: null, reload: true })
+		this._trigger('cameraNotResponding', [{ label: known?.label || '', next: null, reload: true }])
+		throw new DOMException('Camera does not respond', 'TimeoutError')
 	},
 
 	_stopIncompatibleTracks(constraints) {

@@ -4,7 +4,10 @@
 -->
 
 <template>
+	<!-- ket4tec #103: чата нет ни у кого (слово Андрея 10.11) — в центре название и «Войти в звонок» -->
+	<GuestJoinPlaceholder v-if="!isSidebar" />
 	<div
+		v-else-if="!isChatHidden"
 		class="chatView"
 		@dragover.prevent="handleDragOver"
 		@dragleave.prevent="handleDragLeave"
@@ -68,6 +71,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import IconAccountOutline from 'vue-material-design-icons/AccountOutline.vue'
 import IconAlertOctagonOutline from 'vue-material-design-icons/AlertOctagonOutline.vue'
 import IconChevronDoubleDown from 'vue-material-design-icons/ChevronDoubleDown.vue'
+import GuestJoinPlaceholder from './GuestJoinPlaceholder.vue'
 import GuestWelcomeWindow from './GuestWelcomeWindow.vue'
 import MessagesList from './MessagesList/MessagesList.vue'
 import NewMessage from './NewMessage/NewMessage.vue'
@@ -83,6 +87,7 @@ import { EventBus } from '../services/EventBus.ts'
 import { useActorStore } from '../stores/actor.ts'
 import { useChatExtrasStore } from '../stores/chatExtras.ts'
 import { useSettingsStore } from '../stores/settings.ts'
+import { isChatHiddenForActor } from '../utils/chatHidden.ts'
 
 export default {
 
@@ -96,6 +101,7 @@ export default {
 		MessagesList,
 		NewMessage,
 		TransitionWrapper,
+		GuestJoinPlaceholder,
 		GuestWelcomeWindow,
 		// icons
 		IconAccountOutline,
@@ -140,6 +146,10 @@ export default {
 	},
 
 	computed: {
+		isChatHidden() {
+			return isChatHiddenForActor(this.actorStore.actorType)
+		},
+
 		isGuest() {
 			return this.actorStore.isActorGuest
 		},

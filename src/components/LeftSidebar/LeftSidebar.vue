@@ -172,7 +172,7 @@
 								</NcActionButton>
 
 								<NcActionButton
-									v-if="canNoteToSelf && !hasNoteToSelf"
+									v-if="false && canNoteToSelf && !hasNoteToSelf"
 									closeAfterClick
 									@click="restoreNoteToSelfConversation">
 									<template #icon>
@@ -209,6 +209,22 @@
 									{{ t('spreed', 'Call a phone number') }}
 								</NcActionButton>
 							</NcActions>
+						</TransitionWrapper>
+
+						<!-- ket4tec: «Настройки» — круглая кнопка в строке поиска вместо строки внизу списка -->
+						<TransitionWrapper name="radial-reveal">
+							<NcButton
+								v-show="searchText === ''"
+								variant="tertiary"
+								class="k7-settings-button"
+								:class="{ 'hidden-visually': isSearching }"
+								:aria-label="t('spreed', 'Settings')"
+								:title="t('spreed', 'Settings')"
+								@click="showSettings">
+								<template #icon>
+									<IconCogOutline :size="20" />
+								</template>
+							</NcButton>
 						</TransitionWrapper>
 
 						<!-- All open conversations list -->
@@ -405,13 +421,7 @@
 						</template>
 					</LeftSidebarButton>
 
-					<LeftSidebarButton
-						@click="showSettings">
-						<template #icon>
-							<IconCogOutline :size="20" />
-						</template>
-						{{ t('spreed', 'App settings') }}
-					</LeftSidebarButton>
+					<!-- ket4tec: «Параметры приложения» перенесены кнопкой-шестерёнкой в строку поиска -->
 				</div>
 			</div>
 		</template>
@@ -492,6 +502,7 @@ import {
 	filterConversation,
 	hasCall,
 	hasUnreadMentions,
+	isK7ServiceConversation,
 	shouldIncludeArchived,
 	sortConversationsList,
 } from '../../utils/conversation.ts'
@@ -506,7 +517,7 @@ const canModerateSipDialOut = hasTalkFeature('local', 'sip-support-dialout')
 const hintSipDialOut = !canModerateSipDialOut && showTalkFeatureHint(34)
 const canNoteToSelf = hasTalkFeature('local', 'note-to-self')
 const supportsArchive = hasTalkFeature('local', 'archived-conversations-v2')
-const supportThreads = hasTalkFeature('local', 'threads')
+const supportThreads = false // ket4tec (NAS_CLOUD#109 п.5): чата нет — «Темы» не показываем
 const supportSortOrder = getTalkConfig('local', 'conversations', 'sort-order') !== undefined
 const supportTags = hasTalkFeature('local', 'conversation-tags')
 
@@ -693,7 +704,8 @@ export default {
 		},
 
 		conversationsList() {
-			return this.$store.getters.conversationsList
+			// ket4tec: без служебных бесед (заметки, обновления, образцы) — и в списке, и в поиске (SearchConversationsResults берёт этот же список)
+			return this.$store.getters.conversationsList.filter((conversation) => !isK7ServiceConversation(conversation))
 		},
 
 		sortedConversationsList() {
@@ -1265,10 +1277,16 @@ export default {
 	.filters {
 		position: absolute;
 		top: 0;
-		inset-inline-end: calc(var(--default-grid-baseline) + var(--default-clickable-area));
+		inset-inline-end: calc((var(--default-grid-baseline) + var(--default-clickable-area)) * 2);
 	}
 
 	.actions {
+		position: absolute;
+		top: 0;
+		inset-inline-end: calc(var(--default-grid-baseline) + var(--default-clickable-area));
+	}
+
+	.k7-settings-button {
 		position: absolute;
 		top: 0;
 		inset-inline-end: 0;
@@ -1301,7 +1319,7 @@ export default {
 	transition: all 0.15s ease;
 	z-index: 1;
 	// TODO replace with NcAppNavigationSearch
-	width: calc(100% - (var(--default-grid-baseline) + var(--default-clickable-area)) * 2);
+	width: calc(100% - (var(--default-grid-baseline) + var(--default-clickable-area)) * 3);
 	display: flex;
 
 	&--expanded {

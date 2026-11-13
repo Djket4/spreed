@@ -8,7 +8,7 @@
 	<div
 		ref="root"
 		class="k4-layer"
-		:class="{ 'k4-on': state.mode }"
+		:class="{ 'k4-on': state.mode, 'k4-bd': board && canDraw() }"
 		:style="rootStyle">
 		<div ref="surf" class="k4-surf">
 			<svg ref="ink" class="k4-ink" />
@@ -22,13 +22,16 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+	amMod,
+	canDraw,
 	cursor,
 	eraseMarks,
 	hash,
 	identity,
 	join,
-	LIFE,
+	laserLife,
 	moveMark,
+	myColor,
 	myId,
 	onDraw,
 	ping,
@@ -49,11 +52,16 @@ const props = defineProps({
 	video: { type: Object, default: null },
 	/** transform panzoom ({x, y, scale}) */
 	transform: { type: Object, default: () => ({ x: 0, y: 0, scale: 1 }) },
+	/** доска: кадра нет, соотношение сторон из показа (`h.ar`) */
+	board: { type: Boolean, default: false },
 })
 
 const NS = 'http://www.w3.org/2000/svg'
 const WID = { laser: 6, fade: 5, marker: 5, arrow: 5, frame: 5 }
+const wid = (m) => WID[m.tool] * (m.wm || 1) // ket4tec: k4draw. толщина, выбранная автором (1/2/4)
 const PING_MS = 2400
+const BANDS = 8 // полосы прозрачности хвоста лазера
+const HAND_MS = 2000 // ket4tec (п.6/39): подпись у руки рисующего гаснет через 2 с
 const SZ = { s: [16, 5], m: [21, 6], l: [28, 7] } // [кегль, вертикальный отступ] как в прототипе
 
 const root = ref(null)
@@ -85,6 +93,8 @@ let multi = false
 let t0 = 0
 let tap = 0 // время последнего короткого тапа (двойной тап по своему тексту = правка)
 let edit = null // открытое поле ввода текста
+let ptrPen = false // текущий штрих пером
+let penAt = -1e9 // когда перо последний раз было у экрана (пальцы в это время — ладонь)
 
 const f1 = (v) => Math.round(v * 10) / 10
 const pt = (p) => f1(p[0]) + ' ' + f1(p[1])
@@ -104,12 +114,22 @@ function mk(tag, a) {
 /** Область кадра внутри <video>: считается при каждой отрисовке. */
 function sync() {
 	const v = props.video
-	if (!v || !v.videoWidth || !v.clientWidth) {
-		return false
+	let cw, ch, ar
+	if (props.board) {
+		ar = showOf(props.presenter)?.ar
+		cw = root.value?.clientWidth
+		ch = root.value?.clientHeight
+		if (!ar || !cw || !ch) {
+			return false
+		}
+	} else {
+		if (!v || !v.videoWidth || !v.clientWidth) {
+			return false
+		}
+		cw = v.clientWidth
+		ch = v.clientHeight
+		ar = v.videoWidth / v.videoHeight
 	}
-	const cw = v.clientWidth
-	const ch = v.clientHeight
-	const ar = v.videoWidth / v.videoHeight
 	let w = cw
 	let h = cw / ar
 	if (h > ch) {
@@ -135,7 +155,37 @@ function sync() {
  * @param except
  */
 function redrawAll(except) {
-	views.forEach((v) => v !== except && draw(v))
+	views.forEach((v) => v !== except && paint(v))
+}
+
+// ket4tec (NAS_CLOUD#103 п.52): точки штриха приходят чаще кадра (coalesced-события, сеть). Рисуем раз в кадр:
+// грязные пометки копятся, sync() (чтение раскладки) — один раз на кадр, а не на каждую точку.
+const dirty = new Set()
+let fr = 0
+const perf = (window.__k4perf ||= { ev: 0, fr: 0, ms: 0, max: 0 }) // замеры для e2e: событий, кадров, время отрисовки
+/**
+ * Отрисовать пометку в ближайшем кадре.
+ *
+ * @param v вид пометки
+ */
+function later(v) {
+	dirty.add(v)
+	fr ||= requestAnimationFrame(flush)
+}
+/** Кадр: раскладка один раз, затем только изменившиеся пометки. */
+function flush() {
+	fr = 0
+	const t = performance.now()
+	if (sync()) {
+		redrawAll()
+	} else {
+		dirty.forEach((v) => !v.gone && paint(v))
+	}
+	dirty.clear()
+	const ms = performance.now() - t
+	perf.fr++
+	perf.ms += ms
+	perf.max = Math.max(perf.max, ms)
 }
 
 const px = (m) => m.pts.map((p) => [p[0] * W, p[1] * H])
@@ -205,6 +255,34 @@ function smooth(P) {
 }
 
 /**
+ * Линия переменной толщины (нажим пера): контур с круглыми концами.
+ *
+ * @param P точки px
+ * @param D толщина в каждой точке
+ */
+function inkPath(P, D) {
+	const n = P.length
+	if (n < 2) {
+		const r = f1((D[0] || 4) / 2)
+		return P.length ? `M${pt([P[0][0] - r, P[0][1]])}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z` : ''
+	}
+	const L = []
+	const Rr = []
+	for (let i = 0; i < n; i++) {
+		const a = P[Math.max(0, i - 1)]
+		const b = P[Math.min(n - 1, i + 1)]
+		const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+		const nx = -(b[1] - a[1]) / l * D[i] / 2
+		const ny = (b[0] - a[0]) / l * D[i] / 2
+		L.push([P[i][0] + nx, P[i][1] + ny])
+		Rr.push([P[i][0] - nx, P[i][1] - ny])
+	}
+	const r0 = f1(D[0] / 2)
+	const r1 = f1(D[n - 1] / 2)
+	return 'M' + L.map(pt).join('L') + `A${r1} ${r1} 0 0 0 ${pt(Rr[n - 1])}L` + Rr.reverse().map(pt).join('L') + `A${r0} ${r0} 0 0 0 ${pt(L[0])}Z`
+}
+
+/**
  *
  * @param P
  * @param w
@@ -224,7 +302,7 @@ function head(P, w) {
 function view(m) {
 	let v = views.get(m.key)
 	if (!v) {
-		v = { m, c: identity(m.by).color }
+		v = { m, c: m.col || identity(m.by).color }
 		const g = v.g = mk('g', { class: m.tool, 'data-id': m.id, 'data-by': m.by, 'data-ttl': m.ttl || 0 })
 		if (m.tool === 'text') {
 			g.append(v.bg = mk('rect', { fill: '#141112', 'fill-opacity': 0.66 }), v.tx = mk('text', { fill: v.c, 'dominant-baseline': 'central', 'font-weight': 700 }))
@@ -238,7 +316,7 @@ function view(m) {
 				v.tp = mk('circle', { class: 'tip', r: 5.5, stroke: v.c, 'stroke-width': 3 }),
 			)
 		} else {
-			g.append(v.sh = mk('path', { class: 'sh', 'stroke-width': WID[m.tool] + 3 }), v.p = mk('path', { class: 'p', stroke: v.c, 'stroke-width': WID[m.tool] }))
+			g.append(v.sh = mk('path', { class: 'sh', 'stroke-width': wid(m) + 3 }), v.p = mk('path', { class: 'p', stroke: v.c, 'stroke-width': wid(m) }))
 		}
 		ink.value.append(g)
 		views.set(m.key, v)
@@ -257,6 +335,15 @@ function draw(v) {
 	if (sync()) {
 		redrawAll(v)
 	}
+	paint(v)
+}
+
+/**
+ * Отрисовать пометку без пересчёта раскладки.
+ *
+ * @param v вид пометки
+ */
+function paint(v) {
 	const m = v.m
 	if (m.tool === 'laser') {
 		return drawLaser(v)
@@ -274,9 +361,26 @@ function draw(v) {
 			v.r.setAttribute(k, f1(P[0][i]))
 		}
 	} else {
-		let d = smooth(P)
-		if (m.tool === 'arrow' && P.length > 1) {
-			d += head(P, WID.arrow)
+		// предсказанные точки пера (getPredictedEvents) — только на экране, до следующего события
+		m.pred?.length && !m.done && P.push(...m.pred.map((q) => [q[0] * W, q[1] * H]))
+		let d
+		if (m.pr && m.pr.length === m.pts.length) {
+			const D = m.pr.map((q) => wid(m) * (0.3 + 1.4 * q))
+			while (D.length < P.length) {
+				D.push(D[D.length - 1] || wid(m))
+			}
+			d = inkPath(P, D)
+			if (!v.pen) {
+				v.pen = 1
+				v.p.style.fill = v.c
+				v.p.style.stroke = 'none'
+				v.sh.setAttribute('stroke-width', 1.5)
+			}
+		} else {
+			d = smooth(P)
+			if (m.tool === 'arrow' && P.length > 1) {
+				d += head(P, wid(m))
+			}
 		}
 		v.p.setAttribute('d', d)
 		v.sh.setAttribute('d', d)
@@ -320,29 +424,45 @@ function drawText(v) {
 function drawLaser(v) {
 	const m = v.m
 	const now = performance.now()
+	const life = laserLife(m)
 	const P = []
 	const T = []
 	m.pts.forEach((p, i) => {
-		if (now - m.ts[i] <= LIFE) {
+		if (now - m.ts[i] <= life) {
 			P.push([p[0] * W, p[1] * H])
 			T.push(m.ts[i])
 		}
 	})
-	// хвост гаснет плавно по всей длине: кривая Катмулла–Рома, у каждого кусочка свои толщина и прозрачность по возрасту
+	// хвост гаснет плавно по всей длине: кривая Катмулла–Рома; кусочки по возрасту — в BANDS полос (своя толщина и прозрачность).
+	// Узлы SVG создаются один раз, в кадре меняется только `d` (п.52: раньше — сотни новых <line> на каждый кадр)
 	const [Q, QT] = curve(P, T)
-	const gl = []
-	const core = []
+	if (!v.bands) {
+		v.bands = []
+		for (let b = 0; b < BANDS; b++) {
+			const f = (b + 0.5) / BANDS
+			const g = mk('path', { 'stroke-width': f1(2 + 14 * (1 - f)), 'stroke-opacity': (0.26 * (1 - f)).toFixed(3) })
+			const c = mk('path', { 'stroke-width': f1(1.2 + 5 * (1 - f) ** 0.7), 'stroke-opacity': ((1 - f) ** 1.3).toFixed(3) })
+			v.gl.append(g)
+			v.p.append(c)
+			v.bands.push([g, c])
+		}
+	}
+	const D = new Array(BANDS).fill('')
+	let prev = -1
 	for (let i = 1; i < Q.length; i++) {
-		const f = Math.min(1, Math.max(0, (now - (QT[i - 1] + QT[i]) / 2) / LIFE))
+		const f = (now - (QT[i - 1] + QT[i]) / 2) / life
 		if (f >= 1) {
+			prev = -1
 			continue
 		}
-		const xy = { x1: f1(Q[i - 1][0]), y1: f1(Q[i - 1][1]), x2: f1(Q[i][0]), y2: f1(Q[i][1]) }
-		gl.push(mk('line', { ...xy, 'stroke-width': f1(2 + 14 * (1 - f)), 'stroke-opacity': (0.26 * (1 - f)).toFixed(3) }))
-		core.push(mk('line', { ...xy, 'stroke-width': f1(1.2 + 5 * (1 - f) ** 0.7), 'stroke-opacity': ((1 - f) ** 1.3).toFixed(3) }))
+		const b = Math.min(BANDS - 1, Math.max(0, Math.floor(f * BANDS)))
+		D[b] += (b === prev ? '' : 'M' + pt(Q[i - 1])) + 'L' + pt(Q[i])
+		prev = b
 	}
-	v.gl.replaceChildren(...gl)
-	v.p.replaceChildren(...core)
+	v.bands.forEach(([g, c], b) => {
+		g.setAttribute('d', D[b])
+		c.setAttribute('d', D[b])
+	})
 	const tip = P.length && !m.done ? P[P.length - 1] : null
 	for (const n of ['tc', 'tp']) {
 		v[n].style.display = tip ? '' : 'none'
@@ -394,7 +514,8 @@ function kick() {
 function loop() {
 	raf = 0
 	const L = [...views.values()].filter((v) => v.m.tool === 'laser')
-	L.forEach(draw)
+	sync() && redrawAll()
+	L.forEach(paint)
 	if (L.length) {
 		raf = requestAnimationFrame(loop)
 	}
@@ -536,8 +657,9 @@ function transient(by, p) {
  * @param by
  * @param p
  * @param las
+ * @param ms через сколько подпись гаснет
  */
-function cursorAt(by, p, las) {
+function cursorAt(by, p, las, ms = las ? 900 : 2500) {
 	if (by === myId()) {
 		return
 	}
@@ -564,7 +686,7 @@ function cursorAt(by, p, las) {
 			c.el.remove()
 			curs.delete(by)
 		}, 300)
-	}, las ? 900 : 2500)
+	}, ms)
 }
 
 // ── события контроллера ──
@@ -588,8 +710,6 @@ function rebuild() {
 		draw(v)
 		if (m.fading) {
 			v.g.classList.add('fade')
-		} else if (m.done && m.tool !== 'laser') {
-			addChip(v, false)
 		}
 	})
 }
@@ -624,15 +744,14 @@ function onEvent(ev) {
 			break
 		}
 		case 'pts':
+			perf.ev++
+			later(view(m))
+			// одна подпись у руки чужого рисующего вместо капсулы на каждом штрихе (п.6/39)
+			cursorAt(m.by, m.pts[m.pts.length - 1], m.tool === 'laser', m.tool === 'laser' ? 900 : HAND_MS)
+			break
+		case 'end':
 			draw(view(m))
-			m.tool === 'laser' && cursorAt(m.by, m.pts[m.pts.length - 1], true)
 			break
-		case 'end': {
-			const v = view(m)
-			m.tool !== 'laser' && addChip(v)
-			draw(v)
-			break
-		}
 		case 'fade': {
 			const v = views.get(m.key)
 			v?.g.classList.add('fade')
@@ -669,7 +788,7 @@ function eraseAt(p) {
 	const hit = []
 	views.forEach((v) => {
 		const m = v.m
-		if (m.by !== myId() || m.tool === 'laser' || m.tool === 'ping' || v.gone) {
+		if ((m.by !== myId() && !amMod()) || m.tool === 'laser' || m.tool === 'ping' || v.gone) {
 			return
 		}
 		if (m.tool === 'text') {
@@ -677,7 +796,7 @@ function eraseAt(p) {
 			return
 		}
 		const P = samples(m)
-		const r = 20 + WID[m.tool] / 2
+		const r = 20 + wid(m) / 2
 		for (let i = 0; i < P.length; i++) {
 			const a = P[i]
 			const b = P[i + 1] || a
@@ -698,8 +817,10 @@ function eraseAt(p) {
  *
  */
 function cancelCur() {
-	if (cur?.m) {
-		cur.m.tool === 'laser' ? strokeEnd(show(), cur.m) : strokeCancel(show(), cur.m)
+	const s = show()
+	// показ уже забыт (доску закрыли посреди штриха): без проверки — TypeError, и onBeforeUnmount не доходит до leave()
+	if (cur?.m && s) {
+		cur.m.tool === 'laser' ? strokeEnd(s, cur.m) : strokeCancel(s, cur.m)
 	}
 	cur = null
 	erc.value?.classList.remove('on')
@@ -710,16 +831,32 @@ function cancelCur() {
  * @param e
  */
 function onDown(e) {
-	if (!state.mode || !W || !show()) {
+	if (!state.mode && props.board && canDraw()) {
+		state.mode = true // доска — сама поверхность для рисования: касание сразу рисует (п.49)
+	}
+	if (!state.mode || !W || !show() || !canDraw()) {
 		return
+	}
+	const pen = e.pointerType === 'pen'
+	if (pen) {
+		penAt = performance.now()
+	} else if (e.pointerType === 'touch' && (ptrPen || performance.now() - penAt < 1000)) {
+		return // ладонь, пока рисуют пером
 	}
 	if (ptr !== null) {
-		// второй палец отменяет текущий штрих
-		cancelCur()
-		multi = true
-		return
+		if (pen && !ptrPen) {
+			// перо важнее пальца: палец (ладонь) отменяется, рисует перо
+			cancelCur()
+			ptr = null
+		} else {
+			// второй палец отменяет текущий штрих
+			cancelCur()
+			multi = true
+			return
+		}
 	}
 	ptr = e.pointerId
+	ptrPen = pen
 	multi = false
 	try {
 		ink.value.setPointerCapture(e.pointerId)
@@ -749,7 +886,16 @@ function onDown(e) {
 		cur = { mv: g.m, P: g.m.pts.map((q) => [...q]), corner: g.corner, o: p }
 		return
 	}
-	cur = { m: strokeStart(show(), state.tool, p), last: p }
+	cur = { m: strokeStart(show(), state.tool, p, force(e)), last: p }
+}
+
+/**
+ * Нажим пера для маркеров (у пальца и мыши толщина постоянная).
+ *
+ * @param e PointerEvent
+ */
+function force(e) {
+	return e.pointerType === 'pen' && (state.tool === 'marker' || state.tool === 'fade') ? (e.pressure > 0 ? e.pressure : 0.5) : undefined
 }
 
 /**
@@ -805,6 +951,9 @@ function dragFrame(c, p) {
  * @param e
  */
 function onMove(e) {
+	if (e.pointerType === 'pen') {
+		penAt = performance.now()
+	}
 	if (!state.mode || !W || !show()) {
 		return
 	}
@@ -837,9 +986,13 @@ function onMove(e) {
 		if (m.tool === 'arrow' || m.tool === 'frame') {
 			cur.last = p
 		} else if (m.tool === 'laser' || Math.hypot((p[0] - cur.last[0]) * W, (p[1] - cur.last[1]) * H) >= 2) {
-			strokePoint(show(), m, p)
+			strokePoint(show(), m, p, m.pr ? force(ev) : undefined)
 			cur.last = p
 		}
+	}
+	if (cur.m && ptrPen && (cur.m.tool === 'marker' || cur.m.tool === 'fade') && e.getPredictedEvents) {
+		cur.m.pred = e.getPredictedEvents().map(nrm)
+		cur.m.pred.length && later(view(cur.m))
 	}
 	if (cur.m) {
 		(cur.m.tool === 'arrow' || cur.m.tool === 'frame') && strokePoint(show(), cur.m, cur.last)
@@ -856,11 +1009,13 @@ function onUp(e) {
 		return
 	}
 	ptr = null
+	ptrPen = false
 	const c = cur
 	cur = null
 	if (!c) {
 		return
 	}
+	c.m && (c.m.pred = null)
 	if (c.txt) {
 		if (e.type !== 'pointercancel' && !multi) {
 			openEdit(c.p, c.own)
@@ -881,22 +1036,21 @@ function onUp(e) {
 	const s = show()
 	const quick = performance.now() - t0 < 400
 	tap = quick ? performance.now() : 0
+	const P = px(m)
+	const len = P.reduce((a, p, i) => i ? a + Math.hypot(p[0] - P[i - 1][0], p[1] - P[i - 1][1]) : 0, 0)
+	// ket4tec (NAS_CLOUD#106 п.6): мигающая точка — только у указки, один инструмент: тап — точка, ведёшь — шлейф.
+	// Тап — по пройденному пути, а не по числу точек: палец на iPhone дрожит и даёт несколько точек за касание.
 	if (m.tool === 'laser') {
-		strokeEnd(s, m)
-		if (m.pts.length < 3 && quick && !multi && e.type !== 'pointercancel') {
+		if (len < 8 && !multi && e.type !== 'pointercancel') {
+			strokeCancel(s, m)
 			ping(s, c.last)
+		} else {
+			strokeEnd(s, m)
 		}
 		return
 	}
-	if (e.type === 'pointercancel' || multi) {
+	if (e.type === 'pointercancel' || multi || len < 8) {
 		strokeCancel(s, m)
-		return
-	}
-	const P = px(m)
-	const len = P.reduce((a, p, i) => i ? a + Math.hypot(p[0] - P[i - 1][0], p[1] - P[i - 1][1]) : 0, 0)
-	if (len < 8) {
-		strokeCancel(s, m)
-		quick && ping(s, c.last)
 		return
 	}
 	strokeEnd(s, m)
@@ -925,7 +1079,7 @@ function ownText(x, y) {
  * @param v view правимого текста или null
  */
 function openEdit(p, v) {
-	const c = v ? v.c : identity(myId()).color
+	const c = v ? v.c : myColor()
 	const box = document.createElement('div')
 	box.className = 'k4-tedit'
 	box.style.setProperty('--c', c)
@@ -1124,6 +1278,7 @@ onBeforeUnmount(() => {
 	finishEdit()
 	cancelCur()
 	cancelAnimationFrame(raf)
+	cancelAnimationFrame(fr)
 	ro?.disconnect()
 	props.video?.removeEventListener('resize', onVideo)
 	props.video?.removeEventListener('loadedmetadata', onVideo)
@@ -1153,6 +1308,9 @@ onBeforeUnmount(() => {
 	overflow: visible;
 	pointer-events: none;
 	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 	z-index: 3;
 	path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 	.sh { stroke: #000; stroke-opacity: .28; }
@@ -1163,7 +1321,7 @@ onBeforeUnmount(() => {
 	g.fade { opacity: 0; transition: opacity .8s ease-in; }
 	.ping .r { transform-box: fill-box; transform-origin: center; animation: k4-ping 1.1s ease-out 3; }
 }
-.k4-on .k4-ink { pointer-events: auto; cursor: crosshair; }
+.k4-on .k4-ink, .k4-bd .k4-ink { pointer-events: auto; cursor: crosshair; }
 @keyframes k4-ping { from { transform: scale(1); opacity: .9; } to { transform: scale(3.4); opacity: 0; } }
 .k4-chips { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .k4-chip {

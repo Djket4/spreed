@@ -9,10 +9,10 @@
 		:id="(placeholderForPromoted ? 'placeholder-' : '') + 'container_' + peerId + '_video_incoming'"
 		ref="videoContainer"
 		class="video-container"
-		:class="containerClass"
+		:class="[containerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo')">
+		@click="$emit('clickVideo', $event)">
 		<div
 			v-show="showVideo"
 			:class="videoWrapperClass"
@@ -52,7 +52,15 @@
 			v-if="showBackgroundAndAvatar"
 			class="avatar-container">
 			<VideoBackground />
+			<!-- ket4tec: без камеры — облако синапсов, живое от голоса, вместо круга с буквой -->
+			<K4Face
+				v-if="!isSidebar"
+				:stream="model.attributes.stream"
+				:on="model.attributes.audioAvailable !== false"
+				:seed="k4seed"
+				:token="token" />
 			<AvatarWrapper
+				v-else
 				:id="participantUserId"
 				:token="token"
 				:name="displayName"
@@ -67,12 +75,19 @@
 			class="placeholder-for-promoted">
 			<IconAccountCircleOutline v-if="isPromoted || isSelected" fillColor="#FFFFFF" :size="64" />
 		</div>
+		<!-- ket4tec: обрыв после того, как связь была, — плашка во всю плитку вместо застывшего кадра -->
+		<K4Reconnect
+			v-if="k4Recon"
+			:title="isNoLongerTryingToReconnect ? 'Связь потеряна' : 'Переподключается…'"
+			:sub="participantName" />
 		<div
-			v-if="connectionMessage"
+			v-else-if="connectionMessage"
 			:class="connectionMessageClass"
 			class="connection-message">
 			{{ connectionMessage }}
 		</div>
+		<!-- ket4tec: k4stk -->
+		<TileSticker :on="k4stkOn" :sid="peerId" />
 		<slot v-if="!hideBottomBar" name="bottomBar">
 			<VideoBottomBar
 				:hasShadow="hasVideo"
@@ -92,6 +107,9 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountCircleOutline from 'vue-material-design-icons/AccountCircleOutline.vue'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
+import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
+import K4Face from './k4face/K4Face.vue' // ket4tec
+import K4Reconnect from './K4Reconnect.vue' // ket4tec
 import ScreenShare from './ScreenShare.vue'
 import VideoBackground from './VideoBackground.vue'
 import VideoBottomBar from './VideoBottomBar.vue'
@@ -103,13 +121,17 @@ import attachMediaStream from '../../../utils/attachmediastream.js'
 import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
+import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
 
 export default {
 
 	name: 'VideoVue',
 
 	components: {
+		K4Face,
 		AvatarWrapper,
+		K4Reconnect,
+		TileSticker,
 		VideoBackground,
 		ScreenShare,
 		VideoBottomBar,
@@ -319,6 +341,7 @@ export default {
 				'videoContainer-dummy': this.placeholderForPromoted,
 				'not-connected': !this.placeholderForPromoted && !this.isConnected,
 				speaking: !this.placeholderForPromoted && this.isSpeaking && !this.isBig,
+				'k4-nomic': !this.placeholderForPromoted && this.model.attributes.audioAvailable === false && !this.isBig, // ket4tec: красная рамка «микрофон выключен»
 				hover: this.mouseover && !this.unSelectable && !this.isBig,
 				promoted: !this.placeholderForPromoted && this.sharedData.promoted && !this.isGrid,
 				presenter: this.isPresenterOverlay && this.mouseover,
@@ -390,6 +413,12 @@ export default {
 					? ATTENDEE.ACTOR_TYPE.USERS
 					: ATTENDEE.ACTOR_TYPE.GUESTS
 			}
+		},
+
+		// ket4tec: ключ облака — тот же, что в списке участников (тип/id), иначе имя
+		k4seed() {
+			const id = this.model.attributes.actorId || this.participant?.actorId || this.peerData?.actorId
+			return id && this.participantActorType ? this.participantActorType + '/' + id : (this.displayName || '?')
 		},
 
 		participantUserId() {
@@ -515,7 +544,8 @@ export default {
 
 		showPlaceholderForPromoted() {
 			if (this.isStripe) {
-				if (this.showVideo || this.showSharedScreen) {
+				// ket4tec (NAS_CLOUD#108 п.2): большой вид занят экраном участника, камеры у него нет — в полосе облако, а не заглушка
+				if (this.showVideo || this.showSharedScreen || (this.hasSharedScreen && !this.hasVideo)) {
 					return false
 				} else if (this.hasSelectedVideo) {
 					return this.isSelected
@@ -537,6 +567,16 @@ export default {
 
 		peerId() {
 			return this.model.attributes.peerId
+		},
+
+		// ket4tec: k4stk. Гифка/стикер этого участника (не на плитке показа экрана и не в заглушке «закреплённого»)
+		/** ket4tec: связь была и пропала (не первое подключение) */
+		k4Recon() {
+			return this.wasConnectedAtLeastOnce && !this.placeholderForPromoted && !this.isSidebar && (this.isDisconnected || this.isReconnecting || this.isNoLongerTryingToReconnect)
+		},
+
+		k4stkOn() {
+			return !!k4stk.peers[this.peerId] && !this.showSharedScreen && !this.placeholderForPromoted
 		},
 
 		nextcloudSessionId() {

@@ -471,6 +471,9 @@ async function signalingJoinCallForRecording(token, settings, internalClientAuth
 	})
 }
 
+/** ket4tec: k4draw. Хук перед выходом из звонка (ставит useDrawing.js), ждём его до 4 с. */
+export const beforeLeaveCall = { fn: null }
+
 /**
  * Leave the call of the given conversation
  *
@@ -479,6 +482,7 @@ async function signalingJoinCallForRecording(token, settings, internalClientAuth
  * @return {Promise<void>}
  */
 async function signalingLeaveCall(token, all = false) {
+	await beforeLeaveCall.fn?.() // ket4tec: k4draw — автоснимок доски, пока звонок ещё не покинут
 	sentVideoQualityThrottler.destroy()
 	sentVideoQualityThrottler = null
 
@@ -490,6 +494,8 @@ async function signalingLeaveCall(token, all = false) {
 
 	callParticipantsAudioPlayer.destroy()
 	callParticipantsAudioPlayer = null
+
+	localCallParticipantModel.set('askUnmute', false) // ket4tec (NAS_CLOUD#154)
 
 	if (tokensInSignaling[token]) {
 		await signaling.leaveCall(token, false, all)

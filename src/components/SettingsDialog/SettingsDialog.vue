@@ -4,11 +4,17 @@
 -->
 
 <template>
+	<!-- ket4tec: настройки облака KET4TEC — только понятное (устройства, вид и звук, приватность).
+		Спрятаны (v-if="false && …"): разделы других приложений, размытие фона (фоны запрещены), параметры микрофона,
+		разархивирование и непрочитанные под тегами, папка вложений, живая расшифровка, сочетания клавиш. -->
 	<NcAppSettingsDialog
+		id="k7-app-settings"
 		v-model:open="showSettings"
-		:name="t('spreed', 'App settings')"
-		showNavigation>
+		:name="t('spreed', 'Settings')"
+		showNavigation
+		noVersion>
 		<!-- Custom settings sections registered via OCA.Talk.Settings -->
+		<template v-if="false">
 		<NcAppSettingsSection
 			v-for="{ id, name, element } in customSettingsSections"
 			:id="id"
@@ -16,6 +22,7 @@
 			:name="name">
 			<component :is="element" />
 		</NcAppSettingsSection>
+		</template>
 
 		<NcAppSettingsSection
 			v-if="isCallEnabled"
@@ -29,7 +36,7 @@
 					:disabled="mediaLoading"
 					@update:modelValue="toggleStartWithoutMedia" />
 				<NcFormBoxSwitch
-					v-if="supportDefaultBlurVirtualBackground"
+					v-if="false && supportDefaultBlurVirtualBackground"
 					:modelValue="settingsStore.blurVirtualBackgroundEnabled"
 					:label="t('spreed', 'Blur camera background by default')"
 					@update:modelValue="setBlurVirtualBackgroundEnabled" />
@@ -40,6 +47,7 @@
 					:description="t('spreed', 'Camera will be turned off when joining. Always shown if recording consent is required.')"
 					@update:modelValue="setHideMediaSettings" />
 				<NcFormBoxButton
+					v-if="false"
 					:label="t('spreed', 'Microphone settings')"
 					@click="openAdvancedSettings">
 					<template #icon>
@@ -87,14 +95,14 @@
 		</NcAppSettingsSection>
 
 		<NcAppSettingsSection
-			v-if="!isGuest && (supportUnarchive || supportTagsShowUnread)"
+			v-if="false && !isGuest && (supportUnarchive || supportTagsShowUnread)"
 			id="conversations"
 			:name="t('spreed', 'Conversations')">
 			<ConversationsSettings />
 		</NcAppSettingsSection>
 
 		<NcAppSettingsSection
-			v-if="!isGuest"
+			v-if="false && !isGuest"
 			id="attachments"
 			:name="t('spreed', 'Files')">
 			<NcFormBoxButton
@@ -109,7 +117,7 @@
 		</NcAppSettingsSection>
 
 		<NcAppSettingsSection
-			v-if="isCallEnabled && supportLiveTranslation"
+			v-if="false && isCallEnabled && supportLiveTranslation"
 			id="live_transcription"
 			:name="t('spreed', 'Live transcription')">
 			<NcFormBox v-slot="{ itemClass }">
@@ -118,7 +126,7 @@
 		</NcAppSettingsSection>
 
 		<NcAppSettingsShortcutsSection
-			v-if="!disableKeyboardShortcuts">
+			v-if="false && !disableKeyboardShortcuts">
 			<NcHotkeyList>
 				<NcHotkey :label="t('spreed', 'Toggle full screen')" hotkey="F" />
 				<NcHotkey v-if="!isGuest" :label="t('spreed', 'Return to Home screen')" hotkey="Escape" />

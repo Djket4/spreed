@@ -110,8 +110,9 @@
 				{{ t('spreed', 'Stop screensharing') }}
 			</NcActionButton>
 		</NcActions>
+		<!-- ket4tec: где браузер не умеет показывать экран (Safari на iPhone и iPad), кнопку не показываем: место в панели — под «Рисовать» -->
 		<NcButton
-			v-else
+			v-else-if="canShareScreen"
 			:title="screenSharingButtonTitle"
 			variant="tertiary"
 			:aria-label="screenSharingButtonAriaLabel"
@@ -243,6 +244,10 @@ export default {
 	computed: {
 		conversation() {
 			return this.$store.getters.conversation(this.token) || this.$store.getters.dummyConversation
+		},
+
+		canShareScreen() {
+			return supportsScreenSharing || !window.isSecureContext
 		},
 
 		isScreensharingAllowed() {
@@ -470,6 +475,7 @@ export default {
 		},
 
 		stopScreen() {
+			this.screenSharingMenuOpen = false // ket4tec (NAS_CLOUD#108): меню исчезает вместе с показом и не успевает закрыться — кнопка оставалась с подписью «Параметры демонстрации экрана»
 			this.model.stopSharingScreen()
 		},
 

@@ -7,6 +7,7 @@
 	<div
 		:id="screenContainerId"
 		class="screenContainer"
+		:style="{ '--k4-pb': (instanceTransform.scale === 1 ? k4pb : 0) + 'px' }"
 		@dblclick.capture="onDoubleClick">
 		<video
 			v-show="isLocalScreen || isRemoteScreen"
@@ -47,7 +48,7 @@
 		</NcEmptyContent>
 		<!-- ket4tec: k4draw -->
 		<DrawLayer
-			v-if="isBig && k4Presenter && (isLocalScreen || isRemoteScreen)"
+			v-if="isBig && k4Presenter && (isLocalScreen || isRemoteScreen) && !k4state.board"
 			:presenter="k4Presenter"
 			:video="screen"
 			:transform="instanceTransform" />
@@ -176,8 +177,19 @@ export default {
 			}
 		})
 
+		// ket4tec (NAS_CLOUD#109 п.7): экран вписан с полями (портрет телефона) — подпись стоит у нижнего края картинки, не контейнера
+		const k4pb = ref(0)
+		const k4fit = () => {
+			const v = screen.value
+			k4pb.value = v?.videoWidth ? Math.max(0, Math.round((v.clientHeight - v.clientWidth * v.videoHeight / v.videoWidth) / 2)) : 0
+		}
+		const k4ro = new ResizeObserver(k4fit)
+
 		onMounted(() => {
 			if (props.isBig) {
+				k4ro.observe(screen.value)
+				screen.value.addEventListener('resize', k4fit) // смена размера самого потока
+
 				instance.value = panzoom(screen.value, {
 					minZoom: ZOOM_MIN,
 					maxZoom: ZOOM_MAX,
@@ -197,6 +209,7 @@ export default {
 		})
 		onBeforeUnmount(() => {
 			instance.value?.dispose()
+			k4ro.disconnect()
 		})
 
 		/**
@@ -234,7 +247,9 @@ export default {
 			openMac,
 			guestNameStore,
 			screen,
+			k4pb,
 			k4Presenter,
+			k4state,
 			instanceTransform,
 			screenClass,
 			onDoubleClick,

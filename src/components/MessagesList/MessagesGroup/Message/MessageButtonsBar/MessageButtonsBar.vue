@@ -216,7 +216,7 @@
 						</NcActionButton>
 					</template>
 					<NcActionButton
-						v-if="canForwardMessage && !isInNoteToSelf"
+						v-if="false && canForwardMessage && !isInNoteToSelf"
 						key="forward-to-note"
 						closeAfterClick
 						@click="forwardToNote">

@@ -46,7 +46,7 @@ const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
 function ser(s, m) {
 	const id = identity(m.by)
 	const o = { t: 'mark', key: m.key, tool: m.tool, name: id.name, mine: m.by === myId() || m.by === s.presenter, done: m.done, ttl: m.ttl || 0 }
-	o.color = PALETTE[s.cols[m.by] ?? hash(String(id.key || 'Гость')) % PALETTE.length]
+	o.color = m.col || PALETTE[s.cols[m.by] ?? hash(String(id.key || 'Гость')) % PALETTE.length] // выбранный автором цвет важнее авто (NAS_CLOUD#110 В8)
 	if (m.tool === 'text') {
 		Object.assign(o, { x: m.x, y: m.y, size: m.size, text: m.text })
 	} else {
@@ -110,11 +110,12 @@ function lost() {
 	if (mac.st === 'on') {
 		mac.st = 'lost'
 		clearInterval(watch)
+		consoleCmd('stopShare') // панель закрыта, приложение вышло или окно связи закрыто: показ экрана останавливаем
 		stopConsole()
 		const s = show()
 		cur && s && strokeEnd(s, cur)
 		cur = null
-		showWarning('Связь с приложением «Рисовать на экране» потеряна. Переподключить — кнопкой в панели рисования.')
+		showWarning('Связь с приложением «Рисовать на экране» потеряна, показ экрана остановлен. Переподключить — кнопкой в панели рисования.')
 	}
 }
 
@@ -191,7 +192,10 @@ function onCmd(d) {
 		case 'text': {
 			// с key — правка или перенос своего текста
 			const old = typeof d.key === 'string' ? s.marks.get(d.key) : null
-			const id = old && old.by === myId() && old.tool === 'text' ? old.id : undefined
+			if (d.key !== undefined && !(old && old.by === myId() && old.tool === 'text' && !old.fading)) {
+				break // правка текста, которого уже нет (отменён, стёрт, погас): не создаём новый
+			}
+			const id = old ? old.id : undefined
 			x !== null && y !== null && typeof d.text === 'string' && SIZES.includes(d.size) && textPut(s, { id, x, y, size: d.size, text: d.text })
 			break
 		}
@@ -260,7 +264,12 @@ export function openMac() {
 	const launch = mac.st === 'launch'
 	launched = mac.st === 'start'
 	pop?.close() // всегда свежее окно: окно, где Safari показал ошибку, больше не загрузится
-	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', 'popup,width=380,height=170')
+	// Safari: если вкладка в полноэкранном режиме, окно всё равно откроется на весь экран (размер игнорируется), поэтому ещё и left/top
+	const W = 380
+	const H = 170
+	const left = Math.max(0, Math.round((window.screen.availLeft || 0) + window.screen.availWidth - W - 24))
+	const top = Math.max(0, Math.round((window.screen.availTop || 0) + 80))
+	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', `popup=yes,width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=no`)
 	if (launch || !pop) {
 		// запуск: Safari спросит, открыть ли приложение; после запуска — ещё раз нажать (панель приложения подскажет)
 		mac.st = launch && pop ? 'start' : 'idle' // !pop: окно заблокировано

@@ -5,7 +5,6 @@
 
 import {
 	showError,
-	TOAST_DEFAULT_TIMEOUT,
 	TOAST_PERMANENT_TIMEOUT,
 } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
@@ -16,6 +15,7 @@ import { useActorStore } from '../../stores/actor.ts'
 import pinia from '../../stores/pinia.ts'
 import { useTokenStore } from '../../stores/token.ts'
 import { supportsRTCPeerConnection, supportsWebRTC } from '../browserCheck.ts'
+import { k4log } from '../k4log.js'
 import { Sounds } from '../sounds.js'
 import { LocalStateBroadcasterMcu } from './LocalStateBroadcasterMcu.ts'
 import { LocalStateBroadcasterNoMcu } from './LocalStateBroadcasterNoMcu.ts'
@@ -27,6 +27,7 @@ const spreedPeerConnectionTable = []
 let previousUsersInRoom = []
 let usersInCallMapping = {}
 let ownPeer = null
+let k4FastAt = 0 // ket4tec: время последнего быстрого переподключения (k4FastReconnect)
 let ownScreenPeer = null
 let selfInCall = PARTICIPANT.CALL_FLAG.DISCONNECTED
 // Special variable to know when the local user explicitly joined and left the
@@ -214,6 +215,10 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 
 		// TODO(fancycode): Adjust property name of internal PHP backend to be all lowercase.
 		const sessionId = user.sessionId || user.sessionid
+		// ket4tec: k4draw — роль участника из сигналинга: гость не грузит список участников, а модератор = тип 1/2/6
+		if (user.participantType !== undefined) {
+			callParticipantCollection.get(sessionId)?.set('participantType', user.participantType)
+		}
 		if (!sessionId || sessionId === currentSessionId || previousUsersInRoom.includes(sessionId)) {
 			if (sessionId === currentSessionId && previousUsersInRoom.includes(sessionId)) {
 				Sounds.playJoin(true, newUsers.length === 1)
@@ -244,6 +249,9 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 		callParticipantModel.setActor(user.actorType, user.actorId)
 		callParticipantModel.setUserId(userId)
 		callParticipantModel.setNextcloudSessionId(nextcloudSessionId)
+		if (user.participantType !== undefined) {
+			callParticipantModel.set('participantType', user.participantType)
+		}
 		if (user.internal) {
 			callParticipantModel.set('internal', true)
 		}
@@ -690,6 +698,37 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	}
 
 	/**
+	 * ket4tec (слово владельца 11.11): быстрый возврат после обрыва. С HPB обрыв раньше лечился только по «failed» —
+	 * браузер объявляет его через ~10 с после «disconnected» (журнал iPhone: связь вернулась на 1,5 с, видео — на 20-й).
+	 * Теперь: соединение 2 с в «disconnected» — сразу новое подключение всех потоков (одно на всех, не чаще раза в 8 с).
+	 * Без HPB — ICE restart так же через 2 с (ниже, в handleIceConnectionStateDisconnected — штатно через 5 с).
+	 *
+	 * @param {object} peer соединение, ушедшее в «disconnected»
+	 */
+	function k4FastReconnect(peer) {
+		setTimeout(function() {
+			if (peer.pc.iceConnectionState !== 'disconnected' || !webrtc.webrtc.peers.includes(peer)) {
+				return
+			}
+			if (!signaling.hasFeature('mcu')) {
+				if (spreedPeerConnectionTable[peer.id] < 5 && peer.pc.localDescription?.type === 'offer' && peer.pc.signalingState === 'stable') {
+					spreedPeerConnectionTable[peer.id]++
+					k4log('ice.fast', { id: peer.id, how: 'restart' })
+					peer.icerestart()
+				}
+				return
+			}
+			const now = Date.now()
+			if (now - k4FastAt < 8000) {
+				return
+			}
+			k4FastAt = now
+			k4log('ice.fast', { id: peer === ownPeer ? 'local' : peer.id, how: 'reconnect' })
+			forceReconnect(signaling)
+		}, 2000)
+	}
+
+	/**
 	 * @param {object} peer The peer connection to handle the state on
 	 */
 	function handleIceConnectionStateConnected(peer) {
@@ -703,6 +742,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	 * @param {object} peer The peer connection to handle the state on
 	 */
 	function handleIceConnectionStateDisconnected(peer) {
+		k4FastReconnect(peer)
 		setTimeout(function() {
 			if (peer.pc.iceConnectionState !== 'disconnected') {
 				return
@@ -866,6 +906,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 					break
 				case 'disconnected':
 					console.debug('Disconnected (own peer).', peer.id, peer)
+					k4FastReconnect(peer)
 
 					setTimeout(function() {
 						if (peer.pc.iceConnectionState !== 'disconnected') {
@@ -1399,7 +1440,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			// FIXME emit an event and handle it as needed instead of
 			// calling UI code from here.
 			localStreamRequestedTimeoutNotification = showError(t('spreed', 'This is taking longer than expected. Are the media permissions already granted (or rejected)? If yes please restart your browser, as audio and video are failing'), {
-				timeout: TOAST_PERMANENT_TIMEOUT,
+				timeout: 5000,
 			})
 		}, 10000)
 	})
@@ -1513,7 +1554,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 		}
 
 		let message
-		let timeout = TOAST_PERMANENT_TIMEOUT
+		let timeout = 5000
 		if ((error.name === 'NotSupportedError'
 			&& supportsRTCPeerConnection)
 		|| (error.name === 'NotAllowedError'
@@ -1522,7 +1563,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			message += ': ' + t('spreed', 'Please move your setup to HTTPS')
 		} else if (error.name === 'NotAllowedError') {
 			message = t('spreed', 'Access to microphone & camera was denied')
-			timeout = TOAST_DEFAULT_TIMEOUT
+			timeout = 5000
 		} else if (!supportsWebRTC) {
 			console.error('WebRTC not supported')
 
