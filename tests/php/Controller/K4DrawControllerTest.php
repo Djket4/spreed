@@ -87,6 +87,7 @@ class K4DrawControllerTest extends TestCase {
 	}
 
 	public function testPreDropsForeignKindsAndRingIsTrimmed(): void {
+		$this->appConfig->method('getAppValueArray')->willReturn(['andrey']);
 		$ctrl = $this->controller('guests', 'x');
 		$ev = fn (string $k) => ['t' => 1, 'k' => $k, 'd' => []];
 		$this->request->method('getParams')->willReturn(['c' => 'ab1c2', 'sent' => 1, 'ev' => [$ev('page_load'), $ev('call_joined')]]);
@@ -109,5 +110,30 @@ class K4DrawControllerTest extends TestCase {
 		);
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $ctrl->calllogPre()->getStatus());
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $ctrl->calllogPre()->getStatus());
+	}
+
+	public function testNoRingWhenTestmodeEmpty(): void {
+		$this->appConfig->method('getAppValueArray')->willReturn([]);
+		$this->request->method('getParams')->willReturn(['c' => 'ab1c2', 'ev' => [['t' => 1, 'k' => 'net', 'd' => []]]]);
+		$this->controller('guests', 'x')->calllogPre();
+		$this->assertArrayNotHasKey('k4calllog/abc123', $this->store);
+	}
+
+	public function testPreEntriesCappedAt50(): void {
+		$this->appConfig->method('getAppValueArray')->willReturn(['andrey']);
+		$this->store['k4calllog/abc123'] = array_merge(
+			[['t' => 0.0, 'sess' => 'real01', 'k' => 'real']],
+			array_fill(0, 60, ['t' => 1.0, 'sess' => '_ab1c2', 'k' => 'net']),
+		);
+		$this->request->method('getParams')->willReturn(['c' => 'ab1c2', 'ev' => [['t' => 1, 'k' => 'net', 'd' => []]]]);
+		$this->controller('guests', 'x')->calllogPre();
+		$ring = $this->store['k4calllog/abc123'];
+		$this->assertCount(51, $ring);
+		$this->assertSame('real', $ring[0]['k']);
+	}
+
+	public function testFeedHasNoAdminRequired(): void {
+		$attrs = (new \ReflectionMethod(K4DrawController::class, 'calllogFeed'))->getAttributes(\OCP\AppFramework\Http\Attribute\NoAdminRequired::class);
+		$this->assertNotEmpty($attrs);
 	}
 }

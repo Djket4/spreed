@@ -19,6 +19,8 @@ use OCA\Talk\Middleware\Attribute\RequireRoom;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCP\AppFramework\Http\Attribute\PublicPage;
@@ -46,6 +48,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	private const MAX_BYTES = 8 * 1024 * 1024;
 	private const MAX_SIDE = 8192;
 	private const CALLLOG_RING = 300;
+	private const CALLLOG_PRE_RING = 50;
 	private const CALLLOG_TTL = 14400;
 	private const CALLLOG_PRE_KINDS = ['page_load', 'join_click', 'join_blocked', 'gum_err', 'js_error', 'pagehide', 'net'];
 
@@ -505,11 +508,19 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 			@file_put_contents('php://stderr', $line);
 		}
 		// ponytail: гонка get/set при одновременных пачках, допускается для отладочного вида
-		if ($cache !== []) {
+		if ($cache !== [] && $this->appConfig->getAppValueArray('k4_testmode_users') !== []) {
 			$c = $this->calllogCache();
 			$key = 'k4calllog/' . $this->room->getToken();
 			$old = $c->get($key);
-			$c->set($key, array_slice(array_merge(is_array($old) ? $old : [], $cache), -self::CALLLOG_RING), self::CALLLOG_TTL);
+			$all = array_merge(is_array($old) ? $old : [], $cache);
+			// анонимные события до входа: не больше 50 в кольце, чтобы поток гостей не вытеснял настоящие
+			$pre = 0;
+			for ($i = count($all) - 1; $i >= 0; $i--) {
+				if (str_starts_with((string)$all[$i]['sess'], '_') && ++$pre > self::CALLLOG_PRE_RING) {
+					unset($all[$i]);
+				}
+			}
+			$c->set($key, array_slice(array_values($all), -self::CALLLOG_RING), self::CALLLOG_TTL);
 		}
 	}
 
@@ -519,6 +530,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	 * @return DataResponse<Http::STATUS_OK, array{now: float, events: list<mixed>}, array{}>|DataResponse<Http::STATUS_FORBIDDEN, array{error: string}, array{}>
 	 */
 	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[NoAdminRequired]
 	#[RequireLoggedInParticipant]
 	#[UserRateLimit(limit: 300, period: 600)]
 	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/calllog/{token}/feed', requirements: [
@@ -543,6 +555,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 	#[PublicPage]
 	#[RequireRoom]
+	#[BruteForceProtection(action: 'talkRoomToken')]
 	#[UserRateLimit(limit: 30, period: 600)]
 	#[AnonRateLimit(limit: 30, period: 600)]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/calllog/{token}/pre', requirements: [
