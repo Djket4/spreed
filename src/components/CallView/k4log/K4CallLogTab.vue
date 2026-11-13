@@ -4,10 +4,9 @@
 
 <template>
 	<div class="k4cl">
-		<label class="k4cl-f">
-			<input v-model="onlyBad" type="checkbox">
+		<NcCheckboxRadioSwitch v-model="onlyBad">
 			Только проблемы
-		</label>
+		</NcCheckboxRadioSwitch>
 		<p v-if="!shown.length" class="k4cl-empty">
 			Пока ничего нет
 		</p>
@@ -28,6 +27,7 @@
 <script>
 import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 
 const MAX = 500
@@ -80,6 +80,8 @@ const dOf = (e) => (e.d && typeof e.d === 'object' && !Array.isArray(e.d) ? e.d 
 
 export default {
 	name: 'K4CallLogTab',
+
+	components: { NcCheckboxRadioSwitch },
 
 	props: {
 		/** вкладка выбрана и панель открыта: иначе опроса нет */
@@ -171,12 +173,6 @@ export default {
 .k4cl {
 	padding: 8px;
 	font-size: 12px;
-}
-
-.k4cl-f {
-	display: flex;
-	align-items: baseline;
-	gap: 6px;
 }
 
 .k4cl-list {
