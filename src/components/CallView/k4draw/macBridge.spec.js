@@ -15,7 +15,10 @@ describe('macBridge: запуск без служебных окон', () => {
 		window.open = open
 		frames = []
 		const ap = document.body.appendChild.bind(document.body)
-		vi.spyOn(document.body, 'appendChild').mockImplementation((n) => { n.tagName === 'IFRAME' && frames.push(n.src); return ap(n) })
+		vi.spyOn(document.body, 'appendChild').mockImplementation((n) => {
+			n.tagName === 'IFRAME' && frames.push(n.src)
+			return ap(n)
+		})
 		mod = await import('./macBridge.js')
 	})
 	afterEach(() => {

@@ -68,7 +68,7 @@ function video(id, stream) {
  * @param h высота кадра
  * @return {[number, number, number, number]} sx, sy, sw, sh
  */
-export const cropWindow = (w, h) => {
+export function cropWindow(w, h) {
 	const m = Math.min(w, h)
 	return [(w - m) / 2, (h - m) / 2, m, m]
 }
@@ -99,8 +99,10 @@ export function jpg(v, sq = true) {
  * @param id
  * @param stream
  * @param on камера включена
+ * @param fresh
+ * @param sq
  */
-const frame = (id, stream, on, fresh, sq) => {
+function frame(id, stream, on, fresh, sq) {
 	if (!(on && stream?.getVideoTracks().length)) {
 		last.delete(id)
 		return null
@@ -116,6 +118,9 @@ const frame = (id, stream, on, fresh, sq) => {
 
 /**
  * Состояние звонка и плитки; свои первыми.
+ *
+ * @param fresh
+ * @param sq
  */
 function snapshot(fresh = true, sq = true) {
 	const L = localMediaModel.attributes
