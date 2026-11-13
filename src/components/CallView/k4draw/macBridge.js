@@ -23,7 +23,7 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(
 /** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (схема не сработала: плашка «Приложение не найдено» со «Скачать») | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
-export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', allow: 'Подключаю…', denied: 'Рисовать на экране', blocked: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', allow: 'Подключаю…', denied: 'Рисовать на экране', unverified: 'Рисовать на экране', blocked: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
 
 let pop = null
@@ -125,6 +125,7 @@ function lost() {
 function finish() {
 	clearInterval(watch)
 	clearTimeout(timer)
+	pingAc?.abort()
 	stopConsole()
 	const s = show()
 	cur && s && strokeEnd(s, cur)
@@ -256,6 +257,23 @@ function retry() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let busy = false
+let pingAc = null // текущий fetch-ping: сбрасывается при выходе из звонка и закрытии плашки
+
+/**
+ * Запуск устарел: другой звонок/плашку закрыли, либо вышли из звонка (тогда всё сбрасываем).
+ *
+ * @param g поколение на старте
+ */
+function stale(g) {
+	if (g !== gen) {
+		return true
+	}
+	if (!inCall()) {
+		finish()
+		return true
+	}
+	return false
+}
 
 /**
  * Приложение запущено? Запрос без окна: no-cors, ответ не читаем (старое приложение 1.6 CORS-заголовков не шлёт, и не надо).
@@ -264,6 +282,7 @@ let busy = false
  */
 export async function pingApp() {
 	const ac = new AbortController()
+	pingAc = ac
 	const t = setTimeout(() => ac.abort(), 800)
 	try {
 		await fetch(URL, { mode: 'no-cors', cache: 'no-store', signal: ac.signal })
@@ -273,6 +292,7 @@ export async function pingApp() {
 		return ac.signal.aborted ? 'wait' : 'no'
 	} finally {
 		clearTimeout(t)
+		pingAc === ac && (pingAc = null)
 	}
 }
 
@@ -295,11 +315,17 @@ export async function netPerm() {
  *
  * @param g поколение звонка на старте
  * @param first итог первого ping
- * @return {Promise<'ok'|'noapp'|'denied'>} ok с waited = ждали ответа на запрос браузера
+ * @return {Promise<{r: 'ok'|'noapp'|'denied'|'allow'|'unverified'|'stale', waited?: boolean}>} waited = ждали ответа на запрос браузера
  */
 async function launchApp(g, first) {
-	if (first === 'no' && await netPerm() === 'denied') {
-		return { r: 'denied' }
+	if (first === 'no') {
+		const np = await netPerm()
+		if (stale(g)) {
+			return { r: 'stale' }
+		}
+		if (np === 'denied') {
+			return { r: 'denied' }
+		}
 	}
 	const f = document.createElement('iframe')
 	f.style.display = 'none'
@@ -308,30 +334,43 @@ async function launchApp(g, first) {
 	setTimeout(() => f.remove(), 5000)
 	let waited = first === 'wait'
 	let no = 0
+	let pending = first === 'wait'
 	const t0 = Date.now()
 	while (no < 27 && Date.now() - t0 < 120000) {
-		first === 'wait' && (mac.st = 'allow')
+		pending && (mac.st = 'allow')
 		await sleep(300)
-		if (g !== gen) {
-			return { r: 'noapp' }
+		if (stale(g)) {
+			return { r: 'stale' }
 		}
 		const r = await pingApp()
+		if (stale(g)) {
+			return { r: 'stale' }
+		}
 		if (r === 'ok') {
 			return { r: 'ok', waited }
 		}
 		if (r === 'wait') {
 			waited = true
+			pending = true
 			mac.st = 'allow'
 			continue
 		}
+		pending = false
 		mac.st = 'wait'
-		if (await netPerm() === 'denied') {
+		const np = await netPerm()
+		if (stale(g)) {
+			return { r: 'stale' }
+		}
+		if (np === 'denied') {
 			return { r: 'denied' }
 		}
-		first = ''
 		no++
 	}
-	return { r: 'noapp' }
+	if (pending) {
+		return { r: 'allow' } // всё время ждали ответа на запрос браузера: плашка остаётся, «не найдено» не пишем
+	}
+	// без Permissions API (Safari) быстрый отказ fetch не отличить от mixed content: «не удалось проверить»
+	return { r: await netPerm() === '' ? 'unverified' : 'noapp' }
 }
 
 /** Окно моста: только когда приложение уже ответило (или пользователь сам нажал «подключить»). */
@@ -352,9 +391,9 @@ function openBridge() {
 }
 
 /** Плашка «Приложение не найдено»: закрыть. */
-export const closeMissing = () => {
-	if (['noapp', 'blocked', 'denied', 'allow'].includes(mac.st)) {
-		mac.st === 'allow' && (gen++, busy = false) // ждали запрос браузера: прекращаем ждать
+export function closeMissing() {
+	if (['noapp', 'blocked', 'denied', 'allow', 'unverified'].includes(mac.st)) {
+		mac.st === 'allow' && (gen++, busy = false, pingAc?.abort()) // ждали запрос браузера: прекращаем ждать
 		mac.st = 'idle'
 	}
 }
@@ -392,11 +431,14 @@ export async function openMac() {
 	const g = gen
 	try {
 		const first = await pingApp()
+		if (stale(g)) {
+			return
+		}
 		if (first === 'ok') {
-			return g === gen && openBridge()
+			return openBridge()
 		}
 		const { r, waited } = await launchApp(g, first)
-		if (g === gen) {
+		if (r !== 'stale' && !stale(g)) {
 			if (r === 'ok' && waited) {
 				return openBridge() // пользователь ответил на запрос браузера: мост сразу, без второго клика
 			}

@@ -1,3 +1,6 @@
+/**
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const H = vi.hoisted(() => ({ models: [], L: null }))
@@ -63,6 +66,43 @@ describe('macConsole: кадры камер для приложения', () => 
 		const cv = enc.mock.contexts[0]
 		expect([cv.width, cv.height]).toEqual([160, 90])
 		expect(draw.mock.calls[0].slice(1)).toEqual([0, 0, 160, 90])
+	})
+
+	// send тратит 20 мс «времени»: бюджет не даёт ответить на следующий fr сразу
+	const slow = () => vi.fn(() => vi.advanceTimersByTime(20))
+
+	it('fr слишком рано: ответ откладывается и уходит по таймеру', () => {
+		vi.useFakeTimers()
+		const send = slow()
+		mod.consoleFrame(send)
+		mod.consoleFrame(send)
+		expect(send).toHaveBeenCalledTimes(1)
+		vi.advanceTimersByTime(500)
+		expect(send).toHaveBeenCalledTimes(2)
+		vi.useRealTimers()
+	})
+
+	it('повторные fr объединяются в один отложенный ответ', () => {
+		vi.useFakeTimers()
+		const send = slow()
+		mod.consoleFrame(send)
+		mod.consoleFrame(send)
+		mod.consoleFrame(send)
+		mod.consoleFrame(send)
+		vi.advanceTimersByTime(500)
+		expect(send).toHaveBeenCalledTimes(2)
+		vi.useRealTimers()
+	})
+
+	it('stopConsole снимает отложенный ответ', () => {
+		vi.useFakeTimers()
+		const send = slow()
+		mod.consoleFrame(send)
+		mod.consoleFrame(send)
+		mod.stopConsole()
+		vi.advanceTimersByTime(500)
+		expect(send).toHaveBeenCalledTimes(1)
+		vi.useRealTimers()
 	})
 })
 

@@ -1,13 +1,19 @@
+/**
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@nextcloud/dialogs', () => ({ showWarning: vi.fn() }))
 vi.mock('@nextcloud/router', () => ({ getRootUrl: () => '/sub' }))
+const call = vi.hoisted(() => ({ in: true }))
+vi.mock('./macConsole.js', () => ({ consoleCmd: vi.fn(), consoleFrame: vi.fn(), consoleTick: vi.fn(), inCall: () => call.in, stopConsole: vi.fn() }))
 
 describe('macBridge: запуск без служебных окон', () => {
 	let mod
 	let open
 	let frames
 	beforeEach(async () => {
+		call.in = true
 		vi.useFakeTimers()
 		vi.resetModules()
 		open = vi.fn(() => ({ closed: false, close: vi.fn(), postMessage: vi.fn(), focus: vi.fn() }))
@@ -15,7 +21,10 @@ describe('macBridge: запуск без служебных окон', () => {
 		window.open = open
 		frames = []
 		const ap = document.body.appendChild.bind(document.body)
-		vi.spyOn(document.body, 'appendChild').mockImplementation((n) => { n.tagName === 'IFRAME' && frames.push(n.src); return ap(n) })
+		vi.spyOn(document.body, 'appendChild').mockImplementation((n) => {
+			n.tagName === 'IFRAME' && frames.push(n.src)
+			return ap(n)
+		})
 		mod = await import('./macBridge.js')
 	})
 	afterEach(() => {
@@ -23,6 +32,8 @@ describe('macBridge: запуск без служебных окон', () => {
 		vi.restoreAllMocks()
 		vi.unstubAllGlobals()
 	})
+
+	const perm = (get) => vi.stubGlobal('navigator', { platform: 'MacIntel', permissions: { query: () => Promise.resolve({ state: get() }) } })
 
 	it('ссылка скачивания относительна к облаку', () => {
 		expect(mod.MAC_DL).toBe('/sub/k4draw/')
@@ -38,6 +49,7 @@ describe('macBridge: запуск без служебных окон', () => {
 	})
 
 	it('не отвечает, схема не сработала: ни одного окна, плашка noapp', async () => {
+		perm(() => 'prompt')
 		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
 		const p = mod.openMac()
 		await vi.advanceTimersByTimeAsync(9000)
@@ -60,6 +72,7 @@ describe('macBridge: запуск без служебных окон', () => {
 	})
 
 	it('потеря фокуса не считается запуском: noapp', async () => {
+		perm(() => 'prompt')
 		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
 		const p = mod.openMac()
 		await vi.advanceTimersByTimeAsync(300)
@@ -106,7 +119,6 @@ describe('macBridge: запуск без служебных окон', () => {
 			rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))
 		})
 	}))
-	const perm = (get) => vi.stubGlobal('navigator', { platform: 'MacIntel', permissions: { query: () => Promise.resolve({ state: get() }) } })
 
 	it('запрос браузера не отвечен: «разрешите доступ», не «не найдено»; после Allow мост сразу', async () => {
 		const state = {}
@@ -157,5 +169,89 @@ describe('macBridge: запуск без служебных окон', () => {
 		await vi.advanceTimersByTimeAsync(3000)
 		await p
 		expect(mod.mac.st).toBe('idle')
+	})
+
+	it('быстрые отказы без Permissions API (Safari): «не удалось проверить», «подключить вручную» в обход ping', async () => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(9000)
+		await p
+		expect(mod.mac.st).toBe('unverified')
+		expect(open).not.toHaveBeenCalled()
+		mod.connectAnyway()
+		expect(open).toHaveBeenCalledTimes(1)
+		expect(mod.mac.st).toBe('wait')
+	})
+
+	it('Permissions API есть, быстрые отказы: noapp, не unverified', async () => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
+		perm(() => 'granted')
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(9000)
+		await p
+		expect(mod.mac.st).toBe('noapp')
+	})
+
+	it('все ответы 120 с — ожидание запроса: плашка «разрешите доступ» остаётся, не noapp', async () => {
+		vi.stubGlobal('fetch', pendingFetch({}))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(130000)
+		await p
+		expect(mod.mac.st).toBe('allow')
+		await vi.advanceTimersByTimeAsync(10000)
+		expect(mod.mac.st).toBe('allow')
+		expect(open).not.toHaveBeenCalled()
+	})
+
+	it('вышли из звонка (inCall=false) во время ожидания: мост не открывается, всё сброшено', async () => {
+		const state = {}
+		vi.stubGlobal('fetch', pendingFetch(state))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(3000)
+		expect(mod.mac.st).toBe('allow')
+		call.in = false
+		state.answer = 'allow' // приложение ответило уже после выхода
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(open).not.toHaveBeenCalled()
+		expect(mod.mac.st).toBe('idle')
+	})
+
+	it('вышли из звонка во время первого ping: ни iframe, ни окна', async () => {
+		vi.stubGlobal('fetch', pendingFetch({}))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(300)
+		call.in = false
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(frames).toEqual([])
+		expect(open).not.toHaveBeenCalled()
+		expect(mod.mac.st).toBe('idle')
+	})
+
+	it('pagehide во время первого ping: iframe не создаётся', async () => {
+		vi.stubGlobal('fetch', pendingFetch({}))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(300)
+		window.dispatchEvent(new Event('pagehide'))
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(frames).toEqual([])
+		expect(mod.mac.st).toBe('idle')
+	})
+
+	it('плашку закрыли во время ping: старый запуск её не возвращает', async () => {
+		const state = {}
+		vi.stubGlobal('fetch', pendingFetch(state))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(1300) // первый ping (wait) отработал, идёт ping цикла
+		expect(mod.mac.st).toBe('allow')
+		mod.closeMissing()
+		expect(mod.mac.st).toBe('idle')
+		state.answer = 'block'
+		await vi.advanceTimersByTimeAsync(5000)
+		await p
+		expect(mod.mac.st).toBe('idle')
+		expect(open).not.toHaveBeenCalled()
 	})
 })
