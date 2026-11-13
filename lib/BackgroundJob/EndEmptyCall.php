@@ -12,9 +12,9 @@ use OCA\Talk\Exceptions\RoomNotFoundException;
 use OCA\Talk\Manager;
 use OCA\Talk\Service\ParticipantService;
 use OCA\Talk\Service\RoomService;
-use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
+use OCP\IAppConfig;
 
 /**
  * ket4tec (NAS_CLOUD#129): звонок заканчивается не сразу, когда вышел последний участник,
@@ -40,10 +40,16 @@ class EndEmptyCall extends QueuedJob {
 		return 'empty_call_' . $roomId;
 	}
 
+	/** Процесс cron долгоживущий: кэш app config может быть старым, сбрасываем перед каждым чтением. */
+	private function readMark(int $roomId): int {
+		$this->appConfig->clearCache();
+		return $this->appConfig->getValueInt('spreed', self::key($roomId), 0);
+	}
+
 	#[\Override]
 	protected function run($argument): void {
 		$roomId = (int)($argument['roomId'] ?? 0);
-		$emptySince = $this->appConfig->getAppValueInt(self::key($roomId), 0);
+		$emptySince = $this->readMark($roomId);
 		if ($emptySince <= 0) {
 			return; // кто-то вошёл после опустения (или звонок уже закончен)
 		}
@@ -52,12 +58,12 @@ class EndEmptyCall extends QueuedJob {
 		if ($wait > 0) {
 			// ponytail: тик cron пришёл раньше GRACE (редко, окно 15 с из 300): ждём остаток в самой задаче, не более GRACE
 			sleep(min($wait, self::GRACE));
-			if ($this->appConfig->getAppValueInt(self::key($roomId), 0) !== $emptySince) {
+			if ($this->readMark($roomId) !== $emptySince) {
 				return; // кто-то вошёл (или опустело заново и ждёт свою задачу)
 			}
 		}
 
-		$this->appConfig->deleteAppValue(self::key($roomId));
+		$this->appConfig->deleteKey('spreed', self::key($roomId));
 		try {
 			$room = $this->manager->getRoomById($roomId);
 		} catch (RoomNotFoundException) {

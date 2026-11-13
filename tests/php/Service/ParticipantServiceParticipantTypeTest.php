@@ -71,6 +71,8 @@ class ParticipantServiceParticipantTypeTest extends TestCase {
 			$this->createMock(ICacheFactory::class),
 			$this->createMock(IManager::class),
 			$this->createMock(LoggerInterface::class),
+			$this->createMock(\OCP\IAppConfig::class),
+			$this->createMock(\OCP\BackgroundJob\IJobList::class),
 		];
 	}
 

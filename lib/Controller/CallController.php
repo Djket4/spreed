@@ -45,7 +45,6 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
-use OCP\BackgroundJob\IJobList;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUserManager;
@@ -70,7 +69,6 @@ class CallController extends AEnvironmentAwareOCSController {
 		private readonly Config $talkConfig,
 		private readonly Authenticator $federationAuthenticator,
 		private readonly SIPDialOutService $dialOutService,
-		private readonly IJobList $jobList,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -632,14 +630,8 @@ class CallController extends AEnvironmentAwareOCSController {
 			$this->roomService->resetActiveSinceInModelOnly($this->room);
 		} else {
 			$this->participantService->changeInCall($this->room, $this->participant, Participant::FLAG_DISCONNECTED);
-			if (!$this->participantService->hasActiveSessionsInCall($this->room)) {
-				// ket4tec (NAS_CLOUD#129): не завершать звонок сразу, проверить позже (переключение устройства)
-				$argument = ['roomId' => $this->room->getId()];
-				$this->appConfig->setAppValueInt(EndEmptyCall::key($this->room->getId()), $this->timeFactory->getTime());
-				if (!$this->jobList->has(EndEmptyCall::class, $argument)) {
-					$this->jobList->add(EndEmptyCall::class, $argument);
-				}
-			}
+			// ket4tec (NAS_CLOUD#129): пустой звонок завершается с отсрочкой, см. resetCallStateWhenNeeded
+			$this->participantService->resetCallStateWhenNeeded($this->room);
 		}
 
 		return new DataResponse(null);

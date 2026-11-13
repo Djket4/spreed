@@ -13,8 +13,8 @@ use OCA\Talk\Manager;
 use OCA\Talk\Room;
 use OCA\Talk\Service\ParticipantService;
 use OCA\Talk\Service\RoomService;
-use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\IAppConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use Test\TestCase;
 
@@ -41,7 +41,7 @@ class EndEmptyCallTest extends TestCase {
 	}
 
 	public function testEndsCallWhenStillEmpty(): void {
-		$this->appConfig->method('getAppValueInt')->willReturn(900);
+		$this->appConfig->method('getValueInt')->willReturn(900);
 		$room = $this->createMock(Room::class);
 		$this->manager->method('getRoomById')->with(42)->willReturn($room);
 		$this->participantService->method('hasActiveSessionsInCall')->willReturn(false);
@@ -50,7 +50,7 @@ class EndEmptyCallTest extends TestCase {
 	}
 
 	public function testKeepsCallWhenSomeoneJoined(): void {
-		$this->appConfig->method('getAppValueInt')->willReturn(900);
+		$this->appConfig->method('getValueInt')->willReturn(900);
 		$room = $this->createMock(Room::class);
 		$this->manager->method('getRoomById')->willReturn($room);
 		$this->participantService->method('hasActiveSessionsInCall')->willReturn(true);
@@ -59,16 +59,31 @@ class EndEmptyCallTest extends TestCase {
 	}
 
 	public function testDeletedRoomIsIgnored(): void {
-		$this->appConfig->method('getAppValueInt')->willReturn(900);
+		$this->appConfig->method('getValueInt')->willReturn(900);
 		$this->manager->method('getRoomById')->willThrowException(new RoomNotFoundException());
 		$this->roomService->expects($this->never())->method('resetActiveSince');
 		$this->run42();
 	}
 
 	public function testNothingWhenSomeoneJoinedAfterEmptied(): void {
-		$this->appConfig->method('getAppValueInt')->willReturn(0); // joinCall снял отметку
+		$this->appConfig->method('getValueInt')->willReturn(0); // joinCall снял отметку
 		$this->manager->expects($this->never())->method('getRoomById');
 		$this->roomService->expects($this->never())->method('resetActiveSince');
 		$this->run42();
+	}
+
+	public function testStaleCacheIsDroppedBeforeEveryRead(): void {
+		// без clearCache() второе чтение вернуло бы старое значение; здесь проверяем порядок: clearCache перед каждым getValueInt
+		$calls = [];
+		$this->appConfig = $this->createMock(IAppConfig::class);
+		$this->appConfig->method('clearCache')->willReturnCallback(function () use (&$calls): void {
+			$calls[] = 'clear';
+		});
+		$this->appConfig->method('getValueInt')->willReturnCallback(function () use (&$calls): int {
+			$calls[] = 'read';
+			return 0;
+		});
+		$this->run42();
+		$this->assertSame(['clear', 'read'], $calls);
 	}
 }
