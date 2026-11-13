@@ -73,7 +73,8 @@ describe('DrawLayer: второе касание', () => {
 		fire(ink, 'pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 100 })
 		fire(ink, 'touchstart', { touches: [t1] })
 		expect(m.start).toHaveBeenCalledTimes(1)
-		fire(field, 'touchstart', { touches: [t1, { target: field, touchType: 'direct' }] })
+		const t2 = { target: field, touchType: 'direct' }
+		fire(field, 'touchstart', { touches: [t1, t2], changedTouches: [t2] })
 		expect(m.cancel).toHaveBeenCalledTimes(1)
 		// второй палец отпущен, первый ещё на стекле
 		fire(field, 'touchend', { touches: [t1] })
@@ -88,10 +89,25 @@ describe('DrawLayer: второе касание', () => {
 		expect(m.start).toHaveBeenCalledTimes(1 + 1)
 	})
 
-	test('касание вне контейнера показа не считается вторым пальцем', () => {
+	test('второй палец вне контейнера показа (grid-main-wrapper) отменяет штрих и отдаёт жест зуму', () => {
 		const t1 = { target: ink, touchType: 'direct' }
 		fire(ink, 'pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 100 })
-		fire(ink, 'touchstart', { touches: [t1, { target: document.body, touchType: 'direct' }] })
+		fire(ink, 'touchstart', { touches: [t1] })
+		const t2 = { target: document.body, touchType: 'direct' }
+		fire(document.body, 'touchstart', { touches: [t1, t2], changedTouches: [t2] })
+		expect(m.cancel).toHaveBeenCalledTimes(1)
+		fire(ink, 'pointermove', { pointerType: 'touch', pointerId: 1, clientX: 200, clientY: 200 })
+		expect(m.point).not.toHaveBeenCalled()
+	})
+
+	test('держатель лежит вне показа до штриха: штрих рисуется', () => {
+		const hold = { target: document.body, touchType: 'direct' }
+		const t1 = { target: ink, touchType: 'direct' }
+		fire(document.body, 'touchstart', { touches: [hold], changedTouches: [hold] })
+		fire(ink, 'pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 100 })
+		fire(ink, 'touchstart', { touches: [hold, t1], changedTouches: [t1] })
 		expect(m.cancel).not.toHaveBeenCalled()
+		fire(ink, 'pointermove', { pointerType: 'touch', pointerId: 1, clientX: 200, clientY: 200 })
+		expect(m.point).toHaveBeenCalled()
 	})
 })

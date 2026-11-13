@@ -834,10 +834,20 @@ function cancelCur() {
  */
 function onTouch(e) {
 	const ts = [...e.touches].filter((t) => tbox.contains(t.target))
-	if (!ts.length) {
+	const all = [...e.touches]
+	// touchstart самого штриха (все новые касания внутри .k4-ink) вторым пальцем не считаем: палец-держатель мог лежать вне показа до штриха
+	const fresh = [...(e.changedTouches || [])].some((t) => !ink.value?.contains(t.target))
+	if (e.type === 'touchstart' && ptr !== null && all.length > 1 && fresh && !all.some((t) => t.touchType === 'stylus')) {
+		// второй палец мог встать на поле вокруг кадра или вообще за контейнер показа (.grid-main-wrapper):
+		// до .k4-ink он не доходит, ловим на window в capture и отдаём жест зуму
+		gest = true
+		if (!ptrPen) {
+			cancelCur()
+			multi = true
+		}
+	} else if (!ts.length) {
 		gest = false
 	} else if (ts.length > 1 && !ts.some((t) => t.touchType === 'stylus')) {
-		// второй палец мог встать на поле вокруг кадра: до .k4-ink он не доходит, отменяем здесь
 		gest = true
 		if (ptr !== null && !ptrPen) {
 			cancelCur()
@@ -1292,7 +1302,8 @@ onMounted(() => {
 	i.addEventListener('pointerup', onUp)
 	i.addEventListener('pointercancel', onUp)
 	tbox = root.value.parentElement
-	for (const t of ['touchstart', 'touchend', 'touchcancel']) {
+	window.addEventListener('touchstart', onTouch, { capture: true, passive: true })
+	for (const t of ['touchend', 'touchcancel']) {
 		tbox.addEventListener(t, onTouch, { capture: true, passive: true })
 	}
 	ro = new ResizeObserver(onVideo)
@@ -1307,7 +1318,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	window.visualViewport?.removeEventListener('resize', kbFit)
 	window.visualViewport?.removeEventListener('scroll', kbFit)
-	for (const t of ['touchstart', 'touchend', 'touchcancel']) {
+	window.removeEventListener('touchstart', onTouch, { capture: true })
+	for (const t of ['touchend', 'touchcancel']) {
 		tbox?.removeEventListener(t, onTouch, { capture: true })
 	}
 	finishEdit()

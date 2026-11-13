@@ -1582,6 +1582,8 @@ class ParticipantService {
 		if ($flags !== Participant::FLAG_DISCONNECTED) {
 			$attendee->setLastJoinedCall($lastJoinedCall ?: $this->timeFactory->getTime());
 			$this->attendeeMapper->update($attendee);
+			// ket4tec (NAS_CLOUD#129): вход любым путём (REST, HPB, федерация) снимает отметку «звонок пуст»
+			$this->serverAppConfig->deleteKey('spreed', EndEmptyCall::key($room->getId()));
 		} elseif ($attendee->getActorType() === Attendee::ACTOR_PHONES) {
 			$attendee->setCallId('');
 			$this->attendeeMapper->update($attendee);
@@ -2374,7 +2376,14 @@ class ParticipantService {
 		}
 
 		$argument = ['roomId' => $room->getId()];
-		$this->serverAppConfig->setValueInt('spreed', EndEmptyCall::key($room->getId()), $this->timeFactory->getTime());
+		// Отметку не перезаписываем: повторный вызов (например, «сессия удалена» через 38 с) не должен сдвигать конец звонка.
+		// Сбрасывается при любом входе в звонок (changeInCall) или задачей EndEmptyCall.
+		$key = EndEmptyCall::key($room->getId());
+		// процесс cron долгоживущий: кэш мог удержать уже удалённую отметку (как в EndEmptyCall::readMark)
+		$this->serverAppConfig->clearCache();
+		if ($this->serverAppConfig->getValueInt('spreed', $key, 0) <= 0) {
+			$this->serverAppConfig->setValueInt('spreed', $key, $this->timeFactory->getTime());
+		}
 		if (!$this->jobList->has(EndEmptyCall::class, $argument)) {
 			$this->jobList->scheduleAfter(EndEmptyCall::class, $this->timeFactory->getTime() + EndEmptyCall::GRACE, $argument);
 		}

@@ -10,7 +10,9 @@ namespace OCA\Talk\Tests\php\Service;
 use OCA\Talk\BackgroundJob\EndEmptyCall;
 use OCA\Talk\Config;
 use OCA\Talk\Federation\BackendNotifier;
+use OCA\Talk\Model\Attendee;
 use OCA\Talk\Model\AttendeeMapper;
+use OCA\Talk\Model\Session;
 use OCA\Talk\Model\SessionMapper;
 use OCA\Talk\Participant;
 use OCA\Talk\Room;
@@ -92,6 +94,15 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL));
 	}
 
+	public function testRepeatedResetDoesNotMoveEmptyMark(): void {
+		$service = $this->service(false);
+		$service->method('getParticipantsJoinedCurrentCall')->willReturn([1, 2]);
+		$service->method('hasActiveSessionsInCall')->willReturn(false);
+		$this->appConfig->method('getValueInt')->with('spreed', EndEmptyCall::key(42), 0)->willReturn(950);
+		$this->appConfig->expects($this->never())->method('setValueInt');
+		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL));
+	}
+
 	public function testNothingWhenOthersStillInCall(): void {
 		$service = $this->service(true);
 		$service->method('hasActiveSessionsInCall')->willReturn(true);
@@ -131,5 +142,20 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$this->appConfig->expects($this->once())->method('setValueInt');
 		$this->jobList->expects($this->once())->method('scheduleAfter');
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL, Room::TYPE_PUBLIC));
+	}
+
+	public function testJoinNotViaCallControllerClearsEmptyMark(): void {
+		// вход через changeInCall (HPB, федерация) снимает отметку пустого звонка
+		$service = $this->service(false);
+		// Entity-геттеры магические (__call), мок их не настроит: берём настоящие сущности
+		$session = new Session();
+		$session->setInCall(Participant::FLAG_DISCONNECTED);
+		$attendee = new Attendee();
+		$participant = $this->createMock(Participant::class);
+		$participant->method('getSession')->willReturn($session);
+		$participant->method('getAttendee')->willReturn($attendee);
+		$participant->method('getPermissions')->willReturn(Attendee::PERMISSIONS_MAX_CUSTOM);
+		$this->appConfig->expects($this->once())->method('deleteKey')->with('spreed', EndEmptyCall::key(42));
+		$service->changeInCall($this->room(Participant::FLAG_IN_CALL), $participant, Participant::FLAG_IN_CALL);
 	}
 }
