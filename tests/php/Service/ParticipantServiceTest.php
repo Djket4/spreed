@@ -30,6 +30,7 @@ use OCP\IGroupManager;
 use OCP\IUserManager;
 use OCP\Security\ISecureRandom;
 use OCP\UserStatus\IManager;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
@@ -154,5 +155,35 @@ class ParticipantServiceTest extends TestCase {
 		$this->expectExceptionMessage('classified');
 
 		$this->service->startDialOutRequest($dialOutService, $room, 1, '+491601234567');
+	}
+
+	public static function dataHasActiveSessionsInCall(): array {
+		return [
+			'fresh ping in call' => [Participant::FLAG_IN_CALL, 10000 - 5, true],
+			'old ping in call' => [Participant::FLAG_IN_CALL, 10000 - Session::SESSION_TIMEOUT - 1, false],
+			'fresh ping not in call' => [Participant::FLAG_DISCONNECTED, 10000 - 5, false],
+		];
+	}
+
+	/** ket4tec (NAS_CLOUD#129): обход RemoveEmptyRooms закрывает звонок только без живых сессий в звонке */
+	#[DataProvider('dataHasActiveSessionsInCall')]
+	public function testHasActiveSessionsInCall(int $inCall, int $lastPing, bool $expected): void {
+		$this->time->method('getTime')->willReturn(10000);
+		$attendee = new Attendee();
+		$attendee->setActorType(Attendee::ACTOR_USERS);
+		$attendee->setActorId('test');
+		$attendee->setRoomId(123456789);
+		$this->attendeeMapper->insert($attendee);
+
+		$session = new Session();
+		$session->setAttendeeId($attendee->getId());
+		$session->setSessionId(self::getUniqueID('session'));
+		$session->setInCall($inCall);
+		$session->setLastPing($lastPing);
+		$this->sessionMapper->insert($session);
+
+		$room = $this->createMock(Room::class);
+		$room->method('getId')->willReturn(123456789);
+		self::assertSame($expected, $this->service->hasActiveSessionsInCall($room));
 	}
 }

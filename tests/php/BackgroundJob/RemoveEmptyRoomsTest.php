@@ -164,17 +164,19 @@ class RemoveEmptyRoomsTest extends TestCase {
 
 	public static function dataEndCallIfNobodyLeft(): array {
 		return [
-			'no call' => [Participant::FLAG_DISCONNECTED, 0],
-			'call going' => [Participant::FLAG_IN_CALL, 1],
+			'no call' => [Participant::FLAG_DISCONNECTED, false, 0],
+			'call going' => [Participant::FLAG_IN_CALL, false, 1],
+			'federated call' => [Participant::FLAG_IN_CALL, true, 0],
 		];
 	}
 
 	#[DataProvider('dataEndCallIfNobodyLeft')]
-	public function testEndCallIfNobodyLeft(int $callFlag, int $resets): void {
+	public function testEndCallIfNobodyLeft(int $callFlag, bool $federated, int $resets): void {
 		$room = $this->createMock(Room::class);
 		$room->method('getType')->willReturn(Room::TYPE_GROUP);
 		$room->method('getObjectType')->willReturn('');
 		$room->method('getCallFlag')->willReturn($callFlag);
+		$room->method('isFederatedConversation')->willReturn($federated);
 		$this->participantService->method('getNumberOfActors')->willReturn(3);
 		$this->participantService->expects($this->exactly($resets))->method('resetCallStateWhenNeeded')->with($room);
 		$this->roomService->expects($this->never())->method('deleteRoom');

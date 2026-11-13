@@ -81,7 +81,8 @@ class RemoveEmptyRooms extends TimedJob {
 	 * опустения (старая сохраняется) и EndEmptyCall через GRACE.
 	 */
 	private function endCallIfNobodyLeft(Room $room): void {
-		if ($room->getCallFlag() === Participant::FLAG_DISCONNECTED) {
+		// федеративный звонок ведёт сервер-хозяин, локальные сессии его не описывают
+		if ($room->getCallFlag() === Participant::FLAG_DISCONNECTED || $room->isFederatedConversation()) {
 			return;
 		}
 
