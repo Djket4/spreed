@@ -5,22 +5,20 @@
 
 <template>
 	<!-- NAS_CLOUD#172, этап 2: правая половина кадра 2:1 — отдельная квадратная плитка с тем же потоком -->
-	<Transition name="k4split" appear>
-		<div class="video-container video-container-grid k4-split-tile" :class="{ speaking: isSpeaking, 'k4-nomic': model.attributes.audioAvailable === false }">
-			<div class="videoWrapper">
-				<video
-					ref="video"
-					class="video video--fill k4-half-r"
-					:disablePictureInPicture="true" />
-			</div>
-			<VideoBottomBar
-				hasShadow
-				:participantName="participantName"
-				:model="model"
-				:sharedData="sharedData"
-				:token="token" />
+	<div class="video-container video-container-grid k4-split-tile" :class="{ speaking: isSpeaking, 'k4-nomic': model.attributes.audioAvailable === false }">
+		<div class="videoWrapper">
+			<video
+				ref="video"
+				class="video video--fill k4-half-r"
+				:disablePictureInPicture="true" />
 		</div>
-	</Transition>
+		<VideoBottomBar
+			hasShadow
+			:participantName="participantName"
+			:model="model"
+			:sharedData="sharedData"
+			:token="token" />
+	</div>
 </template>
 
 <script>

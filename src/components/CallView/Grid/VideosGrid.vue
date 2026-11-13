@@ -64,14 +64,16 @@
 									:sharedData="sharedDatas[callParticipantModel.attributes.peerId]"
 									@clickVideo="handleClickVideo($event, callParticipantModel.attributes.peerId)" />
 								<!-- NAS_CLOUD#172, этап 2: кадр 2:1 — вторая квадратная половина -->
-								<K4SplitTile
-									v-if="splitPeers.has(callParticipantModel.attributes.peerId)"
-									:class="{ video: !isStripe }"
-									:style="tileStyle(tileIndex(index) + 1)"
-									:model="callParticipantModel"
-									:sharedData="sharedDatas[callParticipantModel.attributes.peerId]"
-									:participantName="splitPeers.get(callParticipantModel.attributes.peerId)"
-									:token="token" />
+								<Transition name="k4split" appear>
+									<K4SplitTile
+										v-if="splitPeers.has(callParticipantModel.attributes.peerId)"
+										:class="{ video: !isStripe }"
+										:style="tileStyle(tileIndex(index) + 1)"
+										:model="callParticipantModel"
+										:sharedData="sharedDatas[callParticipantModel.attributes.peerId]"
+										:participantName="splitPeers.get(callParticipantModel.attributes.peerId)"
+										:token="token" />
+								</Transition>
 							</template>
 						</template>
 						<!-- VideosGrid developer mode -->
