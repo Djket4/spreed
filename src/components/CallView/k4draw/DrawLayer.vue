@@ -70,10 +70,10 @@ const ink = ref(null)
 const chips = ref(null)
 const erc = ref(null)
 
-// вне режима рисования слой повторяет transform видео (panzoom)
+// слой всегда повторяет transform видео (panzoom): штрихи держатся за картинку и при зуме во время рисования (NAS_CLOUD#108)
 const rootStyle = computed(() => {
 	const t = props.transform
-	return state.mode || !t || (t.scale === 1 && !t.x && !t.y)
+	return !t || (t.scale === 1 && !t.x && !t.y)
 		? {}
 		: { transform: `matrix(${t.scale},0,0,${t.scale},${t.x},${t.y})` }
 })
@@ -95,6 +95,8 @@ let tap = 0 // время последнего короткого тапа (дв
 let edit = null // открытое поле ввода текста
 let ptrPen = false // текущий штрих пером
 let penAt = -1e9 // когда перо последний раз было у экрана (пальцы в это время — ладонь)
+let gest = false // два пальца на показе (вкл. поля вокруг кадра): до полного отпускания ни штриха, ни курсора (NAS_CLOUD#108)
+let tbox = null
 
 const f1 = (v) => Math.round(v * 10) / 10
 const pt = (p) => f1(p[0]) + ' ' + f1(p[1])
@@ -830,7 +832,28 @@ function cancelCur() {
  *
  * @param e
  */
+function onTouch(e) {
+	const ts = [...e.touches].filter((t) => tbox.contains(t.target))
+	if (!ts.length) {
+		gest = false
+	} else if (ts.length > 1 && !ts.some((t) => t.touchType === 'stylus')) {
+		// второй палец мог встать на поле вокруг кадра: до .k4-ink он не доходит, отменяем здесь
+		gest = true
+		if (ptr !== null && !ptrPen) {
+			cancelCur()
+			multi = true
+		}
+	}
+}
+
+/**
+ *
+ * @param e
+ */
 function onDown(e) {
+	if (e.pointerType === 'touch' && gest) {
+		return
+	}
 	if (!state.mode && props.board && canDraw()) {
 		state.mode = true // доска — сама поверхность для рисования: касание сразу рисует (п.49)
 	}
@@ -958,6 +981,9 @@ function onMove(e) {
 		return
 	}
 	if (ptr === null) {
+		if (gest) {
+			return
+		}
 		rect = surf.value.getBoundingClientRect()
 		cursor(show(), nrm(e))
 		return
@@ -965,6 +991,7 @@ function onMove(e) {
 	if (e.pointerId !== ptr || !cur) {
 		return
 	}
+	rect = surf.value.getBoundingClientRect() // зум колесом посреди штриха
 	const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]
 	for (const ev of (evs.length ? evs : [e])) {
 		const p = nrm(ev)
@@ -1130,15 +1157,16 @@ function openEdit(p, v) {
 	hd.addEventListener('pointerdown', (ev) => {
 		ev.preventDefault()
 		ev.stopPropagation()
-		E.drag = { x: ev.clientX - E.x, y: ev.clientY - E.y }
+		// слой может быть под зумом: экранный сдвиг делим на масштаб
+		E.drag = { x: ev.clientX, y: ev.clientY, ex: E.x, ey: E.y, s: props.transform?.scale || 1 }
 		try {
 			hd.setPointerCapture(ev.pointerId)
 		} catch (_) { /* не критично */ }
 	})
 	hd.addEventListener('pointermove', (ev) => {
 		if (E.drag) {
-			E.x = ev.clientX - E.drag.x
-			E.y = ev.clientY - E.drag.y
+			E.x = E.drag.ex + (ev.clientX - E.drag.x) / E.drag.s
+			E.y = E.drag.ey + (ev.clientY - E.drag.y) / E.drag.s
 			E.fit()
 		}
 	})
@@ -1263,6 +1291,10 @@ onMounted(() => {
 	i.addEventListener('pointermove', onMove)
 	i.addEventListener('pointerup', onUp)
 	i.addEventListener('pointercancel', onUp)
+	tbox = root.value.parentElement
+	for (const t of ['touchstart', 'touchend', 'touchcancel']) {
+		tbox.addEventListener(t, onTouch, { capture: true, passive: true })
+	}
 	ro = new ResizeObserver(onVideo)
 	ro.observe(root.value)
 	props.video?.addEventListener('resize', onVideo)
@@ -1275,6 +1307,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	window.visualViewport?.removeEventListener('resize', kbFit)
 	window.visualViewport?.removeEventListener('scroll', kbFit)
+	for (const t of ['touchstart', 'touchend', 'touchcancel']) {
+		tbox?.removeEventListener(t, onTouch, { capture: true })
+	}
 	finishEdit()
 	cancelCur()
 	cancelAnimationFrame(raf)
