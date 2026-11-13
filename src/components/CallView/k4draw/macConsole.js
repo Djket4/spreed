@@ -23,6 +23,7 @@ cv.width = cv.height = SQ
 let box = null
 const last = new Map() // id плитки -> прошлый jpg (ответ на tick v2 без перекодирования)
 let cost = 0 // скользящее среднее времени ответа на fr (кодирование всех плиток + отправка), мс
+let late = 0 // таймер отложенного ответа на fr
 let nextAt = 0 // не отвечать на fr раньше (держим ответы в ~12% главного потока)
 // счётчики для замера в живом звонке: window.__k4fr
 const stat = (window.__k4fr = { n: 0, ms: 0, skip: 0 })
@@ -150,14 +151,19 @@ export function consoleTick(send, v2 = false) {
 /**
  * `fr` приложения (до 25/с): свежие кадры камер на каждый fr, пока ответы укладываются в ~12% главного потока:
  * следующий ответ не раньше чем через 7 × среднее время предыдущего. Дорого (много камер, слабая машина) —
- * fr пропускаем, приложение само повторит через 200 мс; частота падает, вкладка не тормозит.
+ * ответ откладываем (приложение ждёт до 200 мс); частота падает, вкладка не тормозит.
  *
  * @param send отправка в окно моста
  */
 export function consoleFrame(send) {
 	const now = performance.now()
 	if (now < nextAt) {
+		// слишком рано: отвечаем, когда уложимся в бюджет (приложение ждёт ответ до 200 мс, потом шлёт fr снова)
 		stat.skip++
+		late ||= setTimeout(() => {
+			late = 0
+			consoleFrame(send)
+		}, nextAt - now)
 		return
 	}
 	send(snapshot(true))
@@ -177,6 +183,8 @@ export function stopConsole() {
 	})
 	vids.clear()
 	last.clear()
+	clearTimeout(late)
+	late = 0
 	box?.remove()
 	box = null
 }
