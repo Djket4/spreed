@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace OCA\Talk\Controller;
 
 use OCA\Talk\Authenticator;
+use OCA\Talk\BackgroundJob\EndEmptyCall;
 use OCA\Talk\Config;
 use OCA\Talk\Exceptions\DialOutFailedException;
 use OCA\Talk\Exceptions\ParticipantNotFoundException;
@@ -44,6 +45,7 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUserManager;
@@ -68,6 +70,7 @@ class CallController extends AEnvironmentAwareOCSController {
 		private readonly Config $talkConfig,
 		private readonly Authenticator $federationAuthenticator,
 		private readonly SIPDialOutService $dialOutService,
+		private readonly IJobList $jobList,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -610,7 +613,11 @@ class CallController extends AEnvironmentAwareOCSController {
 		} else {
 			$this->participantService->changeInCall($this->room, $this->participant, Participant::FLAG_DISCONNECTED);
 			if (!$this->participantService->hasActiveSessionsInCall($this->room)) {
-				$this->roomService->resetActiveSince($this->room, $this->participant);
+				// ket4tec (NAS_CLOUD#129): не завершать звонок сразу, проверить позже (переключение устройства)
+				$argument = ['roomId' => $this->room->getId()];
+				if (!$this->jobList->has(EndEmptyCall::class, $argument)) {
+					$this->jobList->add(EndEmptyCall::class, $argument);
+				}
 			}
 		}
 
