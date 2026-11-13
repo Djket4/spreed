@@ -52,6 +52,7 @@
 
 		<!-- ket4tec: k4stk -->
 		<TileSticker :on="k4stkOn" own />
+		<K4TileStats peerId="local" />
 		<!-- ket4tec: своя связь пропала после подключения -->
 		<K4Reconnect v-if="k4WasConn && isNotConnected && !isSidebar" title="Нет связи" sub="переподключаемся…" />
 
@@ -77,6 +78,7 @@ import { inject, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
+import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import K4Face from './k4face/K4Face.vue' // ket4tec
 import K4Reconnect from './K4Reconnect.vue' // ket4tec
@@ -100,6 +102,7 @@ export default {
 		VideoBackground,
 		NcLoadingIcon,
 		K4Reconnect,
+		K4TileStats,
 		TileSticker,
 	},
 
