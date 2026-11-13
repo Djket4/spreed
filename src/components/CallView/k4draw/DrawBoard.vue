@@ -111,14 +111,14 @@ const fit = computed(() => {
 			const per = Math.ceil(n / c)
 			const a = (along - G * (per - 1)) / per // плитка вдоль полосы, чтобы влезли все без прокрутки
 			const t = (max - G * (c - 1)) / c // толщина одной линии
-			const x = land ? Math.min(t, a * 4 / 3) : Math.min(t * 4 / 3, a)
+			const x = Math.min(t, a) // ket4tec (NAS_CLOUD#159): плитка камеры - квадрат
 			if (x > tw + 1) {
 				k = c
 				tw = x
 			}
 		}
 		tw = Math.floor(Math.max(tw, land ? 120 : 92))
-		const th = Math.floor(tw * 3 / 4)
+		const th = tw
 		const thick = land ? k * tw + G * (k - 1) : k * th + G * (k - 1)
 		res = thick + P
 		strip = land ? { width: `${thick}px`, bottom: `${P + under}px`, gridTemplateColumns: `repeat(${k}, ${tw}px)` } : { height: `${thick}px`, gridTemplateRows: `repeat(${k}, ${th}px)`, gridAutoColumns: `${tw}px` }
@@ -224,7 +224,7 @@ onBeforeUnmount(() => {
 .k4-strip__t {
 	position: relative;
 	flex: none;
-	aspect-ratio: 4 / 3;
+	aspect-ratio: 1; // ket4tec (NAS_CLOUD#159)
 	overflow: hidden;
 	border-radius: 16px;
 	background: linear-gradient(135deg, var(--k7-tile-a, #3b2f3f), var(--k7-tile-b, #1d1620));

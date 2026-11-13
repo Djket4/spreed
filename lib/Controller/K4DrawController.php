@@ -406,4 +406,78 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		}
 		return new DataResponse(['n' => count($ev)]);
 	}
+
+	/**
+	 * Журнал звонков (NAS_CLOUD#163, этап 2): технические события клиента. Пишутся строкой `K4CALLLOG {json}`
+	 * в stderr приложения; служба calllog на S18 читает их из `docker logs` и ставит в хронологию по сессии.
+	 * Принимает только участника комнаты с совпадающей room session id. Имён, текстов, названий устройств нет.
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[RequireParticipant]
+	#[UserRateLimit(limit: 600, period: 600)]
+	#[AnonRateLimit(limit: 600, period: 600)]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/calllog/{token}', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+	])]
+	public function calllog(): DataResponse {
+		$params = $this->request->getParams();
+		$s = $params['s'] ?? null;
+		$ev = $params['ev'] ?? null;
+		// фактический размер, а не заголовок: при Transfer-Encoding: chunked Content-Length нет
+		if ((int)$this->request->getHeader('Content-Length') > 32 * 1024
+			|| strlen((string)json_encode($params)) > 32 * 1024) {
+			return new DataResponse(['error' => 'too large'], Http::STATUS_REQUEST_ENTITY_TOO_LARGE);
+		}
+		if (!is_string($s) || !is_array($ev) || !array_is_list($ev) || count($ev) > 50) {
+			return new DataResponse(['error' => 'bad'], Http::STATUS_BAD_REQUEST);
+		}
+		$session = $this->participant->getSession();
+		if ($session === null || $s === '' || !hash_equals($session->getSessionId(), $s)) {
+			return new DataResponse(['error' => 'session'], Http::STATUS_FORBIDDEN);
+		}
+		// управляющие символы -> пробел; адреса -> <url>; длинные токены с цифрами/_/- -> <id> (чисто буквенные имена ошибок остаются)
+		$clean = static function (string $v, int $n): string {
+			$v = (string)preg_replace('/[\p{C}\p{Zl}\p{Zp}]+/u', ' ', $v);
+			$v = (string)preg_replace('~https?://\S+~iu', '<url>', $v);
+			$v = (string)preg_replace('/(?=[A-Za-z0-9_-]*[0-9_-])[A-Za-z0-9_-]{16,}/', '<id>', $v);
+			return mb_substr($v, 0, $n);
+		};
+		$nowMs = (int)(microtime(true) * 1000);
+		$sentMs = is_int($params['sent'] ?? null) ? $params['sent'] : $nowMs;
+		$lines = [];
+		$total = 0;
+		foreach ($ev as $e) {
+			if (!is_array($e) || !is_int($e['t'] ?? null) || !is_string($e['k'] ?? null) || !preg_match('/^[a-z_]{1,30}$/', $e['k'])) {
+				continue;
+			}
+			$d = [];
+			foreach (is_array($e['d'] ?? null) ? array_slice($e['d'], 0, 12, true) : [] as $key => $val) {
+				if (is_string($key) && preg_match('/^[a-z]{1,12}$/', $key) && is_scalar($val)) {
+					$d[$key] = is_string($val) ? $clean($val, 120) : $val;
+				}
+			}
+			// время события = приём минус «возраст» события на часах клиента (сдвиг часов клиента не важен)
+			$age = max(0, min(600000, $sentMs - $e['t']));
+			$line = 'K4CALLLOG ' . json_encode([
+				't' => ($nowMs - $age) / 1000,
+				'room' => $this->room->getToken(),
+				'sess' => substr($s, 0, 6),
+				'ty' => $this->participant->getAttendee()->getActorType() === 'users' ? 'users' : 'guests',
+				'k' => $e['k'],
+				'd' => (object)$d,
+			], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
+			// строка < 4 КБ (запись в трубу атомарна), за запрос в stderr не больше 16 КБ, лишнее отбрасываем
+			if (strlen($line) >= 4000 || $total + strlen($line) > 16 * 1024) {
+				continue;
+			}
+			$total += strlen($line);
+			$lines[] = $line;
+		}
+		foreach ($lines as $line) {
+			@file_put_contents('php://stderr', $line);
+		}
+		return new DataResponse(['n' => count($ev)]);
+	}
 }

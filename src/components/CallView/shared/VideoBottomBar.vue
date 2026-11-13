@@ -35,7 +35,7 @@
 					class="audioIndicator"
 					variant="tertiary-no-background"
 					:disabled="isAudioButtonDisabled"
-					@click.stop="forceMute">
+					@click.stop="onAudioClick">
 					<template #icon>
 						<IconMicrophone v-if="model.attributes.audioAvailable" :size="20" />
 						<NcIconSvgWrapper v-else :svg="IconMicrophoneOffOutline" :size="20" />
@@ -219,10 +219,15 @@ export default {
 		},
 
 		isAudioButtonDisabled() {
-			return !this.model.attributes.audioAvailable || !this.canFullModerate
+			return !this.canFullModerate // ket4tec (NAS_CLOUD#154): у модератора и «выключить», и «попросить включить»
 		},
 
 		audioButtonTitle() {
+			if (this.canFullModerate) { // ket4tec (NAS_CLOUD#154)
+				return this.model.attributes.audioAvailable
+					? t('spreed', 'Mute microphone')
+					: t('spreed', 'Ask to unmute microphone')
+			}
 			return this.model.attributes.audioAvailable
 				? t('spreed', 'Mute')
 				: t('spreed', 'Muted')
@@ -291,8 +296,12 @@ export default {
 	methods: {
 		t,
 
-		forceMute() {
-			this.model.forceMute()
+		onAudioClick() {
+			if (this.model.attributes.audioAvailable) {
+				this.model.forceMute()
+			} else {
+				this.model.askUnmute() // ket4tec (NAS_CLOUD#154)
+			}
 		},
 
 		toggleVideo() {
@@ -306,8 +315,7 @@ export default {
 		},
 
 		handleStopFollowing() {
-			this.callViewStore.stopPresentation(this.token)
-			this.callViewStore.setSelectedVideoPeerId(null)
+			emit('k4-unpin-video') // ket4tec (NAS_CLOUD#153): единый путь в CallView
 		},
 	},
 }

@@ -10,7 +10,7 @@
 		:class="[videoContainerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo')">
+		@click="$emit('clickVideo', $event)">
 		<img
 			v-if="screenshotModeUrl"
 			class="dev-mode-video--self videoWrapper"
@@ -25,8 +25,9 @@
 				id="localVideo"
 				ref="video"
 				disablePictureInPicture="true"
-				:class="fitVideo ? 'video--fit' : 'video--fill'"
+				:class="[fitVideo ? 'video--fit' : 'video--fill', { 'k4-two-own': k4two }]"
 				class="video"
+				@resize="k4Resize"
 				@playing="updateVideoAspectRatio" />
 			<IconAccountOffOutline
 				v-if="isPresenterOverlay && mouseover"
@@ -71,6 +72,7 @@
 
 <script>
 import { showError, showInfo } from '@nextcloud/dialogs'
+import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { inject, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -84,6 +86,7 @@ import { AVATAR } from '../../../constants.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
+import { isTwoSquares } from '../../../utils/media/pipeline/FaceSquare.js'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
 import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
@@ -176,6 +179,7 @@ export default {
 	data() {
 		return {
 			notificationHandle: null,
+			k4two: false, // кадр 2:1 (два квадрата, #172 этап 2): свою плитку показываем целиком
 			videoAspectRatio: null,
 			containerAspectRatio: null,
 			resizeObserver: null,
@@ -342,6 +346,11 @@ export default {
 	},
 
 	methods: {
+		k4Resize() {
+			const v = this.$refs.video
+			this.k4two = !!v && isTwoSquares(v.videoWidth, v.videoHeight)
+		},
+
 		t,
 		_handleForcedMute() {
 			// The default toast selector is "body-user", but as this toast can
@@ -368,8 +377,7 @@ export default {
 		},
 
 		handleStopFollowing() {
-			this.callViewStore.setSelectedVideoPeerId(null)
-			this.callViewStore.stopPresentation(this.token)
+			emit('k4-unpin-video') // ket4tec (NAS_CLOUD#153): единый путь в CallView
 		},
 
 		updateContainerAspectRatio([{ target }]) {

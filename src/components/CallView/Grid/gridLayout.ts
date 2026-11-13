@@ -39,177 +39,6 @@ export function getMinTileHeight(compact: boolean): number {
 	return compact ? MIN_TILE_HEIGHT_COMPACT : MIN_TILE_HEIGHT
 }
 
-type GridDimensionsOptions = {
-	/** Available grid width in px */
-	gridWidth: number
-	/** Available grid height in px */
-	gridHeight: number
-	/** Number of tiles to lay out (already clamped to any cap) */
-	videoCount: number
-	/** Target tile aspect ratio (width / height) */
-	targetAspectRatio: number
-	/** Minimum tile width in px (already DPI-aware) */
-	minWidth: number
-	/** Minimum tile height in px (already DPI-aware) */
-	minHeight: number
-	/** Whether no slot must be reserved for the local video (stripe or recording mode) */
-	noLocalVideoReserve: boolean
-	/** Current number of columns, used as a hysteresis seed to avoid flickering */
-	currentColumns?: number
-	/** Current number of rows, used as a hysteresis seed to avoid flickering */
-	currentRows?: number
-}
-
-/**
- * Number of tile slots available for a given column/row count.
- * The full grid reserves one slot for the local video, unless it is not shown
- * (stripe or recording mode).
- *
- * @param columns - number of columns
- * @param rows - number of rows
- * @param noLocalVideoReserve - whether no slot must be reserved for the local video
- */
-function slotsFor(columns: number, rows: number, noLocalVideoReserve: boolean): number {
-	return noLocalVideoReserve ? columns * rows : columns * rows - 1
-}
-
-/**
- * Maximum number of tiles that fit along one axis (columns or rows) given the
- * available size along that axis.
- *
- * A small hysteresis based on the current tile count avoids flickering when
- * resizing within `GRID_GAP` px of the threshold for the current amount of
- * tiles.
- *
- * @param size - available grid size in px along the axis
- * @param minSize - minimum tile size in px along the axis
- * @param currentCount - current number of tiles along the axis
- */
-function computeAxisMax(size: number, minSize: number, currentCount: number): number {
-	// Max amount of tiles that fits on screen, including gaps for the current layout
-	const approxMax = Math.floor((size - GRID_GAP * (currentCount - 1)) / minSize)
-	// Max amount of tiles that fits on screen if we tried to fit one more tile
-	const hypotheticalMax = Math.floor((size - GRID_GAP * currentCount) / minSize)
-	// If we are about to change the tile count, check whether one more tile could fit.
-	// This helps to avoid flickering when resizing within GRID_GAP px of the
-	// minimal size for the current amount of tiles.
-	const axisMax = approxMax === currentCount ? approxMax : hypotheticalMax
-	// Return at least 1 tile
-	return Math.max(axisMax, 1)
-}
-
-/**
- * Compute the number of columns and rows the grid should use.
- *
- * The algorithm starts from the maximum number of columns and rows that fit the
- * available space, then shrinks the grid - removing whichever column or row
- * keeps the tiles closest to the target aspect ratio - until it is just big
- * enough to hold every tile. This is a pure function of its inputs, so it can be
- * unit-tested in isolation from the component and its `ResizeObserver`.
- *
- * @param options - the layout inputs
- * @param options.gridWidth - available grid width in px
- * @param options.gridHeight - available grid height in px
- * @param options.videoCount - number of tiles to lay out (already clamped to any cap)
- * @param options.targetAspectRatio - target tile aspect ratio (width / height)
- * @param options.minWidth - minimum tile width in px (already DPI-aware)
- * @param options.minHeight - minimum tile height in px (already DPI-aware)
- * @param options.noLocalVideoReserve - whether no slot must be reserved for the local video
- * @param options.currentColumns - current number of columns, used as a hysteresis seed
- * @param options.currentRows - current number of rows, used as a hysteresis seed
- * @return the resulting number of columns and rows
- */
-export function computeGridDimensions({
-	gridWidth,
-	gridHeight,
-	videoCount,
-	targetAspectRatio,
-	minWidth,
-	minHeight,
-	noLocalVideoReserve,
-	currentColumns = 0,
-	currentRows = 0,
-}: GridDimensionsOptions): { columns: number, rows: number } {
-	// TODO: rebuild the grid to have optimal for last page:
-	// Exception for when navigating in and away from the last page of the grid
-	// The last grid page is very likely not to have the same number of elements
-	// as the previous pages so the grid needs to be tweaked accordingly
-
-	// Nothing to lay out, except for the local video: it takes a tile of its own
-	// unless no slot is reserved for it, so the grid still has to hold that one
-	// tile. Without a column of its own the tile would be laid out in an
-	// implicit, content sized column and collapse to nothing as soon as the
-	// camera is off. Note that a zero-size grid (not measured yet, hidden or
-	// mid-transition) still falls back to a 1x1 layout below while tiles are
-	// present, so the downstream slot math never goes negative.
-	if (videoCount <= 0) {
-		return noLocalVideoReserve ? { columns: 0, rows: 0 } : { columns: 1, rows: 1 }
-	}
-
-	// Start from the largest grid that fits the available space, then shrink it
-	// to fit the number of tiles we actually have.
-	let columns = computeAxisMax(gridWidth, minWidth, currentColumns)
-	let rows = computeAxisMax(gridHeight, minHeight, currentRows)
-
-	// No need to shrink more if 1 row and 1 column
-	if (rows === 1 && columns === 1) {
-		return { columns, rows }
-	}
-
-	let currentSlots = slotsFor(columns, rows, noLocalVideoReserve)
-
-	// Only shrink when we have an 'overflow' of slots. If the tiles already
-	// populate the grid, there is no point in shrinking it.
-	while (videoCount < currentSlots) {
-		// Current tile dimensions
-		const videoWidth = (gridWidth - GRID_GAP * (columns - 1)) / columns
-		const videoHeight = (gridHeight - GRID_GAP * (rows - 1)) / rows
-
-		// Deltas with the target aspect ratio of the hypothetical tiles with one
-		// column/row less than current. An axis which is down to a single track
-		// cannot be shrunk any further, so it is never the one to remove.
-		const deltaAspectRatioWithOneColumnLess = columns >= 2
-			? Math.abs((gridWidth - GRID_GAP * (columns - 2)) / (columns - 1) / videoHeight - targetAspectRatio)
-			: Number.POSITIVE_INFINITY
-		const deltaAspectRatioWithOneRowLess = rows >= 2
-			? Math.abs(videoWidth / ((gridHeight - GRID_GAP * (rows - 2)) / (rows - 1)) - targetAspectRatio)
-			: Number.POSITIVE_INFINITY
-
-		if (deltaAspectRatioWithOneColumnLess === Number.POSITIVE_INFINITY
-			&& deltaAspectRatioWithOneRowLess === Number.POSITIVE_INFINITY) {
-			// A single tile is left, there is nothing to shrink any more
-			break
-		}
-
-		// Compare the deltas to find out whether we need to remove a column or a row
-		if (deltaAspectRatioWithOneColumnLess <= deltaAspectRatioWithOneRowLess) {
-			columns--
-
-			currentSlots = slotsFor(columns, rows, noLocalVideoReserve)
-
-			// Check that there are still enough slots available
-			if (videoCount > currentSlots) {
-				// If not, revert the change and stop shrinking
-				columns++
-				break
-			}
-		} else {
-			rows--
-
-			currentSlots = slotsFor(columns, rows, noLocalVideoReserve)
-
-			// Check that there are still enough slots available
-			if (videoCount > currentSlots) {
-				// If not, revert the change and stop shrinking
-				rows++
-				break
-			}
-		}
-	}
-
-	return { columns, rows }
-}
-
 type RowDistributionOptions = {
 	/** Number of tiles laid out on the page, including the local video tile */
 	totalTiles: number
@@ -288,33 +117,6 @@ export function getHalfColumnCount(columns: number): number {
  */
 export function getHalfColumnMinWidth(minTileWidth: number): number {
 	return Math.max((minTileWidth - GRID_GAP) / TILE_COLUMN_SPAN, 0)
-}
-
-/**
- * Maximum width of a half column, in px, for the given tile height.
- *
- * The columns of the grid share whatever width is left, so a grid with room to
- * spare would stretch its tiles far past the aspect ratio the layout aims for:
- * the number of columns is the only thing the layout can shrink, and dropping a
- * column only makes the remaining tiles wider. Capping the width of a column
- * keeps the tiles at the target aspect ratio and leaves the room to spare
- * around them instead.
- *
- * A tile spans two half columns and the gap between them, so each half column
- * holds half of the tile minus that gap.
- *
- * @param tileHeight - height of a tile of the grid in px
- * @param targetAspectRatio - tile aspect ratio (width / height) the layout aims for
- * @param minHalfColumnWidth - minimum width of a half column in px, never capped below
- */
-export function getHalfColumnMaxWidth(
-	tileHeight: number,
-	targetAspectRatio: number,
-	minHalfColumnWidth: number,
-): number {
-	const maxTileWidth = tileHeight * targetAspectRatio
-
-	return Math.max((maxTileWidth - GRID_GAP) / TILE_COLUMN_SPAN, minHalfColumnWidth)
 }
 
 type TilePlacementOptions = {
@@ -414,4 +216,52 @@ export function getJustifyContent({
 	}
 
 	return isLocalVideoAlone ? 'end' : 'start'
+}
+
+// ket4tec (NAS_CLOUD#159): плитка камеры - всегда квадрат. Сетка из квадратов: перебираем число столбцов и строк,
+// берём самую крупную сторону, при которой помещаются все (иначе - больше мест, дальше листание страниц).
+export const MIN_TILE_SIDE = 150
+
+/**
+ *
+ * @param root0
+ * @param root0.gridWidth
+ * @param root0.gridHeight
+ * @param root0.total
+ * @param root0.minSide
+ */
+export function computeSquareLayout({ gridWidth, gridHeight, total, minSide = MIN_TILE_SIDE }: {
+	gridWidth: number
+	gridHeight: number
+	total: number
+	minSide?: number
+}): { columns: number, rows: number, side: number } {
+	const need = Math.max(total, 1)
+	const maxColumns = Math.max(1, Math.floor((gridWidth + GRID_GAP) / (minSide + GRID_GAP)))
+	const maxRows = Math.max(1, Math.floor((gridHeight + GRID_GAP) / (minSide + GRID_GAP)))
+	let best = { columns: 1, rows: 1, side: 0 }
+	let bestKey = [-1, -1, 0]
+	for (let columns = 1; columns <= maxColumns; columns++) {
+		for (let rows = 1; rows <= maxRows; rows++) {
+			const cells = columns * rows
+			const side = Math.floor(Math.min(
+				(gridWidth - GRID_GAP * (columns - 1)) / columns,
+				(gridHeight - GRID_GAP * (rows - 1)) / rows,
+			))
+			const key = cells >= need ? [1, side, -cells] : [0, cells, side]
+			if (key[0] > bestKey[0]
+				|| (key[0] === bestKey[0] && (key[1] > bestKey[1] || (key[1] === bestKey[1] && key[2] > bestKey[2])))) {
+				best = { columns, rows, side }
+				bestKey = key
+			}
+		}
+	}
+	// Even in a tiny area there must be room for the local tile and at least one other participant:
+	// shrink the square below minSide rather than show nobody.
+	if (need >= 2 && best.columns * best.rows < 2) {
+		const wide = Math.floor(Math.min((gridWidth - GRID_GAP) / 2, gridHeight))
+		const tall = Math.floor(Math.min(gridWidth, (gridHeight - GRID_GAP) / 2))
+		return wide >= tall ? { columns: 2, rows: 1, side: wide } : { columns: 1, rows: 2, side: tall }
+	}
+	return best
 }

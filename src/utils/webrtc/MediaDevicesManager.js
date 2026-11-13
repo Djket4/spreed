@@ -14,6 +14,7 @@ import {
 	promoteMediaDevice,
 } from '../../services/mediaDevicePreferences.ts'
 import { isSafari } from '../browserCheck.ts'
+import { calllog } from '../calllog.js'
 import EmitterMixin from '../EmitterMixin.js'
 import { k4log } from '../k4log.js'
 
@@ -583,6 +584,7 @@ MediaDevicesManager.prototype = {
 		this._stopIncompatibleTracks(constraints)
 
 		return this._getUserMediaWithCameraFallback(constraints).then((stream) => {
+			calllog('gum_ok', { a: stream.getAudioTracks().length, v: stream.getVideoTracks().length })
 			k4log('media.ok', { tracks: stream.getTracks().map((track) => track.kind + ':' + String(track.label).slice(0, 40)) })
 			this._registerStream(stream)
 
@@ -598,6 +600,7 @@ MediaDevicesManager.prototype = {
 
 			return stream
 		}).catch((error) => {
+			calllog('gum_err', { name: String(error?.name ?? 'Error').slice(0, 40), a: !!constraints.audio, v: !!constraints.video })
 			k4log('media.err', { name: error?.name, msg: String(error?.message).slice(0, 100), a: !!constraints.audio, v: !!constraints.video })
 			// The list of devices is also updated in case of failure, as even
 			// if getting the stream failed the permissions may have been

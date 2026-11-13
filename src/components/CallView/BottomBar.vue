@@ -25,7 +25,6 @@ import IconFullscreenExit from 'vue-material-design-icons/FullscreenExit.vue'
 import IconPencil from 'vue-material-design-icons/Pencil.vue' // ket4tec: k4draw
 import IconSubtitles from 'vue-material-design-icons/Subtitles.vue'
 import IconSubtitlesOutline from 'vue-material-design-icons/SubtitlesOutline.vue'
-import IconViewDashboardOutline from 'vue-material-design-icons/ViewDashboardOutline.vue'
 import IconViewGalleryOutline from 'vue-material-design-icons/ViewGalleryOutline.vue'
 import IconViewGridOutline from 'vue-material-design-icons/ViewGridOutline.vue'
 import ReactionMenu from '../TopBar/ReactionMenu.vue'
@@ -203,29 +202,24 @@ const isGrid = computed(() => callViewStore.isGrid)
 const CALL_LAYOUT = {
 	GRID: 'grid',
 	SPEAKER: 'speaker',
-	MULTI_SPEAKER: 'multi-speaker',
 } as const
 const CALL_LAYOUT_COMPONENT = {
 	[CALL_LAYOUT.GRID]: {
-		label: 'Все участники сеткой', // ket4tec: понятные подписи (п.47)
+		label: 'Классика', // ket4tec: понятные подписи (п.47, NAS_CLOUD#153)
 		icon: IconViewGridOutline,
 	},
 	[CALL_LAYOUT.SPEAKER]: {
-		label: 'Крупно — кто говорит',
+		label: 'Говорящий крупно',
 		icon: IconViewGalleryOutline,
-	},
-	[CALL_LAYOUT.MULTI_SPEAKER]: {
-		label: 'Крупно — несколько говорящих',
-		icon: IconViewDashboardOutline,
 	},
 } as const
 type CallLayout = typeof CALL_LAYOUT[keyof typeof CALL_LAYOUT]
-const callLayouts = [CALL_LAYOUT.GRID, CALL_LAYOUT.SPEAKER, CALL_LAYOUT.MULTI_SPEAKER] as const
+const callLayouts = [CALL_LAYOUT.GRID, CALL_LAYOUT.SPEAKER] as const
 const callLayout = computed(() => {
 	if (isGrid.value) {
 		return CALL_LAYOUT.GRID
 	}
-	return callViewStore.isMultiSpeaker ? CALL_LAYOUT.MULTI_SPEAKER : CALL_LAYOUT.SPEAKER
+	return CALL_LAYOUT.SPEAKER
 })
 
 // ket4tec: меню «Вид» и фон в панели не сворачиваются — меню всегда в капсуле, фоны запрещены темой (настройки — шестерёнкой)
@@ -504,8 +498,8 @@ function setCallLayout(layout: CallLayout) {
 		isGrid: layout === CALL_LAYOUT.GRID,
 		// Picking the grid says nothing about how speaker view should look, so
 		// the preference is kept for when it is picked again
-		isMultiSpeaker: layout === CALL_LAYOUT.GRID ? null : layout === CALL_LAYOUT.MULTI_SPEAKER,
 		clearLast: false,
+		manual: true,
 	})
 	callViewStore.setSelectedVideoPeerId(null)
 }

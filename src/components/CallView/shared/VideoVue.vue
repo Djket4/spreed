@@ -12,7 +12,7 @@
 		:class="[containerClass, { 'k4stk-has': k4stkOn }]"
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
-		@click="$emit('clickVideo')">
+		@click="$emit('clickVideo', $event)">
 		<div
 			v-show="showVideo"
 			:class="videoWrapperClass"
@@ -21,9 +21,10 @@
 			<video
 				ref="video"
 				:disablePictureInPicture="!isBig"
-				:class="fitVideo ? 'video--fit' : 'video--fill'"
+				:class="[fitVideo ? 'video--fit' : 'video--fill', { 'k4-half-l': k4two && !isBig }]"
 				class="video"
-				@playing="updateVideoAspectRatio" />
+				@resize="k4Resize"
+				@playing="updateVideoAspectRatio(); k4Resize()" />
 			<IconAccountOffOutline
 				v-if="isPresenterOverlay && mouseover"
 				class="presenter-icon__hide"
@@ -119,9 +120,11 @@ import { useCallViewStore } from '../../../stores/callView.ts'
 import { useGuestNameStore } from '../../../stores/guestName.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
 import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
+import { isTwoSquares } from '../../../utils/media/pipeline/FaceSquare.js'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
 import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
+import { splitPeers } from './k4face/splitTiles.js' // ket4tec: #172 этап 2
 
 export default {
 
@@ -244,6 +247,7 @@ export default {
 	data() {
 		return {
 			videoAspectRatio: null,
+			k4two: false, // кадр 2:1 — два квадрата (NAS_CLOUD#172, этап 2)
 			containerAspectRatio: null,
 			resizeObserver: null,
 			mouseover: false,
@@ -347,6 +351,7 @@ export default {
 				presenter: this.isPresenterOverlay && this.mouseover,
 				'video-container-grid': this.isGrid,
 				'video-container-big': this.isBig,
+				'k4-two': this.k4two && this.isBig,
 				'full-page': this.isFullPage,
 				'presenter-overlay': this.isPresenterOverlay,
 			}
@@ -593,6 +598,14 @@ export default {
 			this._setStream(stream)
 		},
 
+		k4two() {
+			this.k4Split()
+		},
+
+		participantName() {
+			this.k4Split()
+		},
+
 		isSelected(bool) {
 			if (bool) {
 				this.mouseover = false
@@ -614,6 +627,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		splitPeers.delete(this.peerId)
 		if (this.resizeObserver) {
 			this.resizeObserver.disconnect()
 		}
@@ -649,6 +663,20 @@ export default {
 			// as it should have no effect the transform is removed.
 			if (this.$refs.video.style.transform === 'scaleX(1)') {
 				this.$refs.video.style.transform = ''
+			}
+		},
+
+		k4Resize() {
+			const v = this.$refs.video
+			this.k4two = !!v && isTwoSquares(v.videoWidth, v.videoHeight)
+		},
+
+		// плитка в сетке или ленте делится на две квадратные: сообщаем сетке
+		k4Split() {
+			if (this.k4two && !this.isBig && !this.placeholderForPromoted) {
+				splitPeers.set(this.peerId, this.participantName)
+			} else {
+				splitPeers.delete(this.peerId)
 			}
 		},
 

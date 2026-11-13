@@ -35,8 +35,9 @@ function spring(x, v, goal, vmax, dt) {
  * @param {object} state текущее окно {cx, cy, zoom} (+ служебные поля прошлых шагов)
  * @param {{cx: number, cy: number, zoom: number}} target сырая цель
  * @param {number} dtMs время с прошлого шага, ограничено MAX_DT_MS
+ * @param {{W: number, H: number}|null} dims размер кадра: окно квадратное (сторона min(W,H)/zoom), иначе окно той же формы, что кадр
  */
-export function stepWindow(state, target, dtMs) {
+export function stepWindow(state, target, dtMs, dims = null) {
 	const dt = Math.min(Math.max(dtMs, 0), MAX_DT_MS)
 	const s = { vcx: 0, vcy: 0, vzoom: 0, mcx: false, mcy: false, mzoom: false, ...state }
 	const k = 1 - Math.exp(-dt / TARGET_TAU_MS)
@@ -59,8 +60,8 @@ export function stepWindow(state, target, dtMs) {
 	}
 	s.zoom = Math.max(1, s.zoom)
 	// окно не выходит за кадр
-	const half = 0.5 / s.zoom
 	for (const key of ['cx', 'cy']) {
+		const half = dims ? Math.min(dims.W, dims.H) / s.zoom / 2 / dims[key === 'cx' ? 'W' : 'H'] : 0.5 / s.zoom
 		const c = Math.min(1 - half, Math.max(half, s[key]))
 		if (c !== s[key]) {
 			s['v' + key] = 0

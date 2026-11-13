@@ -38,7 +38,7 @@
 						:isFullPage="showFullPage"
 						isGrid
 						isBig
-						fitVideo />
+						@clickVideo="handleClickPinned" />
 
 					<!-- Local Video Override mode (following own video) -->
 					<LocalVideo
@@ -50,7 +50,7 @@
 						:isStripe="false"
 						:isSidebar="false"
 						isBig
-						fitVideo />
+						@clickVideo="handleClickPinned" />
 
 					<!-- Screens -->
 					<!-- Local screen -->
@@ -89,7 +89,6 @@
 						:sharedData="sharedDatas[promotedParticipantModel.attributes.peerId]"
 						:showTalkingHighlight="false"
 						isGrid
-						fitVideo
 						isBig
 						:isFullPage="showFullPage"
 						:isSidebar="isSidebar"
@@ -125,7 +124,7 @@
 					:isStripe="showPromotedArea"
 					:isRecording="isRecording"
 					:token="token"
-					:isOverlap="showFullPage"
+					:isOverlap="!callParticipantModels.length"
 					:callParticipantModels="stripeParticipantModels"
 					:screens="screens"
 					:localMediaModel="localMediaModel"
@@ -167,6 +166,20 @@
 
 			<BottomBar v-if="!isRecording" :isSidebar="isSidebar" />
 		</template>
+
+		<!-- ket4tec (NAS_CLOUD#154): просьба организатора включить микрофон -->
+		<div
+			v-if="showAskUnmute"
+			class="k4-ask-unmute"
+			role="alert">
+			<span>{{ t('spreed', 'The organizer asks you to unmute your microphone') }}</span>
+			<button type="button" @click="acceptAskUnmute">
+				{{ t('spreed', 'Unmute') }}
+			</button>
+			<button type="button" @click="declineAskUnmute">
+				{{ t('spreed', 'Not now') }}
+			</button>
+		</div>
 	</div>
 </template>
 
@@ -210,6 +223,8 @@ import { useActiveSpeakers } from './useActiveSpeakers.ts'
 import { useWakeLock } from './useWakeLock.ts'
 
 const serverVersion = loadState('core', 'config', {}).version ?? '29.0.0.0'
+
+const isTouchDevice = () => window.matchMedia?.('(hover: none)').matches // ket4tec (NAS_CLOUD#153)
 
 export default {
 	name: 'CallView',
@@ -322,6 +337,10 @@ export default {
 	},
 
 	computed: {
+		showAskUnmute() { // ket4tec (NAS_CLOUD#154)
+			return !this.isSidebar && this.localCallParticipantModel.attributes.askUnmute && !this.localMediaModel.attributes.audioEnabled
+		},
+
 		promotedParticipantModel() {
 			// Ensure at least one participant is always promoted to show in autopilot
 			return this.forcePromotedModel
@@ -465,9 +484,9 @@ export default {
 		// floating over it rather than taking room of its own. A promoted area
 		// held by a single participant is laid out that way, and so is one with
 		// nobody in it yet.
+		// ket4tec (NAS_CLOUD#159): плавающей полосы поверх кадра больше нет, своя плитка - в общей ленте
 		showFullPage() {
-			return this.callParticipantModels.length <= 1
-				&& !(this.showLocalScreen || this.showRemoteScreen || this.showSelectedScreen)
+			return false
 		},
 
 		hasLocalVideo() {
@@ -534,15 +553,9 @@ export default {
 			})
 		},
 
+		// ket4tec (NAS_CLOUD#159): круглой камеры докладчика поверх экрана нет, его камера - квадрат в ленте
 		shouldShowPresenterOverlay() {
-			if (this.isSidebar) {
-				// Do not overload small video tile
-				return false
-			}
-
-			return (this.showLocalScreen && this.hasLocalVideo)
-				|| ((this.showRemoteScreen || this.showSelectedScreen)
-					&& (this.shownRemoteScreenCallParticipantModel?.attributes.videoAvailable || this.isModelWithVideo(this.shownRemoteScreenCallParticipantModel)))
+			return false
 		},
 
 		presenterModel() {
@@ -641,9 +654,10 @@ export default {
 			}
 		},
 
-		showLocalScreen(showLocalScreen) {
+		// ket4tec (NAS_CLOUD#159): начало показа - по наличию потока экрана, а не по плитке (при закреплённой камере showLocalScreen false)
+		hasLocalScreen(hasLocalScreen) {
 			// Everytime the local screen is shared, switch to promoted view
-			if (showLocalScreen) {
+			if (hasLocalScreen) {
 				this.callViewStore.startPresentation(this.token)
 			} else if (this.callParticipantModelsWithScreen.length === 0 && !this.selectedVideoPeerId) {
 				// last screen share stopped and no selected video, restoring previous state
@@ -654,7 +668,7 @@ export default {
 		hasLocalVideo(newValue) {
 			if (this.selectedVideoPeerId === 'local') {
 				if (!newValue) {
-					this.callViewStore.setSelectedVideoPeerId(null)
+					this.unpin()
 				}
 			}
 		},
@@ -687,6 +701,7 @@ export default {
 		callParticipantCollection.on('remove', this._lowerHandWhenParticipantLeaves)
 
 		subscribe('switch-screen-to-id', this._switchScreenToId)
+		subscribe('k4-unpin-video', this.unpin) // ket4tec (NAS_CLOUD#153)
 
 		if (OC.debug) {
 			setUpSpeakerSimulation(this.token)
@@ -730,6 +745,7 @@ export default {
 		callParticipantCollection.off('remove', this._lowerHandWhenParticipantLeaves)
 
 		unsubscribe('switch-screen-to-id', this._switchScreenToId)
+		unsubscribe('k4-unpin-video', this.unpin)
 
 		if (this.showVideoOverlayTimer !== null) {
 			clearTimeout(this.showVideoOverlayTimer)
@@ -739,6 +755,15 @@ export default {
 
 	methods: {
 		t,
+		declineAskUnmute() { // ket4tec (NAS_CLOUD#154)
+			localCallParticipantModel.set('askUnmute', false)
+		},
+
+		acceptAskUnmute() { // ket4tec (NAS_CLOUD#154)
+			localMediaModel.enableAudio()
+			localCallParticipantModel.set('askUnmute', false)
+		},
+
 		// Placeholder data for devMode and screenshotMode
 		placeholderImage,
 		placeholderName,
@@ -960,8 +985,26 @@ export default {
 			this.sharedDatas[this.screens[0]].screenVisible = true
 		},
 
+		// ket4tec (NAS_CLOUD#153): единственный путь открепления (кнопка, клик, камера выключена)
+		unpin() {
+			this.callViewStore.unpinVideo(this.token, this.screens.length > 0)
+		},
+
+		// клик по закреплённой плитке (не по её кнопкам) снимает закрепление; на тач-устройствах только кнопка «Открепить»
+		handleClickPinned(event) {
+			if (!isTouchDevice() && !event?.target?.closest?.('button')) {
+				this.unpin()
+			}
+		},
+
 		handleSelectVideo(peerId) {
 			if (this.isSidebar) {
+				return
+			}
+			if (peerId === this.selectedVideoPeerId) {
+				if (!isTouchDevice()) {
+					this.unpin()
+				}
 				return
 			}
 			this.callViewStore.setSelectedVideoPeerId(peerId)
@@ -978,7 +1021,12 @@ export default {
 			if (!this.hasLocalVideo || this.isSidebar) {
 				return
 			}
-			// Deselect possible selected video
+			if (this.selectedVideoPeerId === 'local') {
+				if (!isTouchDevice()) {
+					this.unpin() // ket4tec (NAS_CLOUD#153)
+				}
+				return
+			}
 			this.callViewStore.setSelectedVideoPeerId('local')
 			this.callViewStore.setCallViewMode({
 				token: this.token,
@@ -1075,6 +1123,32 @@ export default {
 
 <style lang="scss" scoped>
 @use '../../assets/variables.scss' as *;
+
+.k4-ask-unmute { // ket4tec (NAS_CLOUD#154)
+	position: fixed;
+	top: 70px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10000;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	max-width: calc(100vw - 24px);
+	padding: 10px 14px;
+	border-radius: 12px;
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	box-shadow: 0 2px 16px rgba(0, 0, 0, .5);
+	button {
+		padding: 8px 16px;
+		border: 0;
+		border-radius: 8px;
+		background: var(--color-primary-element);
+		color: var(--color-primary-element-text);
+		font-weight: bold;
+		cursor: pointer;
+	}
+}
 
 #call-container {
 	width: 100%;

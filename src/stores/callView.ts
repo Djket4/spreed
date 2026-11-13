@@ -24,6 +24,8 @@ type State = {
 	lastIsStripeOpen: boolean | null
 	presentationStarted: boolean
 	selectedVideoPeerId: string | null
+	gridBeforePin: boolean
+	gridBeforePresentation: boolean | null
 	callEndedTimeout: ReturnType<typeof setTimeout> | undefined
 	isLiveTranscriptionEnabled: boolean
 	externalCallServiceUrl: string | null
@@ -35,6 +37,8 @@ type CallViewModePayload = {
 	isMultiSpeaker?: boolean | null
 	isStripeOpen?: boolean | null
 	clearLast?: boolean
+	/** ручной выбор вида человеком: возврат вида после показа экрана отменяется */
+	manual?: boolean
 }
 
 export const useCallViewStore = defineStore('callView', {
@@ -49,6 +53,8 @@ export const useCallViewStore = defineStore('callView', {
 		lastIsStripeOpen: null,
 		presentationStarted: false,
 		selectedVideoPeerId: null,
+		gridBeforePin: false,
+		gridBeforePresentation: null,
 		callEndedTimeout: undefined,
 		isLiveTranscriptionEnabled: false,
 		externalCallServiceUrl: null,
@@ -81,7 +87,29 @@ export const useCallViewStore = defineStore('callView', {
 		},
 
 		setSelectedVideoPeerId(value: string | null) {
+			// ket4tec (NAS_CLOUD#153): запоминаем вид до закрепления, чтобы «Открепить» вернул его
+			if (value !== null && this.selectedVideoPeerId === null) {
+				this.gridBeforePin = this.isGrid
+			}
 			this.selectedVideoPeerId = value
+		},
+
+		/**
+		 * ket4tec (NAS_CLOUD#153): снять закрепление; без идущего показа экрана — закончить показ
+		 * и вернуть вид, который был до закрепления. С экраном остаёмся в виде докладчика.
+		 *
+		 * @param token current conversation token;
+		 * @param hasScreens идёт показ экрана (свой или чужой).
+		 */
+		unpinVideo(token: string, hasScreens = false) {
+			this.selectedVideoPeerId = null
+			if (hasScreens) {
+				return
+			}
+			this.stopPresentation(token)
+			if (this.gridBeforePin) {
+				this.setCallViewMode({ token, isGrid: true, clearLast: false })
+			}
 		},
 
 		handleJoinCall(conversation: Conversation) {
@@ -94,9 +122,8 @@ export const useCallViewStore = defineStore('callView', {
 			// ket4tec: каждый звонок начинается с сетки (все крупными плитками, своя тоже), и вдвоём тоже.
 			// Сохранённое «докладчик» не берём: его пишет и автоматика показа экрана. Переключатель вида остаётся.
 			const isGrid = true
-			// Speaker view shows a single speaker unless multi-speaker was picked before
-			const isMultiSpeaker = BrowserStorage.getItem(`callprefs-${conversation.token}-multispeaker`) === 'true'
-			this.setCallViewMode({ token: conversation.token, isGrid, isMultiSpeaker, isStripeOpen: true })
+			// ket4tec (NAS_CLOUD#153): режима «несколько говорящих» нет, сохранённую настройку не читаем
+			this.setCallViewMode({ token: conversation.token, isGrid, isMultiSpeaker: false, isStripeOpen: true })
 		},
 
 		/**
@@ -109,8 +136,13 @@ export const useCallViewStore = defineStore('callView', {
 		 * @param data.isMultiSpeaker true to promote several speakers at once in speaker view;
 		 * @param data.isStripeOpen true for visible striped mode, false for speaker view;
 		 * @param data.clearLast set false to not reset last temporary remembered state;
+		 * @param data.manual true when the person picked the view by hand;
 		 */
-		setCallViewMode({ token, isGrid = null, isMultiSpeaker = null, isStripeOpen = null, clearLast = true }: CallViewModePayload) {
+		setCallViewMode({ token, isGrid = null, isMultiSpeaker = null, isStripeOpen = null, clearLast = true, manual = false }: CallViewModePayload) {
+			// ket4tec (NAS_CLOUD#159): человек сам выбрал вид во время показа - по окончании не возвращаем старый
+			if (manual) {
+				this.gridBeforePresentation = null
+			}
 			if (clearLast) {
 				this.lastIsGrid = null
 				this.lastIsStripeOpen = null
@@ -151,6 +183,8 @@ export const useCallViewStore = defineStore('callView', {
 				return
 			}
 			this.presentationStarted = true
+			// ket4tec (NAS_CLOUD#159): вид до показа (при закреплении - вид до закрепления)
+			this.gridBeforePresentation = this.selectedVideoPeerId !== null ? this.gridBeforePin : this.isGrid
 
 			this.setCallViewMode({ token, isGrid: false, isStripeOpen: true, clearLast: false }) // ket4tec (NAS_CLOUD#108 п.1): полоса не закрывается — своя камера видна
 		},
@@ -169,10 +203,11 @@ export const useCallViewStore = defineStore('callView', {
 			}
 			this.presentationStarted = false
 
-			if (!this.isGrid && !this.isStripeOpen) {
-				// User didn't pick grid view during presentation, restore previous state
-				this.setCallViewMode({ token, isGrid: this.lastIsGrid, isStripeOpen: this.lastIsStripeOpen, clearLast: false })
+			// ket4tec (NAS_CLOUD#159): показ кончился - вернуть вид, который был до него (закрепление из #153 не трогаем)
+			if (!this.isGrid && this.selectedVideoPeerId === null && this.gridBeforePresentation !== null) {
+				this.setCallViewMode({ token, isGrid: this.gridBeforePresentation, clearLast: false })
 			}
+			this.gridBeforePresentation = null
 		},
 
 		/**
