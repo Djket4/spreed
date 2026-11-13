@@ -167,20 +167,39 @@ export default {
 		// ket4tec: k4draw (NAS_CLOUD#108). В режиме рисования зум остаётся: один палец/мышь/перо — штрих,
 		// два пальца — зум и сдвиг показа. Слой рисования повторяет transform видео, штрихи в координатах кадра.
 		// Одиночное касание не отдаём panzoom (иначе палец двигает картинку), второй палец — отдаём (щипок).
+		// Считаем только касания внутри показа: палец на кнопке дока + палец рисует — не щипок.
+		// Пока перо у экрана (и секунду после), касания (ладонь) panzoom не получает.
 		let k4mid = null
+		let k4penAt = -1e9
+		const k4in = (e) => {
+			const c = e.currentTarget
+			const ts = [...e.touches].filter((t) => c.contains(t.target))
+			if (ts.some((t) => t.touchType === 'stylus')) {
+				k4penAt = performance.now()
+			}
+			return ts
+		}
+		const k4block = (ts) => k4state.mode && (ts.length < 2 || performance.now() - k4penAt < 1000)
 		const k4touchStart = (e) => {
 			k4mid = null
-			if (k4state.mode && e.touches.length === 1) {
+			if (k4block(k4in(e))) {
 				e.stopImmediatePropagation()
 			}
 		}
-		// panzoom щипком только масштабирует вокруг середины; сдвиг двумя пальцами добавляем сами
+		// panzoom щипком только масштабирует вокруг середины; сдвиг двумя пальцами добавляем сами.
+		// Оставшийся после щипка палец картинку не двигает: touchmove не доходит до слушателя panzoom на document.
 		const k4touchMove = (e) => {
-			if (!k4state.mode || e.touches.length !== 2 || !instance.value) {
+			const ts = k4in(e)
+			if (k4block(ts)) {
+				k4mid = null
+				k4state.mode && e.stopPropagation()
+				return
+			}
+			if (!k4state.mode || ts.length !== 2 || !instance.value) {
 				k4mid = null
 				return
 			}
-			const [a, b] = e.touches
+			const [a, b] = ts
 			const m = { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }
 			if (k4mid) {
 				instance.value.moveBy(m.x - k4mid.x, m.y - k4mid.y, false)
