@@ -11,6 +11,7 @@ namespace OCA\Talk\Tests\BackgroundJob;
 use OCA\Talk\BackgroundJob\RemoveEmptyRooms;
 use OCA\Talk\Federation\FederationManager;
 use OCA\Talk\Manager;
+use OCA\Talk\Participant;
 use OCA\Talk\Room;
 use OCA\Talk\Service\ParticipantService;
 use OCA\Talk\Service\RoomService;
@@ -159,5 +160,38 @@ class RemoveEmptyRoomsTest extends TestCase {
 			[Room::TYPE_CHANGELOG, '', 0],
 			[Room::TYPE_GROUP, 'file', 1],
 		];
+	}
+
+	public static function dataEndCallIfNobodyLeft(): array {
+		return [
+			'no call' => [Participant::FLAG_DISCONNECTED, false, 0],
+			'call going' => [Participant::FLAG_IN_CALL, false, 1],
+			'federated call' => [Participant::FLAG_IN_CALL, true, 0],
+		];
+	}
+
+	#[DataProvider('dataEndCallIfNobodyLeft')]
+	public function testEndCallIfNobodyLeft(int $callFlag, bool $federated, int $resets): void {
+		$room = $this->createMock(Room::class);
+		$room->method('getType')->willReturn(Room::TYPE_GROUP);
+		$room->method('getObjectType')->willReturn('');
+		$room->method('getCallFlag')->willReturn($callFlag);
+		$room->method('isFederatedConversation')->willReturn($federated);
+		$this->participantService->method('getNumberOfActors')->willReturn(3);
+		$this->participantService->expects($this->exactly($resets))->method('resetCallStateWhenNeeded')->with($room);
+		$this->roomService->expects($this->never())->method('deleteRoom');
+
+		$this->getBackgroundJob()->callback($room);
+	}
+
+	public function testDeletedRoomIsNotSwept(): void {
+		$room = $this->createMock(Room::class);
+		$room->method('getType')->willReturn(Room::TYPE_GROUP);
+		$room->method('getObjectType')->willReturn('');
+		$room->method('getCallFlag')->willReturn(Participant::FLAG_IN_CALL);
+		$this->participantService->method('getNumberOfActors')->willReturn(0);
+		$this->participantService->expects($this->never())->method('resetCallStateWhenNeeded');
+
+		$this->getBackgroundJob()->callback($room);
 	}
 }

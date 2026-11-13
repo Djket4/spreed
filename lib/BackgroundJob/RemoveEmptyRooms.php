@@ -10,6 +10,7 @@ namespace OCA\Talk\BackgroundJob;
 
 use OCA\Talk\Federation\FederationManager;
 use OCA\Talk\Manager;
+use OCA\Talk\Participant;
 use OCA\Talk\Room;
 use OCA\Talk\Service\ParticipantService;
 use OCA\Talk\Service\RoomService;
@@ -65,7 +66,27 @@ class RemoveEmptyRooms extends TimedJob {
 			return;
 		}
 
-		$this->deleteIfFileIsRemoved($room);
+		if ($this->deleteIfFileIsRemoved($room)) {
+			return;
+		}
+
+		$this->endCallIfNobodyLeft($room);
+	}
+
+	/**
+	 * ket4tec (NAS_CLOUD#129): страховка для звонка, который никто не закроет: задача EndEmptyCall потерялась
+	 * (cron удаляет задачу, если класса нет — магазин приложений затёр форк), сессии ушли без выхода (backend
+	 * в режиме обслуживания отвечал 503) или удалены чисткой без сброса звонка. Раз в 5 минут каждый идущий
+	 * звонок проходит тот же путь, что и выход последнего: живые сессии в звонке — ничего; иначе отметка
+	 * опустения (старая сохраняется) и EndEmptyCall через GRACE.
+	 */
+	private function endCallIfNobodyLeft(Room $room): void {
+		// федеративный звонок ведёт сервер-хозяин, локальные сессии его не описывают
+		if ($room->getCallFlag() === Participant::FLAG_DISCONNECTED || $room->isFederatedConversation()) {
+			return;
+		}
+
+		$this->participantService->resetCallStateWhenNeeded($room);
 	}
 
 	private function deleteIfIsEmpty(Room $room): bool {
