@@ -126,4 +126,52 @@ describe('рантайм', () => {
 		stopK4stats()
 		expect(k4stats.peers).toEqual({})
 	})
+
+	function start(models = [], local = { get: () => undefined }) {
+		const h = {}
+		const localMedia = { on: (e, f) => Object.assign(h, { [e]: f }), off: () => {} }
+		startK4stats({ token: 't', local, collection: { callParticipantModels: models }, localMedia })
+		return h
+	}
+
+	it('media: on берётся вторым аргументом (первый — модель)', () => {
+		const h = start()
+		h['change:audioEnabled']({}, true)
+		h['change:videoEnabled']({}, false)
+		expect(calllog).toHaveBeenCalledWith('media', { kind: 'a', on: 1, by: 'self' })
+		expect(calllog).toHaveBeenCalledWith('media', { kind: 'v', on: 0, by: 'self' })
+	})
+
+	it('media: выключение ведущим не даёт второго события by=self', async () => {
+		const h = start()
+		k4stats.hostMute = Date.now()
+		h['change:audioEnabled']({}, false)
+		expect(calllog).not.toHaveBeenCalled()
+		await vi.advanceTimersByTimeAsync(1100)
+		h['change:audioEnabled']({}, false)
+		expect(calllog).toHaveBeenCalledWith('media', { kind: 'a', on: 0, by: 'self' })
+	})
+
+	it('обрыв по connectionState виден без peer и при падении getStats; запись живёт при пересоздании', async () => {
+		const model = { peer: null, connectionState: 'failed' }
+		const mdl = { get: (k) => (k === 'peerId' ? 'peerAAAAAAA' : model[k]) }
+		const coll = [mdl]
+		start(coll)
+		await vi.advanceTimersByTimeAsync(6500)
+		expect(k4stats.peers.peerAAAAAAA.warn).toEqual([{ w: 'drop', lvl: 'red' }])
+		expect(calllog).toHaveBeenCalledWith('rtc_warn', { peer: 'peerAA', w: 'drop', lvl: 'red', on: 1 })
+		coll.length = 0 // модель на миг пропала
+		await vi.advanceTimersByTimeAsync(3100)
+		expect(k4stats.peers.peerAAAAAAA).toBeDefined()
+		await vi.advanceTimersByTimeAsync(9000)
+		expect(k4stats.peers.peerAAAAAAA).toBeUndefined()
+	})
+
+	it('новый замер не стартует, пока идёт прошлый', async () => {
+		const pc = { getStats: vi.fn(() => new Promise(() => {})) }
+		const mdl = { get: (k) => (k === 'peerId' ? 'peerB' : k === 'peer' ? { pc } : undefined) }
+		start([mdl])
+		await vi.advanceTimersByTimeAsync(10000)
+		expect(pc.getStats).toHaveBeenCalledTimes(1)
+	})
 })

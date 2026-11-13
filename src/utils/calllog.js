@@ -58,16 +58,21 @@ function flush(last) {
 	try {
 		while (token && sid && !paused && buf.length) {
 			const ev = buf.splice(0, MAX_POST)
+			const sent = sid
 			fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
 				method: 'POST',
 				keepalive: true, // переживает закрытие вкладки; sendBeacon не умеет заголовки OCS
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
-				body: JSON.stringify({ s: sid, sent: Date.now(), ev }),
+				body: JSON.stringify({ s: sent, sent: Date.now(), ev }),
 			}).then((r) => {
 				if (r?.status === 403) {
 					// сессия устарела (переподключение): пачку вернуть в начало, ждать новую сессию
-					paused = true
 					buf = ev.concat(buf).slice(-MAX_BUF)
+					if (sent === sid) {
+						paused = true
+					} else {
+						flush() // сессию успели сменить, пока шёл запрос: слать с новой
+					}
 				}
 			}, () => {})
 			if (!last) {

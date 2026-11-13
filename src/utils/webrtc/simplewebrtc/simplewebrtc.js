@@ -6,6 +6,7 @@
 import mockconsole from 'mockconsole'
 import WildEmitter from 'wildemitter'
 import { calllog } from '../../calllog.js'
+import { k4stats } from '../../k4stats.js'
 import WebRTC from './webrtc.js'
 
 /**
@@ -102,6 +103,7 @@ export default function SimpleWebRTC(opts) {
 				if (message.payload.peerId === self.connection.getSessionId()) {
 					if (self.webrtc.isAudioEnabled()) {
 						calllog('media', { kind: 'a', on: 0, by: 'host' })
+						k4stats.hostMute = Date.now()
 						self.mute()
 						self.emit('forcedMute')
 					}

@@ -131,4 +131,20 @@ describe('calllog', () => {
 		calllog('join_blocked') // с сессией /pre не используется
 		expect(fetch.mock.calls.every((c, i) => i === 0 || !c[0].endsWith('/pre'))).toBe(true)
 	})
+
+	it('403 на старую сессию после смены сессии: нет вечной паузы, пачка уходит с новой', async () => {
+		let resolve
+		globalThis.fetch = vi.fn(() => new Promise((r) => {
+			resolve = r
+		}))
+		calllog('x')
+		calllogSession('abcd1234', 'OLD')
+		calllogSession('abcd1234', 'NEW') // пока запрос с OLD в полёте
+		globalThis.fetch.mockClear()
+		resolve({ status: 403 })
+		await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+		const body = JSON.parse(fetch.mock.calls[0][1].body)
+		expect(body.s).toBe('NEW')
+		expect(body.ev.map((e) => e.k)).toContain('x')
+	})
 })

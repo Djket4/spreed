@@ -40,10 +40,11 @@ import { calllog } from './calllog.js'
  *   Записи появляются после первого замера и удаляются, когда участник уходит или звонок кончился.
  *   Обновляются раз в 3 с.
  *
- * @type {{ testmode: boolean, peers: Object<string, K4PeerStats> }}
+ * @type {{ testmode: boolean, hostMute: number, peers: Object<string, K4PeerStats> }}
  */
 export const k4stats = reactive({
 	testmode: false,
+	hostMute: 0, // Date.now() последнего принудительного выключения микрофона ведущим (ставит simplewebrtc.js)
 	peers: {},
 })
 
@@ -183,9 +184,11 @@ export function classify(prevState, s, flags = {}) {
 let ctx = null
 let timer = null
 let tickN = 0
+let busy = false
 let stopWatch = []
 const per = {} // id -> { report, st, key, last }
 
+const EMPTY = { kbps: null, loss: null, rtt: null, jit: null, fps: null, path: null, proto: null, lt: null, rt: null, ab: null, vb: null }
 const lvlOf = (q) => (q >= 4 ? 'red' : q === 3 ? 'yellow' : null)
 const clean = (d) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !== null && v !== undefined))
 
@@ -198,14 +201,21 @@ const clean = (d) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !=
  * @param flags
  */
 async function measure(id, pc, dir, flags) {
-	const report = await pc.getStats()
 	const e = per[id] || (per[id] = { report: null, st: null, key: null })
-	const s = sample(e.report, report, dir)
-	e.report = report
+	e.miss = 0
+	let s = EMPTY // нет pc или getStats упал: «обрыв» всё равно считаем по connectionState
+	if (pc) {
+		try {
+			const report = await pc.getStats()
+			s = sample(e.report, report, dir)
+			e.report = report
+		} catch (err) {
+			// ignore
+		}
+	}
 	const res = classify(e.st, s, flags)
 	e.st = res.state
 	e.last = s
-	e.flags = flags
 	const peer = id.slice(0, 6)
 	const key = `${s.lt}/${s.rt}/${s.proto}`
 	if (s.path && key !== e.key) {
@@ -246,29 +256,31 @@ function logStats() {
 
 /** Шаг сбора раз в 3 с. */
 async function tick() {
-	if (!ctx) {
+	if (!ctx || busy) {
 		return
 	}
+	busy = true // не наслаиваем замеры, если getStats на слабом телефоне идёт дольше шага
 	try {
 		const jobs = []
 		const seen = new Set()
 		const lpc = ctx.local.get('peer')?.pc
-		if (lpc) {
+		const lconn = ctx.local.get('connectionState')
+		if (lpc || lconn) {
 			seen.add('local')
 			const a = ctx.analyzer?.attributes
 			const own = lvlOf(Math.max(a?.senderConnectionQualityAudio || 0, a?.senderConnectionQualityVideo || 0))
-			jobs.push(measure('local', lpc, 'out', { conn: ctx.local.get('connectionState'), own }))
+			jobs.push(measure('local', lpc, 'out', { conn: lconn, own }))
 		}
 		for (const m of ctx.collection.callParticipantModels) {
-			const pc = m.get('peer')?.pc
 			const id = m.get('peerId')
-			if (pc && id) {
+			if (id) {
 				seen.add(id)
-				jobs.push(measure(id, pc, 'in', { conn: m.get('connectionState'), videoAvailable: m.get('videoAvailable'), audioAvailable: m.get('audioAvailable') }))
+				jobs.push(measure(id, m.get('peer')?.pc, 'in', { conn: m.get('connectionState'), videoAvailable: m.get('videoAvailable'), audioAvailable: m.get('audioAvailable') }))
 			}
 		}
 		for (const id of Object.keys(per)) {
-			if (!seen.has(id)) {
+			// пересоздание соединения: запись живёт ещё 2 шага, а не пропадает сразу
+			if (!seen.has(id) && (per[id].miss = (per[id].miss || 0) + 1) > 2) {
 				delete per[id]
 				delete k4stats.peers[id]
 			}
@@ -279,6 +291,8 @@ async function tick() {
 		}
 	} catch (e) {
 		// статистика не должна влиять на звонок
+	} finally {
+		busy = false
 	}
 }
 
@@ -297,7 +311,12 @@ export function startK4stats(c) {
 	ctx = c
 	timer = setInterval(tick, STEP_MS)
 	for (const [kind, key] of [['a', 'audioEnabled'], ['v', 'videoEnabled']]) {
-		const fn = (on) => calllog('media', { kind, on: on ? 1 : 0, by: 'self' })
+		const fn = (_m, on) => { // первым аргументом идёт модель (EmitterMixin)
+			if (!on && kind === 'a' && Date.now() - k4stats.hostMute < 1000) {
+				return // это выключил ведущий: событие by=host уже записано
+			}
+			calllog('media', { kind, on: on ? 1 : 0, by: 'self' })
+		}
 		c.localMedia.on('change:' + key, fn)
 		stopWatch.push(() => c.localMedia.off('change:' + key, fn))
 	}
@@ -314,8 +333,8 @@ export function startK4stats(c) {
 		const sid = () => c.local.get('peerId')
 		stopWatch.push(watch(() => state.board, (b, old) => {
 			if (b) {
-				calllog('board_open', { own: b === sid() ? 1 : 0 })
-			} else if (old) {
+				b === sid() && calllog('board_open', { own: 1 }) // пишет только открывший: у остальных доска появляется по сети
+			} else if (old === sid()) {
 				calllog('board_close')
 			}
 		}))
@@ -330,6 +349,7 @@ export function stopK4stats() {
 	clearInterval(timer)
 	timer = ctx = null
 	tickN = 0
+	busy = false
 	stopWatch.forEach((f) => f())
 	stopWatch = []
 	Object.keys(per).forEach((k) => delete per[k])
