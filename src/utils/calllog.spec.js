@@ -1,12 +1,12 @@
 /**
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@nextcloud/auth', () => ({ getRequestToken: () => 'rt' }))
 vi.mock('@nextcloud/router', () => ({ generateOcsUrl: (u, p) => u.replace('{token}', p.token) }))
 
-import { _buf, _reset, calllog, calllogRtc, calllogScreen, calllogSession, initCalllog } from './calllog.js'
+import { _buf, _reset, calllog, calllogRtc, calllogScreen, calllogSession, calllogStop, initCalllog } from './calllog.js'
 
 describe('calllog', () => {
 	beforeEach(() => {
@@ -87,6 +87,62 @@ describe('calllog', () => {
 		window.dispatchEvent(Object.assign(new Event('error'), { message: bare, error: bare }))
 		window.removeEventListener('error', seen)
 		expect(seen).toHaveBeenCalledTimes(1) // только само событие error из теста
+	})
+
+	describe('остановка маячка', () => {
+		beforeEach(() => vi.useFakeTimers())
+		afterEach(() => vi.useRealTimers())
+
+		it('после выхода: один финальный flush, таймер стоит, новый вход возобновляет', () => {
+			calllogSession('abcd1234', 'S')
+			calllog('call_left')
+			calllogStop()
+			expect(fetch).toHaveBeenCalledTimes(2) // событие session при входе + финальный
+			calllog('x')
+			vi.advanceTimersByTime(60000)
+			expect(fetch).toHaveBeenCalledTimes(2)
+			calllogSession('abcd1234', 'S2') // новый вход: x уходит сразу
+			calllog('y')
+			vi.advanceTimersByTime(5000)
+			expect(fetch).toHaveBeenCalledTimes(4)
+		})
+
+		it('финальный flush завершается только когда fetch отработал (до leaveConversation)', async () => {
+			let done
+			globalThis.fetch = vi.fn(() => new Promise((r) => {
+				done = r
+			}))
+			calllogSession('abcd1234', 'S')
+			calllog('call_left')
+			let resolved = false
+			const p = calllogStop().then(() => {
+				resolved = true
+			})
+			await Promise.resolve()
+			await Promise.resolve()
+			expect(resolved).toBe(false)
+			done({ status: 200 })
+			await p
+			expect(resolved).toBe(true)
+		})
+
+		it('после 404 перестаёт слать, до следующего входа', async () => {
+			globalThis.fetch = vi.fn(() => Promise.resolve({ status: 404 }))
+			calllogSession('abcd1234', 'S')
+			calllog('a')
+			vi.advanceTimersByTime(5000)
+			await Promise.resolve()
+			await Promise.resolve()
+			const n = fetch.mock.calls.length
+			calllog('b')
+			vi.advanceTimersByTime(60000)
+			expect(fetch).toHaveBeenCalledTimes(n)
+			calllogSession('abcd1234', 'S2')
+			expect(fetch).toHaveBeenCalledTimes(n + 1) // накопленное ушло при новом входе
+			calllog('c')
+			vi.advanceTimersByTime(5000)
+			expect(fetch).toHaveBeenCalledTimes(n + 2) // таймер снова идёт
+		})
 	})
 
 	it('403: пауза, буфер цел, после calllogSession отправка возобновляется', async () => {

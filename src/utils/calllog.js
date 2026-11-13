@@ -53,13 +53,15 @@ export function calllog(k, d) {
 
 /**
  * @param {boolean} [last] страница закрывается: отдать всё сразу
+ * @return {Promise} завершение отправленных запросов (не бросает)
  */
 function flush(last) {
+	const ps = []
 	try {
 		while (token && sid && !paused && buf.length) {
 			const ev = buf.splice(0, MAX_POST)
 			const sent = sid
-			fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
+			ps.push(fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
 				method: 'POST',
 				keepalive: true, // переживает закрытие вкладки; sendBeacon не умеет заголовки OCS
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
@@ -73,8 +75,11 @@ function flush(last) {
 					} else {
 						flush() // сессию успели сменить, пока шёл запрос: слать с новой
 					}
+				} else if ([404, 410].includes(r?.status) && sent === sid) {
+					// комнаты нет: дальше слать бессмысленно, до следующего входа (NAS_CLOUD#209)
+					calllogStop(false)
 				}
-			}, () => {})
+			}).catch(() => {}))
 			if (!last) {
 				break
 			}
@@ -82,6 +87,27 @@ function flush(last) {
 	} catch (e) {
 		// ignore
 	}
+	return Promise.allSettled(ps)
+}
+
+/**
+ * Выход из комнаты/звонка (или ответ 403/404/410): остановить маячок до следующего calllogSession.
+ *
+ * @param {boolean} [final] отдать накопленное одним последним запросом
+ * @return {Promise} завершение финальных запросов (чтобы выход из комнаты их дождался)
+ */
+export function calllogStop(final = true) {
+	let p = Promise.resolve()
+	try {
+		if (final) {
+			p = flush(true)
+		}
+		clearInterval(timer)
+		timer = sid = null // события, записанные после отправки, остаются в буфере до следующего входа
+	} catch (e) {
+		// ignore
+	}
+	return p
 }
 
 /**
@@ -125,6 +151,9 @@ export function calllogSession(newToken, sessionId) {
 		if (!sessionSent) {
 			sessionSent = true
 			calllog('session', { cid }) // связать «до входа» с настоящей сессией
+		}
+		if (!timer) {
+			timer = setInterval(flush, FLUSH_MS) // маячок — от входа до выхода (NAS_CLOUD#209)
 		}
 		flush()
 	} catch (e) {
@@ -210,7 +239,6 @@ export function initCalllog() {
 		window.addEventListener('pagehide', onPageHide)
 		window.addEventListener('online', () => calllog('net', { st: 'online' }))
 		window.addEventListener('offline', () => calllog('net', { st: 'offline' }))
-		timer = setInterval(flush, FLUSH_MS)
 		preTimer = setTimeout(flushPre, PRE_MS)
 	} catch (e) {
 		// ignore
