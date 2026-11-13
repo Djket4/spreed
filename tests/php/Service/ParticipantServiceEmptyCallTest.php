@@ -92,6 +92,15 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL));
 	}
 
+	public function testRepeatedResetDoesNotMoveEmptyMark(): void {
+		$service = $this->service(false);
+		$service->method('getParticipantsJoinedCurrentCall')->willReturn([1, 2]);
+		$service->method('hasActiveSessionsInCall')->willReturn(false);
+		$this->appConfig->method('getValueInt')->with('spreed', EndEmptyCall::key(42), 0)->willReturn(950);
+		$this->appConfig->expects($this->never())->method('setValueInt');
+		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL));
+	}
+
 	public function testNothingWhenOthersStillInCall(): void {
 		$service = $this->service(true);
 		$service->method('hasActiveSessionsInCall')->willReturn(true);

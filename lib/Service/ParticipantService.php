@@ -2374,7 +2374,12 @@ class ParticipantService {
 		}
 
 		$argument = ['roomId' => $room->getId()];
-		$this->serverAppConfig->setValueInt('spreed', EndEmptyCall::key($room->getId()), $this->timeFactory->getTime());
+		// Отметку не перезаписываем: повторный вызов (например, «сессия удалена» через 38 с) не должен сдвигать конец звонка.
+		// Сбрасывается при входе в звонок (CallController::joinCall) или задачей EndEmptyCall.
+		$key = EndEmptyCall::key($room->getId());
+		if ($this->serverAppConfig->getValueInt('spreed', $key, 0) <= 0) {
+			$this->serverAppConfig->setValueInt('spreed', $key, $this->timeFactory->getTime());
+		}
 		if (!$this->jobList->has(EndEmptyCall::class, $argument)) {
 			$this->jobList->scheduleAfter(EndEmptyCall::class, $this->timeFactory->getTime() + EndEmptyCall::GRACE, $argument);
 		}
