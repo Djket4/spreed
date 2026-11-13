@@ -17,7 +17,7 @@
 				v-for="p in people"
 				:key="p.id"
 				class="k4-strip__t"
-				:class="{ 'k4-strip__t--talk': p.speaking, 'k4-strip__t--off': !p.on }">
+				:class="{ 'k4-strip__t--talk': p.speaking }">
 				<video
 					v-if="p.stream"
 					:srcObject="p.stream"
@@ -31,6 +31,11 @@
 					:on="p.on"
 					:seed="p.seed"
 					:token="token" />
+				<!-- ket4tec (NAS_CLOUD#195 п.9): как в полосе звонка — NO SIGNAL без связи, значок вместо красной рамки, имя узкой полосой -->
+				<K4NoSignal v-if="p.lost && !k4net.selfLost" />
+				<span v-else-if="!p.on && !p.me" class="k4-micoff" title="Звук отключён">
+					<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="14" />
+				</span>
 				<b>{{ p.name }}</b>
 				<!-- ket4tec: журнал звонка (NAS_CLOUD#189); p.id = peerId, как ключ в k4stats.peers -->
 				<K4TileStats :peerId="p.me ? 'local' : p.id" compact />
@@ -53,12 +58,16 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import K4Face from '../shared/k4face/K4Face.vue'
+import K4NoSignal from '../shared/K4NoSignal.vue'
 import DrawLayer from './DrawLayer.vue'
+import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-off-outline.svg?raw'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
+import { k4net, peerLost } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import { bgUrl, canDraw, humans, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
 
 const token = useGetToken()
@@ -77,7 +86,7 @@ const people = computed(() => {
 		const name = a.name || pp?.displayName || 'Участник'
 		const id = a.actorId || pp?.actorId
 		const type = a.actorType || pp?.actorType
-		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, audio: a.stream, on: a.audioAvailable !== false, seed: id && type ? type + '/' + id : name, speaking: a.speaking })
+		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, audio: a.stream, on: a.audioAvailable !== false, seed: id && type ? type + '/' + id : name, speaking: a.speaking, lost: peerLost(a) })
 	})
 	return out.length > 1 ? out : []
 })
@@ -234,27 +243,24 @@ onBeforeUnmount(() => {
 	video { width: 100%; height: 100%; object-fit: cover; display: block; }
 	video.mirror { transform: scaleX(-1); }
 	container-type: inline-size;
-	// подпись — «нижняя треть», как у плиток звонка (k7call.scss)
+	// ket4tec (NAS_CLOUD#195 п.9): подпись — узкая полоса по нижнему краю, лицо не закрывает (как в полосе звонка)
 	b {
 		position: absolute;
-		left: 6px;
-		bottom: 6px;
-		max-width: calc(100% - 12px);
-		padding: .4em .85em .4em 1.05em;
+		z-index: 2;
+		inset: auto 0 0;
+		height: 22px;
+		padding: 0 8px;
 		overflow: hidden;
-		border-radius: 5px 10px 10px 5px;
-		background: linear-gradient(90deg, #140f17eb, #1a1718b8);
-		box-shadow: 0 6px 16px #0006;
+		background: linear-gradient(0deg, #140f17b8, #140f1700);
 		color: #fff;
-		font-size: clamp(11px, 5.5cqi, 18px);
+		font-size: 12px;
 		font-weight: 700;
+		line-height: 22px;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-		&::before { content: ''; position: absolute; inset: 0 auto 0 0; width: .3em; background: linear-gradient(135deg, var(--k7-acc2, #5b2a86), var(--k7-acc, #a86bff)); }
 	}
-	// ket4tec (NAS_CLOUD#112): рамка поверх видео/облака — inset-тень самой плитки рисуется под детьми и закрывалась; говорящий важнее «без микрофона»
-	&--off::after, &--talk::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 3px var(--k7-dng, #e5453d); }
-	&--talk::after { box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
+	// ket4tec (NAS_CLOUD#112): рамка поверх видео/облака; красной «без микрофона» нет (NAS_CLOUD#195), только говорящий
+	&--talk::after { content: ''; position: absolute; z-index: 3; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
 }
 .k4-board__close {
 	position: absolute;

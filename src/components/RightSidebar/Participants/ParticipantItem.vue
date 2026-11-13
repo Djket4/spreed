@@ -444,6 +444,7 @@ import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
 import { readableNumber } from '../../../utils/readableNumber.ts'
 import { getPreloadedUserStatus, getStatusMessage } from '../../../utils/userStatus.ts'
 import { callParticipantCollection } from '../../../utils/webrtc/index.js'
+import { peerLost } from '../../CallView/shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 
 export default {
 	name: 'ParticipantItem',
@@ -594,6 +595,11 @@ export default {
 		},
 
 		statusMessage() {
+			// ket4tec (NAS_CLOUD#195 п.6): связь с участником пропала — так и пишем в списке
+			if (this.callModel && peerLost(this.callModel.attributes)) {
+				return 'Нет связи'
+			}
+
 			if (this.isInCall && this.phoneCallStatus) {
 				switch (this.phoneCallStatus) {
 					case 'ringing':

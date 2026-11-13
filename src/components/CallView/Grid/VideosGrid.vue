@@ -10,6 +10,7 @@
 		ref="gridWrapper"
 		class="grid-main-wrapper"
 		:class="{ 'is-grid': !isStripe, overlap: isOverlap }"
+		:style="phoneStripeStyle"
 		:data-theme-dark="isStripe || undefined">
 		<div
 			v-if="isStripe && !isRecording"
@@ -21,6 +22,7 @@
 				:hasPreviousPage="hasPreviousPage"
 				:hasNextPage="hasNextPage"
 				:isOpen="stripeOpen"
+				:count="totalTiles"
 				@previous="previous"
 				@next="next"
 				@toggle="handleClickStripeCollapse" />
@@ -91,6 +93,7 @@
 							class="video"
 							:style="tileStyle(displayedVideos.length)"
 							isGrid
+							:isStripe="isStripe"
 							:fitVideo="false"
 							:token="token"
 							:localMediaModel="localMediaModel"
@@ -168,6 +171,7 @@ import VideoVue from '../shared/VideoVue.vue'
 import StripeControls from './StripeControls.vue'
 import { getTalkConfig } from '../../../services/CapabilitiesManager.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
+import { phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import {
 	computeTilePlacements,
 	getHalfColumnCount,
@@ -425,6 +429,15 @@ export default {
 			})
 		},
 
+		// ket4tec (NAS_CLOUD#195 п.3): квадраты полосы на iPhone вертикально (применяет k7call.scss в своём media)
+		phoneStripeStyle() {
+			if (!this.isStripe) {
+				return undefined
+			}
+			const { sq, rows } = phoneStrip(this.totalTiles)
+			return { '--k4-sq': sq + 'px', '--k4-rows': rows }
+		},
+
 		// ket4tec (NAS_CLOUD#159): сетка квадратов по центру; полоса - flex в k7call.scss. Плитка занимает две половинки столбца
 		// (см. computeTilePlacements), чтобы неполный ряд вставал по центру.
 		gridStyle() {
@@ -650,11 +663,7 @@ export default {
 	// Keeps the tiles off the rounded corners of the card
 	padding-inline: var(--grid-gap);
 
-	// The card the tiles sit on
-	.grid-main-wrapper:not(.overlap) & {
-		background-color: #262626;
-		border-radius: var(--border-radius-container);
-	}
+	// ket4tec (NAS_CLOUD#195 п.1): тёмной подложки под полосой нет — плитки лежат прямо на фоне звонка
 
 	// A stripe overlapping the promoted video takes no card of its own, which
 	// would band that video across: its tiles - the self camera, the only one

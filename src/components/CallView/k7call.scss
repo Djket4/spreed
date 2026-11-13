@@ -45,9 +45,8 @@ $glass: blur(24px) saturate(180%);
 	border-radius: var(--k7-r-tile);
 }
 // ket4tec (NAS_CLOUD#112): рамка — ::after плитки; радиус был 8px из VideoVue/LocalVideo (псевдоэлемент в :is() невалиден, правило выше его не красило),
-// плитка 24px: в углах рамка рвалась. Рамка говорящего (акцент) важнее красной «микрофон выключен» (--k7-dng): идёт ниже и перебивает.
+// плитка 24px: в углах рамка рвалась. Красной рамки «микрофон выключен» больше нет (NAS_CLOUD#195): значок в углу, рамка — только у говорящего.
 #call-container :is(.video-container, .localVideoContainer):not(.presenter-overlay)::after { border-radius: var(--k7-r-tile); }
-#call-container :is(.video-container, .localVideoContainer).k4-nomic::after { content: ''; box-shadow: inset 0 0 0 3px var(--k7-dng); }
 #call-container :is(.video-container, .localVideoContainer).speaking::after { content: ''; box-shadow: inset 0 0 0 3px var(--k7-acc); }
 #call-container .video-container.hover::after { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--k7-acc) 70%, #fff); }
 // ket4tec (слово владельца 11.11): подпись плитки — «нижняя треть», как в ТВ: тёмная плашка с полосой фирменного градиента слева,
@@ -440,3 +439,109 @@ $glass: blur(24px) saturate(180%);
 #content-vue .top-bar--in-call .top-bar__controls .call-time { flex: none; min-width: max-content; }
 #content-vue .top-bar--in-call .top-bar__controls .call-time .button-vue { width: auto !important; min-width: max-content; padding-inline: 12px; }
 #content-vue .top-bar--in-call .call-time__text { white-space: nowrap; overflow: visible; }
+
+// ket4tec (NAS_CLOUD#195): полоса камер по эскизу 13.11. Плитки на фоне звонка без подложки, имя под плиткой (на телефоне — узкой полосой
+// по низу), в углу только значок «микрофон выключен»; кнопки плитки — по тапу (useTapReveal), «крупно» — маленькая кнопка в левом верхнем углу.
+// Значок «без микрофона» и «крупно» — и в сетке, и в полосе
+#call-container .k4-micoff {
+	position: absolute; z-index: 3; top: 6px; inset-inline-end: 6px;
+	display: flex; align-items: center; justify-content: center;
+	width: 24px; height: 24px; border-radius: 999px;
+	background: #ffffffe0; color: var(--k7-dng); box-shadow: 0 2px 6px #0003; pointer-events: none;
+}
+#call-container .k4-big {
+	position: absolute; z-index: 3; top: 6px; inset-inline-start: 6px;
+	display: flex; align-items: center; justify-content: center;
+	width: 28px; height: 28px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 999px;
+	background: #ffffffeb !important; color: #1d1819; box-shadow: 0 2px 6px #0003; cursor: pointer;
+}
+$k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
+#{$k4s} {
+	// плитка: корень не режет (имя висит под ним), режут слои внутри
+	.grid > :is(.video-container, .localVideoContainer) { height: calc(100% - 23px) !important; overflow: visible !important; }
+	.grid > * > :is(.videoWrapper, .avatar-container, .screenContainer, .placeholder-for-promoted) { border-radius: inherit; overflow: hidden; }
+	.grid > * > .videoWrapper > video { border-radius: inherit; }
+	.grid > .localVideoContainer { border-radius: var(--k7-r-tile); }
+	.grid > .localVideoContainer > :not(.bottom-bar, .k4-big) { border-radius: inherit; overflow: hidden; }
+	.grid .k4face { border-radius: var(--k7-r-tile); overflow: hidden; } // облако своей плитки — absolute мимо avatar-container	// подпись: без плашки, под плиткой, всегда видна
+	.wrapper:not(.wrapper--big), .localVideoContainer > .bottom-bar { position: absolute; inset: 0; padding: 0 !important; pointer-events: none; }
+	.wrapper:not(.wrapper--big) .bottom-bar { position: static; min-height: 0; }
+	.participant-name {
+		position: absolute; inset: calc(100% + 6px) 0 auto; margin: 0; padding: 0; max-width: none;
+		background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; border-radius: 0;
+		color: var(--k7-fg); font-size: 13px; line-height: 16px; font-weight: 650; text-align: center;
+		white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 1 !important;
+		&::before { content: none; }
+		&.k7-self { color: var(--k7-fg2); }
+	}
+	// кнопки после тапа: по центру плитки, белые круги
+	.wrapper .media-indicators { position: absolute; inset: 0; align-items: center; justify-content: center; gap: 8px; pointer-events: none; }
+	.wrapper .media-indicators > * { pointer-events: auto; width: 38px !important; min-width: 38px !important; height: 38px !important; min-height: 38px !important; background: #ffffffeb !important; color: #1d1819 !important; opacity: 1 !important; box-shadow: 0 2px 8px #0003; }
+	.k4-tapped::after { content: ''; box-shadow: inset 0 0 0 3px var(--k7-acc); }
+	.k4-tapped > :is(.videoWrapper, .avatar-container) { filter: brightness(.78); }
+	.raiseHandIndicator { pointer-events: none; }
+}
+// телефон (узко или низко): имя — узкая полоса по низу плитки, лицо не закрывает
+@media (max-width: 500px), (max-height: 500px) {
+	#call-container .k4-micoff { width: 20px; height: 20px; top: 5px; inset-inline-end: 5px; }
+	#{$k4s} {
+		.grid > :is(.video-container, .localVideoContainer) { height: 100% !important; }
+		.participant-name {
+			inset: auto 0 0; height: 22px; padding: 0 8px; line-height: 22px; text-align: start;
+			background: linear-gradient(0deg, #140f17b8, #140f1700); color: #fff; font-size: 12px; font-weight: 700;
+			border-radius: 0 0 var(--k7-r-tile) var(--k7-r-tile);
+			&.k7-self { color: #fff; }
+		}
+		.wrapper .media-indicators { inset: 0 0 14px; }
+		.wrapper .media-indicators > * { width: 34px !important; min-width: 34px !important; height: 34px !important; min-height: 34px !important; }
+	}
+}
+// iPhone вертикально (вариант «Б»): квадраты по 3 в ряд под показом; до 3 — 120 px, больше — 110 px; два ряда видно, дальше листается.
+// Размер и число рядов ставит VideosGrid (--k4-sq, --k4-rows); стрелки сворачивания над плитками нет
+@media (max-width: 500px) and (orientation: portrait) {
+	#{$k4s} {
+		--stripe-height: calc(var(--k4-rows, 1) * var(--k4-sq, 120px) + (var(--k4-rows, 1) - 1) * 8px + 16px);
+		.stripe-wrapper { padding-inline: 0; }
+		.stripe-controls-position { display: none; }
+		.grid { display: grid !important; grid-template-columns: repeat(3, var(--k4-sq, 120px)) !important; grid-template-rows: none !important; grid-auto-rows: var(--k4-sq, 120px) !important; gap: 8px !important; justify-content: center; align-content: start; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; }
+		.grid > * { grid-column: auto !important; grid-row: auto !important; width: var(--k4-sq, 120px) !important; height: var(--k4-sq, 120px) !important; margin: 0 !important; }
+	}
+	// показ ужат до своей пропорции (--k4-ar из ScreenShare) и стоит сразу над полосой; видео по-прежнему по центру своей области (DrawLayer)
+	#call-container:not(.k7-alone) #videos:has(> .video__promoted > .screenContainer) { justify-content: flex-end; }
+	#call-container:not(.k7-alone) .video__promoted:has(> .screenContainer) { flex: 0 1 auto; height: auto; aspect-ratio: var(--k4-ar, 16 / 10); max-height: 100%; }
+}
+// iPhone горизонтально: полоса свёрнута (CallView, LOW_SCREEN), кнопка «Камеры · N» разворачивает
+#call-container .stripe-controls-position--collapsed .button-vue--icon-and-text { padding-inline: 10px 14px; font-weight: 650; }
+
+// ket4tec (NAS_CLOUD#195 п.7): связь пропала у меня — звонок приглушён, сверху один знак «Переподключаемся…»
+#call-container.k4-selflost > :not(.k4-selflost-veil) { filter: saturate(.25); opacity: .45; transition: opacity .3s ease, filter .3s ease; }
+body:has(#call-container.k4-selflost) .top-bar--in-call { opacity: .45; }
+.k4-selflost-veil {
+	position: fixed; inset: 0; z-index: 2100;
+	display: flex; align-items: center; justify-content: center;
+	pointer-events: none;
+	.k4-recon {
+		position: relative; inset: auto; width: min(320px, calc(100% - 64px)); height: auto; padding: 26px 24px 24px;
+		border-radius: 28px; container-type: normal;
+		background: var(--k7-glass); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+		box-shadow: 0 24px 70px #0005, inset 0 0 0 1px var(--k7-line2);
+		color: var(--k7-fg);
+		b { font-size: 19px; }
+		span { font-size: 14px; color: var(--k7-fg2); white-space: normal; }
+	}
+	.k4-recon__ic { width: 56px; }
+}
+
+// ket4tec (NAS_CLOUD#195 п.2): «Показывает: имя» в шапке звонка; на широком экране — капсулой рядом с названием
+#content-vue .top-bar .k4-shows {
+	display: inline-flex; align-items: center; gap: 5px; width: fit-content; max-width: 100%; margin: 2px 0 0; padding: 2px 10px 2px 8px;
+	border-radius: 999px; background: color-mix(in srgb, var(--k7-acc) 16%, transparent); color: var(--k7-acc);
+	font-size: 13px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+	.material-design-icon { flex: none; }
+}
+@media (min-width: 769px) {
+	#content-vue .top-bar .conversation-header__text:has(.k4-shows) { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 10px; }
+	#content-vue .top-bar .conversation-header__text:has(.k4-shows) > :not(.title, .k4-shows) { flex-basis: 100%; }
+	#content-vue .top-bar .k4-shows { margin: 0; }
+}

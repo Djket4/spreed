@@ -66,6 +66,11 @@
 					<p class="title">
 						{{ conversation.displayName }}
 					</p>
+					<!-- ket4tec (NAS_CLOUD#195 п.2): имя показывающего — здесь, а не плашкой поверх показа -->
+					<p v-if="isInCall && callViewStore.k4PresenterName" class="k4-shows">
+						<IconMonitor :size="14" />
+						Показывает: <b>{{ callViewStore.k4PresenterName }}</b>
+					</p>
 					<p
 						v-if="showUserStatusAsDescription"
 						class="description"
@@ -186,6 +191,7 @@ import IconArrowLeft from 'vue-material-design-icons/ArrowLeft.vue'
 import IconChevronRight from 'vue-material-design-icons/ChevronRight.vue'
 import IconClockOutline from 'vue-material-design-icons/ClockOutline.vue'
 import IconMagnify from 'vue-material-design-icons/Magnify.vue'
+import IconMonitor from 'vue-material-design-icons/Monitor.vue'
 import IconShieldLockOutline from 'vue-material-design-icons/ShieldLockOutline.vue'
 import BreakoutRoomsEditor from '../BreakoutRoomsEditor/BreakoutRoomsEditor.vue'
 import CalendarEventsDialog from '../CalendarEventsDialog.vue'
@@ -201,6 +207,7 @@ import { useGetToken } from '../../composables/useGetToken.ts'
 import { AVATAR, CONVERSATION, PARTICIPANT } from '../../constants.ts'
 import { getTalkConfig, hasTalkFeature } from '../../services/CapabilitiesManager.ts'
 import { useActorStore } from '../../stores/actor.ts'
+import { useCallViewStore } from '../../stores/callView.ts'
 import { useChatExtrasStore } from '../../stores/chatExtras.ts'
 import { useGroupwareStore } from '../../stores/groupware.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts'
@@ -234,6 +241,7 @@ export default {
 		IconChevronRight,
 		IconClockOutline,
 		IconMagnify,
+		IconMonitor,
 		IconShieldLockOutline,
 	},
 
@@ -259,6 +267,7 @@ export default {
 			groupwareStore: useGroupwareStore(),
 			sidebarStore: useSidebarStore(),
 			actorStore: useActorStore(),
+			callViewStore: useCallViewStore(),
 			chatExtrasStore: useChatExtrasStore(),
 			CONVERSATION,
 			threadId: useGetThreadId(),

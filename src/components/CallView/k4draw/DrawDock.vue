@@ -259,6 +259,9 @@ function placeScene() {
 	const bb = document.querySelector('#call-container > .bottom-bar')?.getBoundingClientRect()
 	scene['--k4-sb'] = Math.max(0, window.innerHeight - (bb ? bb.top : window.innerHeight)) + 'px'
 	document.documentElement.style.setProperty('--k4-sb', scene['--k4-sb']) // для тостов на телефоне (k7ui.scss)
+	// ket4tec (NAS_CLOUD#196): при показе с полосой камер док — своей строкой между показом и полосой, не поверх плиток
+	const st = !board.value && document.querySelector('#call-container .videos-wrapper--stripe')?.getBoundingClientRect()
+	scene['--k4-db'] = st?.height ? Math.max(0, window.innerHeight - st.top) + 'px' : scene['--k4-sb']
 }
 let sceneRO = null
 
@@ -313,7 +316,8 @@ onMounted(() => {
 	placeScene()
 	window.addEventListener('resize', placeScene)
 	sceneRO = new ResizeObserver(placeScene)
-	;[document.getElementById('call-container'), document.querySelector('.top-bar'), document.querySelector('#call-container > .bottom-bar')].forEach((n) => n && sceneRO.observe(n))
+	;[document.getElementById('call-container'), document.querySelector('.top-bar'), document.querySelector('#call-container > .bottom-bar'), document.querySelector('#call-container .grid-main-wrapper')].forEach((n) => n && sceneRO.observe(n))
+	requestAnimationFrame(placeScene) // ket4tec (NAS_CLOUD#196): полоса сдвинулась вниз под строку дока — пересчёт после раскладки
 	if (reducedMotion()) {
 		return
 	}
@@ -354,6 +358,8 @@ onMounted(() => {
 // ket4tec (NAS_CLOUD#106 п.2): у модератора на углу «Покинуть» — стрелка меню «Завершить звонок для всех» (k7call.scss,
 // .leave-call-actions--split). Она торчит прямо под крестиком дока, а её меню открывается поверх дока: промах по крестику
 // и повторное касание того же места = «Завершить звонок для всех». Пока док на экране, стрелку прячем; «Покинуть» остаётся.
+// ket4tec (NAS_CLOUD#196): строка под док между показом и полосой камер — показ ужимается, плитки док не перекрывает
+body:has(.k4-dockwrap) #call-container:not(:has(.k4-board)) .videos-wrapper--stripe { margin-block-start: 72px; }
 body:has(.k4-dockwrap) #call-container .leave-call-actions--split > div.action-item { visibility: hidden !important; pointer-events: none !important; }
 // ket4tec (NAS_CLOUD#109 п.10): на телефоне боковая панель во весь экран — док не должен лежать поверх неё
 @media (max-width: 512px) { .k4-dockwrap--side { display: none; } }
@@ -361,7 +367,7 @@ body:has(.k4-dockwrap) #call-container .leave-call-actions--split > div.action-i
 .k4-dockwrap button:not(.k4-sw) { background: transparent !important; }
 // ket4tec (п.9, 36): док над панелью звонка, по центру сцены звонка (не окна) — на одной оси с доской и при открытой боковой панели
 .k4-dock {
-	position: absolute; left: var(--k4-sl, 12px); right: var(--k4-sr, 12px); bottom: calc(var(--k4-sb, 0px) + 8px); width: min(560px, calc(100% - var(--k4-sl, 12px) - var(--k4-sr, 12px))); height: 56px; margin-inline: auto; border-radius: 999px; pointer-events: auto;
+	position: absolute; left: var(--k4-sl, 12px); right: var(--k4-sr, 12px); bottom: calc(var(--k4-db, var(--k4-sb, 0px)) + 8px); width: min(560px, calc(100% - var(--k4-sl, 12px) - var(--k4-sr, 12px))); height: 56px; margin-inline: auto; border-radius: 999px; pointer-events: auto;
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 2px 5px #0004;
 	animation: k4-up .42s var(--sp-in) both;
@@ -396,7 +402,7 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	position: absolute; top: 8px; left: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--k4-grad); box-shadow: 0 4px 14px #a86bff55; transform: translateX(var(--px, 0)); transition: transform .42s var(--sp-in);
 }
 .k4-fsel {
-	position: absolute; left: calc(50% + (var(--k4-sl, 0px) - var(--k4-sr, 0px)) / 2); bottom: calc(var(--k4-sb, 0px) + 72px); display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 4px 0 16px; border-radius: 999px;
+	position: absolute; left: calc(50% + (var(--k4-sl, 0px) - var(--k4-sr, 0px)) / 2); bottom: calc(var(--k4-db, var(--k4-sb, 0px)) + 72px); display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 4px 0 16px; border-radius: 999px;
 	transform: translate(-50%, 10px) scale(.92); opacity: 0; visibility: hidden; pointer-events: auto;
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair); font-size: 13.5px; color: var(--k4-fg2); white-space: nowrap;
@@ -410,12 +416,12 @@ body .k4-dockwrap .k4-ico { background: none !important; box-shadow: none !impor
 	button[aria-pressed=true] { color: #fff; }
 }
 .k4-style, .k4-more {
-	position: absolute; left: calc(50% + (var(--k4-sl, 0px) - var(--k4-sr, 0px)) / 2); bottom: calc(var(--k4-sb, 0px) + 72px); display: none; align-items: center; pointer-events: auto;
+	position: absolute; left: calc(50% + (var(--k4-sl, 0px) - var(--k4-sr, 0px)) / 2); bottom: calc(var(--k4-db, var(--k4-sb, 0px)) + 72px); display: none; align-items: center; pointer-events: auto;
 	transform: translateX(-50%);
 	background: var(--k4-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
 	box-shadow: inset 0 1px 0 #ffffff1c, inset 0 0 0 1px var(--k4-hair), 0 8px 24px #0005;
 	&.open { display: flex; }
-	&.up { bottom: calc(var(--k4-sb, 0px) + 128px); }
+	&.up { bottom: calc(var(--k4-db, var(--k4-sb, 0px)) + 128px); }
 }
 // цвета и толщина: 9 цветов в ряд, толщина строкой ниже
 .k4-style { width: min(340px, calc(100% - 24px)); flex-wrap: wrap; justify-content: center; gap: 8px 6px; padding: 8px; border-radius: 24px; }

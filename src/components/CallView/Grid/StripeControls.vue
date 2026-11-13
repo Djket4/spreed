@@ -23,6 +23,8 @@ const props = defineProps<{
 	hasNextPage: boolean
 	/** Whether the stripe is expanded */
 	isOpen: boolean
+	/** ket4tec (NAS_CLOUD#195 п.5): сколько камер в полосе — на свёрнутой кнопке «Камеры · N» */
+	count?: number
 }>()
 
 const emit = defineEmits<{
@@ -108,6 +110,9 @@ const toggleLabel = computed(() => props.isOpen
 					<IconChevronUp
 						v-else
 						:size="20" />
+				</template>
+				<template v-if="!isOpen && count" #default>
+					Камеры · {{ count }}
 				</template>
 			</NcButton>
 		</div>

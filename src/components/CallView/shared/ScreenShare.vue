@@ -76,6 +76,7 @@ import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import IconMonitorScreenshot from 'vue-material-design-icons/MonitorScreenshot.vue'
 import DrawLayer from '../k4draw/DrawLayer.vue' // ket4tec: k4draw
 import VideoBottomBar from './VideoBottomBar.vue'
+import { useCallViewStore } from '../../../stores/callView.ts'
 import { useGuestNameStore } from '../../../stores/guestName.ts'
 import attachMediaStream from '../../../utils/attachmediastream.js'
 import { isMac, mac, macLabel, openMac } from '../k4draw/macBridge.js' // ket4tec: k4draw
@@ -212,6 +213,8 @@ export default {
 		const k4fit = () => {
 			const v = screen.value
 			k4pb.value = v?.videoWidth ? Math.max(0, Math.round((v.clientHeight - v.clientWidth * v.videoHeight / v.videoWidth) / 2)) : 0
+			// ket4tec (NAS_CLOUD#195 п.3): пропорция показа — на iPhone вертикально главная область ужимается до неё, полоса встаёт сразу под показ
+			v?.videoWidth && v.closest('.video__promoted')?.style.setProperty('--k4-ar', String(v.videoWidth / v.videoHeight))
 		}
 		const k4ro = new ResizeObserver(k4fit)
 
@@ -280,6 +283,7 @@ export default {
 		}
 
 		return {
+			callViewStore: useCallViewStore(), // ket4tec (NAS_CLOUD#195)
 			isMac, // ket4tec: k4draw
 			mac,
 			macLabel,
@@ -345,6 +349,15 @@ export default {
 	},
 
 	watch: {
+		// ket4tec (NAS_CLOUD#195 п.2): чей экран крупно — в шапку звонка
+		remoteParticipantName: {
+			immediate: true,
+			handler(name) {
+				if (this.isBig && this.callParticipantModel) {
+					this.callViewStore.k4PresenterName = name || ''
+				}
+			},
+		},
 
 		'localMediaModel.attributes.localScreen': function(localScreen) {
 			this._setScreen(localScreen)
@@ -362,6 +375,13 @@ export default {
 			this._setScreen(this.localMediaModel.attributes.localScreen)
 		} else {
 			this._setScreen(this.callParticipantModel.attributes.screen)
+		}
+	},
+
+	beforeUnmount() {
+		// ket4tec (NAS_CLOUD#195 п.2): показ ушёл с крупного места — из шапки тоже (если его ещё не сменил новый показ)
+		if (this.isBig && this.callParticipantModel && this.callViewStore.k4PresenterName === (this.remoteParticipantName || '')) {
+			this.callViewStore.k4PresenterName = ''
 		}
 	},
 
