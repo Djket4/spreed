@@ -12,6 +12,7 @@ import store from '../../store/index.js'
 import { isIOS, isSafari } from '../browserCheck.ts'
 import CancelableRequest from '../CancelableRequest.ts'
 import Encryption from '../e2ee/encryption.js'
+import { startK4stats, stopK4stats } from '../k4stats.js'
 import Signaling from '../signaling.js'
 import SignalingTypingHandler from '../SignalingTypingHandler.js'
 import CallAnalyzer from './analyzers/CallAnalyzer.js'
@@ -256,6 +257,7 @@ async function signalingJoinCall(token, flags, silent, recordingConsent, silentF
 
 		const mixAudio = isIOS || isSafari
 		callParticipantsAudioPlayer = new CallParticipantsAudioPlayer(callParticipantCollection, mixAudio)
+		startK4stats({ token, local: localCallParticipantModel, collection: callParticipantCollection, localMedia: localMediaModel, analyzer: callAnalyzer }) // ket4tec: NAS_CLOUD#189
 
 		const _signaling = signaling
 
@@ -483,6 +485,7 @@ export const beforeLeaveCall = { fn: null }
  */
 async function signalingLeaveCall(token, all = false) {
 	await beforeLeaveCall.fn?.() // ket4tec: k4draw — автоснимок доски, пока звонок ещё не покинут
+	stopK4stats()
 	sentVideoQualityThrottler.destroy()
 	sentVideoQualityThrottler = null
 
@@ -519,6 +522,7 @@ async function signalingLeaveConversation(token) {
  * This should be called only in the unload handler
  */
 function signalingKill() {
+	stopK4stats()
 	if (signaling) {
 		signaling.disconnect()
 		signaling = null

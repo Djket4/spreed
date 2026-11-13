@@ -89,6 +89,7 @@
 		</div>
 		<!-- ket4tec: k4stk -->
 		<TileSticker :on="k4stkOn" :sid="peerId" />
+		<K4TileStats :peerId="peerId" />
 		<slot v-if="!hideBottomBar" name="bottomBar">
 			<VideoBottomBar
 				:hasShadow="hasVideo"
@@ -108,6 +109,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountCircleOutline from 'vue-material-design-icons/AccountCircleOutline.vue'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
+import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import K4Face from './k4face/K4Face.vue' // ket4tec
 import K4Reconnect from './K4Reconnect.vue' // ket4tec
@@ -134,6 +136,7 @@ export default {
 		K4Face,
 		AvatarWrapper,
 		K4Reconnect,
+		K4TileStats,
 		TileSticker,
 		VideoBackground,
 		ScreenShare,
