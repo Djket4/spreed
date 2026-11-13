@@ -48,22 +48,33 @@
 						@wheel="debounceHandleWheelEvent">
 						<template v-if="!devMode">
 							<EmptyCallView v-if="orderedVideos.length === 0 && !isStripe" class="video" :isGrid="true" />
-							<VideoVue
-								v-for="(callParticipantModel, index) in displayedVideos"
-								:key="callParticipantModel.attributes.peerId"
-								:class="{ video: !isStripe }"
-								:style="tileStyle(index)"
-								:data-tile-session-id="callParticipantModel.attributes.nextcloudSessionId"
-								:showVideoOverlay="showVideoOverlay"
-								:token="token"
-								:model="callParticipantModel"
-								:isGrid="true"
-								:showTalkingHighlight="!isStripe"
-								:isStripe="isStripe"
-								:isPromoted="sharedDatas[callParticipantModel.attributes.peerId].promoted && !(isStripe && screens.length)"
-								:isSelected="isSelected(callParticipantModel)"
-								:sharedData="sharedDatas[callParticipantModel.attributes.peerId]"
-								@clickVideo="handleClickVideo($event, callParticipantModel.attributes.peerId)" />
+							<template v-for="(callParticipantModel, index) in displayedVideos" :key="callParticipantModel.attributes.peerId">
+								<VideoVue
+									:class="{ video: !isStripe }"
+									:style="tileStyle(tileIndex(index))"
+									:data-tile-session-id="callParticipantModel.attributes.nextcloudSessionId"
+									:showVideoOverlay="showVideoOverlay"
+									:token="token"
+									:model="callParticipantModel"
+									:isGrid="true"
+									:showTalkingHighlight="!isStripe"
+									:isStripe="isStripe"
+									:isPromoted="sharedDatas[callParticipantModel.attributes.peerId].promoted && !(isStripe && screens.length)"
+									:isSelected="isSelected(callParticipantModel)"
+									:sharedData="sharedDatas[callParticipantModel.attributes.peerId]"
+									@clickVideo="handleClickVideo($event, callParticipantModel.attributes.peerId)" />
+								<!-- NAS_CLOUD#172, этап 2: кадр 2:1 — вторая квадратная половина -->
+								<Transition name="k4split" appear>
+									<K4SplitTile
+										v-if="splitPeers.has(callParticipantModel.attributes.peerId)"
+										:class="{ video: !isStripe }"
+										:style="tileStyle(tileIndex(index) + 1)"
+										:model="callParticipantModel"
+										:sharedData="sharedDatas[callParticipantModel.attributes.peerId]"
+										:participantName="splitPeers.get(callParticipantModel.attributes.peerId)"
+										:token="token" />
+								</Transition>
+							</template>
 						</template>
 						<!-- VideosGrid developer mode -->
 						<template v-if="devMode">
@@ -89,7 +100,7 @@
 							v-if="!noLocalVideoReserve"
 							ref="localVideo"
 							class="video"
-							:style="tileStyle(displayedVideos.length)"
+							:style="tileStyle(displayedVideos.length + splitDisplayed)"
 							isGrid
 							:fitVideo="false"
 							:token="token"
@@ -162,12 +173,14 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import IconChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import IconChevronRight from 'vue-material-design-icons/ChevronRight.vue'
 import EmptyCallView from '../shared/EmptyCallView.vue'
+import K4SplitTile from '../shared/k4face/K4SplitTile.vue'
 import LocalVideo from '../shared/LocalVideo.vue'
 import VideoBottomBar from '../shared/VideoBottomBar.vue'
 import VideoVue from '../shared/VideoVue.vue'
 import StripeControls from './StripeControls.vue'
 import { getTalkConfig } from '../../../services/CapabilitiesManager.ts'
 import { useCallViewStore } from '../../../stores/callView.ts'
+import { splitPeers } from '../shared/k4face/splitTiles.js'
 import {
 	computeTilePlacements,
 	getHalfColumnCount,
@@ -187,6 +200,7 @@ export default {
 	name: 'VideosGrid',
 
 	components: {
+		K4SplitTile,
 		VideoVue,
 		LocalVideo,
 		EmptyCallView,
@@ -280,8 +294,10 @@ export default {
 		const stripeOpen = computed(() => callViewStore.isStripeOpen && !props.isRecording)
 
 		// Number of tiles to lay out (clamped to `videosCap`, `0` means no cap)
+		// NAS_CLOUD#172, этап 2: участник с кадром 2:1 занимает две квадратные плитки
+		const splitTotal = computed(() => devMode.value ? 0 : props.callParticipantModels.filter((m) => splitPeers.has(m.attributes.peerId)).length)
 		const cappedVideosCount = computed(() => {
-			const count = devMode.value ? dummies.value : props.callParticipantModels.length
+			const count = (devMode.value ? dummies.value : props.callParticipantModels.length) + splitTotal.value
 			return videosCap ? Math.min(videosCap, count) : count
 		})
 
@@ -312,7 +328,7 @@ export default {
 				return videosCap || 9999
 			}
 			const gridSlots = gridDimensions.rows.value * gridDimensions.columns.value
-			const slots = noLocalVideoReserve.value ? gridSlots : gridSlots - 1
+			const slots = Math.max(1, (noLocalVideoReserve.value ? gridSlots : gridSlots - 1) - splitTotal.value)
 			return videosCap ? Math.min(videosCap, slots) : slots
 		})
 
@@ -370,6 +386,7 @@ export default {
 			dummies,
 			screenshotMode,
 			videosCap,
+			splitPeers,
 			callViewStore,
 			gridWrapper,
 			grid,
@@ -407,7 +424,12 @@ export default {
 		// Number of tiles rendered on the current page. The local video takes a
 		// tile of the grid, unless no slot is reserved for it.
 		totalTiles() {
-			return this.displayedVideos.length + (this.noLocalVideoReserve ? 0 : 1)
+			return this.displayedVideos.length + this.splitDisplayed + (this.noLocalVideoReserve ? 0 : 1)
+		},
+
+		// плитки-половины кадров 2:1 на текущей странице
+		splitDisplayed() {
+			return this.displayedVideos.filter((m) => splitPeers.has(m.attributes.peerId)).length
 		},
 
 		// Placement of every tile of the grid, in the order they are rendered.
@@ -555,6 +577,11 @@ export default {
 				gridRow: placement.row,
 				gridColumn: `${placement.column} / span ${TILE_COLUMN_SPAN}`,
 			}
+		},
+
+		// номер плитки в порядке отрисовки: перед ней стоят вторые половины участников с кадром 2:1
+		tileIndex(index) {
+			return index + this.displayedVideos.slice(0, index).filter((m) => splitPeers.has(m.attributes.peerId)).length
 		},
 
 		isSelected(callParticipantModel) {

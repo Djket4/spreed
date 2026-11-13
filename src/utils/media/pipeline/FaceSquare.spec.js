@@ -11,7 +11,7 @@ import { centerZoom, clampTarget, squareRect } from './FaceSquare.js'
 const W = 1280
 const H = 720
 const face = (cx, cy = 0.45, w = 0.12) => ({ x: cx - w / 2, y: cy - w / 2, w, h: w })
-const center = (faces) => {
+function center(faces) {
 	const t = clampTarget(computeTarget(faces, '1'), W, H)
 	const r = squareRect(t, W, H)
 	return { t, r, faceX: (r.sx + r.side / 2) / W }
@@ -106,5 +106,54 @@ describe('одно лицо у края: квадрат сужается, лиц
 	test('лицо у верхнего края: то же по вертикали', () => {
 		expect(centerZoom({ cx: 0.5, cy: 0.4 }, W, H)).toBeCloseTo(1 / 0.8, 2)
 		expect(centerZoom({ cx: 0.5, cy: 0.05 }, W, H)).toBe(1.5)
+	})
+})
+
+describe('этап 2: два лица -> 2:1', () => {
+	const f = (x) => ({ x, w: 0.12 })
+	test('лица по краям не помещаются в квадрат, рядом — помещаются, одно и три — нет', async () => {
+		const { wantSplit } = await import('./FaceSquare.js')
+		expect(wantSplit([f(0.14), f(0.74)], W, H)).toBe(true)
+		expect(wantSplit([f(0.40), f(0.50)], W, H)).toBe(false)
+		expect(wantSplit([f(0.5)], W, H)).toBe(false)
+		expect(wantSplit([f(0.1), f(0.5), f(0.8)], W, H)).toBe(false)
+	})
+	test('гистерезис 1.5 с в обе стороны, мимо идущий не переключает', async () => {
+		const { holdSplit, isTwoSquares } = await import('./FaceSquare.js')
+		let st = { on: false, flipAt: 0 }
+		st = holdSplit(st, true, 1000)
+		expect(st.on).toBe(false)
+		st = holdSplit(st, true, 2400)
+		expect(st.on).toBe(false)
+		st = holdSplit(st, true, 2600)
+		expect(st.on).toBe(true)
+		st = holdSplit(st, false, 3000) // вышел на секунду
+		st = holdSplit(st, true, 3800) // вернулся: таймер сброшен
+		expect(st).toEqual({ on: true, flipAt: 0 })
+		st = holdSplit(st, false, 4000)
+		st = holdSplit(st, false, 5600)
+		expect(st.on).toBe(false)
+		expect(isTwoSquares(720, 360)).toBe(true)
+		expect(isTwoSquares(1280, 720)).toBe(false)
+		expect(isTwoSquares(360, 360)).toBe(false)
+	})
+
+	test('splitTargets: второе лицо ушло — оба квадрата идут к оставшемуся, без пустых кадров', async () => {
+		const { splitTargets } = await import('./FaceSquare.js')
+		const L = { cx: 0.2, cy: 0.5, zoom: 1 }
+		const R = { cx: 0.8, cy: 0.5, zoom: 1 }
+		const one = { cx: 0.5, cy: 0.5, zoom: 1 }
+		expect(splitTargets(true, [L, R], undefined, one)).toEqual([L, R])
+		expect(splitTargets(false, undefined, [L, R], one)).toEqual([one, one])
+		expect(splitTargets(false, undefined, [L, R], null)).toEqual([L, R])
+	})
+
+	test('collapseWins: далёкое окно переносится на оставшееся лицо, близкое плывёт само', async () => {
+		const { collapseWins } = await import('./FaceSquare.js')
+		const L = { cx: 0.2, cy: 0.5, zoom: 1 }
+		const R = { cx: 0.8, cy: 0.5, zoom: 1 }
+		const one = { cx: 0.22, cy: 0.5, zoom: 1.1 }
+		expect(collapseWins([L, R], one)).toEqual([L, one])
+		expect(collapseWins([L, R], { cx: 0.5, cy: 0.5, zoom: 1 })).toEqual([{ cx: 0.5, cy: 0.5, zoom: 1 }, { cx: 0.5, cy: 0.5, zoom: 1 }])
 	})
 })
