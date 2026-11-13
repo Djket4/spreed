@@ -103,8 +103,8 @@ async function leaveCall(endMeetingForAll = false) {
 	})
 	loading.value = false
 
-	// ket4tec: после встречи — на главную Talk, а не в чат встречи
-	if (isInstantMeeting) {
+	// ket4tec: после встречи — на главную Talk, а не в чат встречи (гостю главная недоступна: 401/404)
+	if (isInstantMeeting && actorStore.isActorUser) {
 		router.push({ name: 'root' })
 	}
 }
