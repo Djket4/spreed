@@ -835,7 +835,9 @@ function cancelCur() {
 function onTouch(e) {
 	const ts = [...e.touches].filter((t) => tbox.contains(t.target))
 	const all = [...e.touches]
-	if (e.type === 'touchstart' && ptr !== null && all.length > 1 && !all.some((t) => t.touchType === 'stylus')) {
+	// touchstart самого штриха (все новые касания внутри .k4-ink) вторым пальцем не считаем: палец-держатель мог лежать вне показа до штриха
+	const fresh = [...(e.changedTouches || [])].some((t) => !ink.value?.contains(t.target))
+	if (e.type === 'touchstart' && ptr !== null && all.length > 1 && fresh && !all.some((t) => t.touchType === 'stylus')) {
 		// второй палец мог встать на поле вокруг кадра или вообще за контейнер показа (.grid-main-wrapper):
 		// до .k4-ink он не доходит, ловим на window в capture и отдаём жест зуму
 		gest = true
