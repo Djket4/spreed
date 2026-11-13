@@ -88,10 +88,13 @@ describe('DrawLayer: второе касание', () => {
 		expect(m.start).toHaveBeenCalledTimes(1 + 1)
 	})
 
-	test('касание вне контейнера показа не считается вторым пальцем', () => {
+	test('второй палец вне контейнера показа (grid-main-wrapper) отменяет штрих и отдаёт жест зуму', () => {
 		const t1 = { target: ink, touchType: 'direct' }
 		fire(ink, 'pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 100 })
-		fire(ink, 'touchstart', { touches: [t1, { target: document.body, touchType: 'direct' }] })
-		expect(m.cancel).not.toHaveBeenCalled()
+		fire(ink, 'touchstart', { touches: [t1] })
+		fire(document.body, 'touchstart', { touches: [t1, { target: document.body, touchType: 'direct' }] })
+		expect(m.cancel).toHaveBeenCalledTimes(1)
+		fire(ink, 'pointermove', { pointerType: 'touch', pointerId: 1, clientX: 200, clientY: 200 })
+		expect(m.point).not.toHaveBeenCalled()
 	})
 })
