@@ -40,7 +40,7 @@ import { useParticipantActivityStore } from '../stores/participantActivity.ts'
 import pinia from '../stores/pinia.ts'
 import { useSessionStore } from '../stores/session.ts'
 import { useTokenStore } from '../stores/token.ts'
-import { calllog, calllogSession } from '../utils/calllog.js'
+import { calllog, calllogSession, calllogStop } from '../utils/calllog.js'
 import CancelableRequest from '../utils/CancelableRequest.ts'
 import { isConversationPhoneRoom } from '../utils/conversation.ts'
 import { convertToUnix } from '../utils/formattedTime.ts'
@@ -948,6 +948,7 @@ const actions = {
 			})
 		}
 
+		calllogStop() // финальный flush и стоп маячка, пока room session ещё жива
 		try {
 			await leaveConversation(token)
 			if (SessionStorage.getItem('joined_conversation') === token) {

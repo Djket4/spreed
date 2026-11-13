@@ -48,16 +48,40 @@ function flush(last) {
 	try {
 		while (token && sid && buf.length) {
 			const ev = buf.splice(0, MAX_POST)
+			const sentSid = sid
 			fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
 				method: 'POST',
 				keepalive: true, // переживает закрытие вкладки; sendBeacon не умеет заголовки OCS
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
 				body: JSON.stringify({ s: sid, sent: Date.now(), ev }),
+			}).then((r) => {
+				// комнаты/доступа нет (или сессия умерла): дальше слать бессмысленно, до следующего входа
+				if ([403, 404, 410].includes(r?.status) && sid === sentSid) {
+					calllogStop(false)
+				}
 			}).catch(() => {})
 			if (!last) {
 				break
 			}
 		}
+	} catch (e) {
+		// ignore
+	}
+}
+
+/**
+ * Выход из комнаты/звонка (или ответ 403/404/410): остановить маячок до следующего calllogSession.
+ *
+ * @param {boolean} [final] отдать накопленное одним последним запросом
+ */
+export function calllogStop(final = true) {
+	try {
+		if (final) {
+			flush(true)
+		}
+		clearInterval(timer)
+		timer = sid = null
+		buf = []
 	} catch (e) {
 		// ignore
 	}
@@ -76,6 +100,9 @@ export function calllogSession(newToken, sessionId) {
 		}
 		token = newToken
 		sid = sessionId
+		if (!timer) {
+			timer = setInterval(flush, FLUSH_MS)
+		}
 		flush()
 	} catch (e) {
 		// ignore
@@ -159,7 +186,6 @@ export function initCalllog() {
 		window.addEventListener('pagehide', onPageHide)
 		window.addEventListener('online', () => calllog('net', { st: 'online' }))
 		window.addEventListener('offline', () => calllog('net', { st: 'offline' }))
-		timer = setInterval(flush, FLUSH_MS)
 	} catch (e) {
 		// ignore
 	}
