@@ -89,7 +89,7 @@
 				<template #icon>
 					<IconTextBoxOutline :size="20" />
 				</template>
-				<K4CallLogTab />
+				<K4CallLogTab :active="opened && activeTab === 'k4-calllog'" />
 			</NcAppSidebarTab>
 			<NcAppSidebarTab
 				v-if="showBreakoutRoomsTab && !isInCall"

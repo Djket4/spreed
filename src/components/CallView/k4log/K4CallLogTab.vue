@@ -40,7 +40,7 @@ const has = (v) => v !== undefined && v !== null
 const who = (p) => (p === 'local' ? 'свой поток' : 'поток от ' + p)
 // тексты по смыслу как client_text в calllog.py (NAS_CLOUD)
 const TEXT = {
-	page_load: (d) => `загружена страница звонка; окно ${d.w}x${d.h}`,
+	page_load: (d) => 'загружена страница звонка' + (has(d.w) && has(d.h) ? `; окно ${d.w}x${d.h}` : ''),
 	join_click: (d) => 'нажато «войти в звонок»' + (d.silent ? '; тихий вход' : ''),
 	call_joined: () => 'вход в звонок выполнен',
 	join_blocked: (d) => `ВХОД В ЗВОНОК НЕ УДАЛСЯ (${d.where}, код ${has(d.code) ? d.code : '—'})`,
@@ -81,6 +81,14 @@ const dOf = (e) => (e.d && typeof e.d === 'object' && !Array.isArray(e.d) ? e.d 
 export default {
 	name: 'K4CallLogTab',
 
+	props: {
+		/** вкладка выбрана и панель открыта: иначе опроса нет */
+		active: {
+			type: Boolean,
+			default: false,
+		},
+	},
+
 	setup() {
 		return { token: useGetToken() }
 	},
@@ -95,14 +103,17 @@ export default {
 		},
 	},
 
-	mounted() {
-		this.poll()
-		this.timer = setInterval(this.poll, EVERY)
+	watch: {
+		active: {
+			immediate: true,
+			handler(on) {
+				on ? this.start() : this.stop()
+			},
+		},
 	},
 
 	beforeUnmount() {
-		clearInterval(this.timer)
-		this.timer = null
+		this.stop()
 	},
 
 	methods: {
@@ -115,7 +126,23 @@ export default {
 		},
 
 		text(e) {
-			return TEXT[e.k] ? TEXT[e.k](dOf(e)) : e.k
+			try {
+				return Object.hasOwn(TEXT, e.k) ? TEXT[e.k](dOf(e)) : e.k
+			} catch {
+				return e.k
+			}
+		},
+
+		start() {
+			if (!this.timer) {
+				this.poll()
+				this.timer = setInterval(this.poll, EVERY)
+			}
+		},
+
+		stop() {
+			clearInterval(this.timer)
+			this.timer = null
 		},
 
 		async poll() {
@@ -130,7 +157,10 @@ export default {
 					this.events = add.concat(this.events).slice(0, MAX)
 				}
 			} catch (e) {
-				// 403 и сеть: молча, вкладку прячет testmode
+				// сеть: молча; 403 — не владелец, опрос не нужен
+				if (e.response?.status === 403) {
+					this.stop()
+				}
 			}
 		},
 	},
