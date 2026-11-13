@@ -29,6 +29,7 @@ use OCP\IGroupManager;
 use OCP\IUserManager;
 use OCP\Security\ISecureRandom;
 use OCP\UserStatus\IManager;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
 use Test\TestCase;
@@ -37,6 +38,7 @@ use Test\TestCase;
  * NAS_CLOUD#129: все пути выхода (leaveCall, leaveRoom, HPB leave) идут в resetCallStateWhenNeeded,
  * которая откладывает завершение пустого звонка, а не вызывает resetActiveSince.
  */
+#[Group('DB')]
 class ParticipantServiceEmptyCallTest extends TestCase {
 	private IAppConfig&MockObject $appConfig;
 	private IJobList&MockObject $jobList;
