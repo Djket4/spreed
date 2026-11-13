@@ -160,7 +160,10 @@ class Listener implements IEventListener {
 		}
 
 		$isVoiceRoom = $event->getRoom()->getAttributes() & RoomAttributes::VOICE_ROOM->value;
-		if ($isVoiceRoom || $this->participantService->hasActiveSessionsInCall($event->getRoom())) {
+		if ($isVoiceRoom
+			|| $this->participantService->hasActiveSessionsInCall($event->getRoom())
+			// отсрочка пустого звонка (NAS_CLOUD#129): active_since ещё стоит, это возврат, а не новый звонок
+			|| $event->getRoom()->getActiveSince() !== null) {
 			$this->sendSystemMessage($event->getRoom(), 'call_joined', [], $event->getParticipant());
 		} else {
 			$silent = $event->getDetail(AParticipantModifiedEvent::DETAIL_IN_CALL_SILENT) ?? false;

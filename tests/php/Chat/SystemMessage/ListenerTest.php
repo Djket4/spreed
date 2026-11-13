@@ -15,6 +15,7 @@ use OCA\Talk\Events\AParticipantModifiedEvent;
 use OCA\Talk\Events\ARoomModifiedEvent;
 use OCA\Talk\Events\AttendeesAddedEvent;
 use OCA\Talk\Events\BeforeDuplicateShareSentEvent;
+use OCA\Talk\Events\BeforeParticipantModifiedEvent;
 use OCA\Talk\Events\ParticipantModifiedEvent;
 use OCA\Talk\Events\RoomModifiedEvent;
 use OCA\Talk\Manager;
@@ -666,6 +667,36 @@ class ListenerTest extends TestCase {
 		}
 
 		self::invokePrivate($this->listener, 'handle', [$event]);
+	}
+
+	public static function dataCallBegin(): array {
+		return [
+			'новый звонок' => [null, false, 'call_started'],
+			'возврат в отсрочку: active_since ещё стоит' => [new \DateTime('@900'), false, 'call_joined'],
+			'в звонке есть другие' => [null, true, 'call_joined'],
+		];
+	}
+
+	#[DataProvider('dataCallBegin')]
+	public function testCallBeginMessage(?\DateTime $activeSince, bool $othersInCall, string $expected): void {
+		$this->mockLoggedInUser('u');
+		$room = $this->createMock(Room::class);
+		$room->method('getAttributes')->willReturn(0);
+		$room->method('getActiveSince')->willReturn($activeSince);
+		$this->participantService->method('hasActiveSessionsInCall')->willReturn($othersInCall);
+		$attendee = new Attendee();
+		$attendee->setActorType(Attendee::ACTOR_USERS);
+		$attendee->setActorId('u');
+		$participant = $this->createMock(Participant::class);
+		$participant->method('getAttendee')->willReturn($attendee);
+
+		$messages = [];
+		$this->chatManager->method('addSystemMessage')->willReturnCallback(function (...$args) use (&$messages) {
+			$messages[] = json_decode($args[4], true)['message'];
+		});
+		$event = new BeforeParticipantModifiedEvent($room, $participant, AParticipantModifiedEvent::PROPERTY_IN_CALL, Participant::FLAG_IN_CALL, Participant::FLAG_DISCONNECTED);
+		self::invokePrivate($this->listener, 'handle', [$event]);
+		$this->assertSame([$expected], $messages);
 	}
 
 	// -------------------------------------------------------------------------

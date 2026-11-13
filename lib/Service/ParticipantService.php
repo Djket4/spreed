@@ -2376,7 +2376,7 @@ class ParticipantService {
 		$argument = ['roomId' => $room->getId()];
 		$this->serverAppConfig->setValueInt('spreed', EndEmptyCall::key($room->getId()), $this->timeFactory->getTime());
 		if (!$this->jobList->has(EndEmptyCall::class, $argument)) {
-			$this->jobList->add(EndEmptyCall::class, $argument);
+			$this->jobList->scheduleAfter(EndEmptyCall::class, $this->timeFactory->getTime() + EndEmptyCall::GRACE, $argument);
 		}
 	}
 

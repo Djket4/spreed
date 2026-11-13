@@ -88,7 +88,7 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$service->method('hasActiveSessionsInCall')->willReturn(false);
 		$this->appConfig->expects($this->once())->method('setValueInt')->with('spreed', EndEmptyCall::key(42), 1000);
 		$this->jobList->method('has')->willReturn(false);
-		$this->jobList->expects($this->once())->method('add')->with(EndEmptyCall::class, ['roomId' => 42]);
+		$this->jobList->expects($this->once())->method('scheduleAfter')->with(EndEmptyCall::class, 1000 + EndEmptyCall::GRACE, ['roomId' => 42]);
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL));
 	}
 
@@ -96,14 +96,14 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$service = $this->service(true);
 		$service->method('hasActiveSessionsInCall')->willReturn(true);
 		$this->appConfig->expects($this->never())->method('setValueInt');
-		$this->jobList->expects($this->never())->method('add');
+		$this->jobList->expects($this->never())->method('scheduleAfter');
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL));
 	}
 
 	public function testNothingWhenNoCall(): void {
 		$service = $this->service(false);
 		$this->appConfig->expects($this->never())->method('setValueInt');
-		$this->jobList->expects($this->never())->method('add');
+		$this->jobList->expects($this->never())->method('scheduleAfter');
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_DISCONNECTED));
 	}
 
@@ -116,7 +116,7 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$roomService->expects($this->once())->method('resetActiveSince')->with($room, null);
 		$this->overwriteService(RoomService::class, $roomService);
 		$this->appConfig->expects($this->never())->method('setValueInt');
-		$this->jobList->expects($this->never())->method('add');
+		$this->jobList->expects($this->never())->method('scheduleAfter');
 		$service->resetCallStateWhenNeeded($room);
 	}
 
@@ -129,7 +129,7 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$roomService->expects($this->never())->method('resetActiveSince');
 		$this->overwriteService(RoomService::class, $roomService);
 		$this->appConfig->expects($this->once())->method('setValueInt');
-		$this->jobList->expects($this->once())->method('add');
+		$this->jobList->expects($this->once())->method('scheduleAfter');
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL, Room::TYPE_PUBLIC));
 	}
 }

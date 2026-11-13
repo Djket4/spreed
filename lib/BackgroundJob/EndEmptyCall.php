@@ -13,6 +13,7 @@ use OCA\Talk\Manager;
 use OCA\Talk\Service\ParticipantService;
 use OCA\Talk\Service\RoomService;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\BackgroundJob\QueuedJob;
 use OCP\IAppConfig;
 
@@ -24,7 +25,7 @@ use OCP\IAppConfig;
  * leaveCall, снимает joinCall (кто-то вошёл) или эта задача.
  */
 class EndEmptyCall extends QueuedJob {
-	public const GRACE = 15;
+	public const GRACE = 120;
 
 	public function __construct(
 		ITimeFactory $time,
@@ -32,6 +33,7 @@ class EndEmptyCall extends QueuedJob {
 		private readonly RoomService $roomService,
 		private readonly ParticipantService $participantService,
 		private readonly IAppConfig $appConfig,
+		private readonly IJobList $jobList,
 	) {
 		parent::__construct($time);
 	}
@@ -54,13 +56,13 @@ class EndEmptyCall extends QueuedJob {
 			return; // кто-то вошёл после опустения (или звонок уже закончен)
 		}
 
-		$wait = $emptySince + self::GRACE - $this->time->getTime();
-		if ($wait > 0) {
-			// ponytail: тик cron пришёл раньше GRACE (редко, окно 15 с из 300): ждём остаток в самой задаче, не более GRACE
-			sleep(min($wait, self::GRACE));
-			if ($this->readMark($roomId) !== $emptySince) {
-				return; // кто-то вошёл (или опустело заново и ждёт свою задачу)
+		if ($emptySince + self::GRACE > $this->time->getTime()) {
+			// отсрочка ещё не истекла: не спим в cron, а ставим задачу заново на момент её конца
+			$argument = ['roomId' => $roomId];
+			if (!$this->jobList->has(self::class, $argument)) {
+				$this->jobList->scheduleAfter(self::class, $emptySince + self::GRACE, $argument);
 			}
+			return;
 		}
 
 		$this->appConfig->deleteKey('spreed', self::key($roomId));
