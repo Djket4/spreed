@@ -10,7 +10,11 @@
 		data-k4ts>
 		<span
 			class="k4ts-line"
-			:class="compact && worst ? (worst === 'red' ? 'k4ts-red' : 'k4ts-yellow') : ''">{{ compact ? kbpsText : line }}</span>
+			:class="compact && worst ? (worst === 'red' ? 'k4ts-red' : 'k4ts-yellow') : ''"><template v-if="compact">{{ kbpsText }}</template>
+			<template v-else>
+				<span class="k4ts-full">{{ line }}</span><span class="k4ts-short">{{ shortLine }}</span>
+			</template>
+		</span>
 		<span v-if="!compact && s && s.path === 'relay'" class="k4ts-b k4ts-turn">TURN</span>
 		<span
 			v-for="w in compact ? [] : warns"
@@ -78,6 +82,13 @@ export default {
 			return s?.kbps == null ? DASH : (s.kbps >= 1000 ? (s.kbps / 1000).toFixed(1).replace('.', ',') + ' Мбит/с' : Math.round(s.kbps) + ' кбит/с')
 		},
 
+		// узкая плитка: «1,2М · 3% · 80мс»
+		shortLine() {
+			const s = this.s
+			const k = s?.kbps == null ? DASH : (s.kbps >= 1000 ? (s.kbps / 1000).toFixed(1).replace('.', ',') + 'М' : Math.round(s.kbps) + 'к')
+			return `${k} · ${s?.loss == null ? DASH : Math.round(s.loss) + '%'} · ${s?.rtt == null ? DASH : Math.round(s.rtt) + 'мс'}`
+		},
+
 		line() {
 			const s = this.s
 			const kbps = this.kbpsText
@@ -95,9 +106,9 @@ export default {
 	z-index: 1;
 	top: 4px;
 	left: 4px;
-	right: 4px;
+	width: calc(100% - 48px); // справа/слева остаётся место под кнопку стикера и противоположный угол
+	container-type: inline-size; // ширина фиксирована (не от содержимого), поэтому контейнер безопасен
 	display: flex;
-	max-width: 60%; // не дальше середины плитки: противоположный угол свободен (стикер, закрыть)
 	flex-wrap: nowrap;
 	gap: 4px;
 	overflow: hidden;
@@ -109,11 +120,27 @@ export default {
 
 .k4ts--right {
 	left: auto;
+	right: 4px;
 	justify-content: flex-end;
 }
 
+.k4ts-short {
+	display: none;
+}
+
+// плитка уже ~240 px: сжатый формат, всё помещается
+@container (max-width: 190px) {
+	.k4ts-full {
+		display: none;
+	}
+
+	.k4ts-short {
+		display: inline;
+	}
+}
+
 .k4ts--compact {
-	max-width: calc(100% - 8px);
+	width: calc(100% - 8px);
 	font-size: 10px;
 }
 

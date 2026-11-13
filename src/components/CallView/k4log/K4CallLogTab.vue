@@ -56,12 +56,12 @@ const TEXT = {
 	js_error: (d) => `ошибка JS: ${d.name}: ${d.msg}`,
 	net: (d) => 'у браузера ' + (d.st === 'online' ? 'появилась сеть' : 'пропала сеть'),
 	framing_error: (d) => 'сбой кадрирования по лицу: ' + d.reason,
-	rtc_stats: (d) => 'связь: ' + [
+	rtc_stats: (d) => 'связь: ' + ([
 		has(d.up) ? `↑ ${mbit(d.up)} ${d.upl ?? 0}%` : null,
 		has(d.dn) ? `↓ ${mbit(d.dn)} ${d.dnl ?? 0}%` : null,
 		has(d.rtt) ? `${d.rtt} мс` : null,
 		d.path === 'relay' ? 'TURN' : null,
-	].filter(Boolean).join(' · '),
+	].filter(Boolean).join(' · ') || 'нет данных'),
 	rtc_path: (d) => {
 		const ty = [d.lt, d.rt]
 		const how = ty.includes('relay') ? 'через ретранслятор TURN' : ty.includes('srflx') ? 'через сервер STUN' : 'напрямую'
@@ -171,6 +171,12 @@ export default {
 .k4cl {
 	padding: 8px;
 	font-size: 12px;
+}
+
+.k4cl-f {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
 }
 
 .k4cl-list {
