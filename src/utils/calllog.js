@@ -43,17 +43,25 @@ export function calllog(k, d) {
 
 /**
  * @param {boolean} [last] страница закрывается: отдать всё сразу
+ * @return {Promise} завершение отправленных запросов (не бросает)
  */
 function flush(last) {
+	const ps = []
 	try {
 		while (token && sid && buf.length) {
 			const ev = buf.splice(0, MAX_POST)
-			fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
+			const sentSid = sid
+			ps.push(fetch(generateOcsUrl('apps/spreed/api/v1/calllog/{token}', { token }), {
 				method: 'POST',
 				keepalive: true, // переживает закрытие вкладки; sendBeacon не умеет заголовки OCS
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
 				body: JSON.stringify({ s: sid, sent: Date.now(), ev }),
-			}).catch(() => {})
+			}).then((r) => {
+				// комнаты/доступа нет (или сессия умерла): дальше слать бессмысленно, до следующего входа
+				if ([403, 404, 410].includes(r?.status) && sid === sentSid) {
+					calllogStop(false)
+				}
+			}).catch(() => {}))
 			if (!last) {
 				break
 			}
@@ -61,6 +69,27 @@ function flush(last) {
 	} catch (e) {
 		// ignore
 	}
+	return Promise.allSettled(ps)
+}
+
+/**
+ * Выход из комнаты/звонка (или ответ 403/404/410): остановить маячок до следующего calllogSession.
+ *
+ * @param {boolean} [final] отдать накопленное одним последним запросом
+ * @return {Promise} завершение финальных запросов (чтобы выход из комнаты их дождался)
+ */
+export function calllogStop(final = true) {
+	let p = Promise.resolve()
+	try {
+		if (final) {
+			p = flush(true)
+		}
+		clearInterval(timer)
+		timer = sid = null // события, записанные после отправки, остаются в буфере до следующего входа
+	} catch (e) {
+		// ignore
+	}
+	return p
 }
 
 /**
@@ -76,6 +105,9 @@ export function calllogSession(newToken, sessionId) {
 		}
 		token = newToken
 		sid = sessionId
+		if (!timer) {
+			timer = setInterval(flush, FLUSH_MS)
+		}
 		flush()
 	} catch (e) {
 		// ignore
@@ -159,7 +191,6 @@ export function initCalllog() {
 		window.addEventListener('pagehide', onPageHide)
 		window.addEventListener('online', () => calllog('net', { st: 'online' }))
 		window.addEventListener('offline', () => calllog('net', { st: 'offline' }))
-		timer = setInterval(flush, FLUSH_MS)
 	} catch (e) {
 		// ignore
 	}

@@ -40,7 +40,7 @@ import { useParticipantActivityStore } from '../stores/participantActivity.ts'
 import pinia from '../stores/pinia.ts'
 import { useSessionStore } from '../stores/session.ts'
 import { useTokenStore } from '../stores/token.ts'
-import { calllog, calllogSession } from '../utils/calllog.js'
+import { calllog, calllogSession, calllogStop } from '../utils/calllog.js'
 import CancelableRequest from '../utils/CancelableRequest.ts'
 import { isConversationPhoneRoom } from '../utils/conversation.ts'
 import { convertToUnix } from '../utils/formattedTime.ts'
@@ -948,6 +948,8 @@ const actions = {
 			})
 		}
 
+		// финальный flush журнала должен дойти до выхода: после leaveConversation сервер удалит room session (403)
+		await Promise.race([calllogStop(), new Promise((resolve) => setTimeout(resolve, 1000))])
 		try {
 			await leaveConversation(token)
 			if (SessionStorage.getItem('joined_conversation') === token) {
