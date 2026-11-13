@@ -19,6 +19,8 @@ abstract class ACallEndedEvent extends ARoomModifiedEvent {
 		Room $room,
 		?Participant $actor,
 		\DateTime $oldActiveSince,
+		/** ket4tec (NAS_CLOUD#129): момент, когда звонок опустел (отсроченное завершение), для длительности */
+		private readonly ?int $endedAt = null,
 	) {
 		parent::__construct(
 			$room,
@@ -27,6 +29,10 @@ abstract class ACallEndedEvent extends ARoomModifiedEvent {
 			$oldActiveSince,
 			$actor
 		);
+	}
+
+	public function getEndedAt(): ?int {
+		return $this->endedAt;
 	}
 
 	public function getCallFlag(): int {

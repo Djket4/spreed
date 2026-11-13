@@ -108,4 +108,17 @@ class ListenerTest extends TestCase {
 
 		$this->listener->handle($this->callEndedEvent($room));
 	}
+
+	public function testDurationEndsAtEmptyMomentNotAtJobRun(): void {
+		$room = $this->createMock(Room::class);
+		$room->method('getAttributes')->willReturn(RoomAttributes::NONE->value);
+		$room->method('isClassified')->willReturn(false);
+		$this->prepareCall($room); // now = start + 60
+
+		$this->chatManager->expects(self::once())->method('addSystemMessage')
+			->with($room, null, self::anything(), self::anything(), self::callback(
+				static fn (string $json): bool => json_decode($json, true)['parameters']['duration'] === 10
+			));
+		$this->listener->handle(new CallEndedEvent($room, null, new \DateTime('@1234567890'), 1234567890 + 10));
+	}
 }

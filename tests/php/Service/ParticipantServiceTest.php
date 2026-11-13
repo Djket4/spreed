@@ -88,7 +88,9 @@ class ParticipantServiceTest extends TestCase {
 			$this->time,
 			$this->cacheFactory,
 			$this->userStatusManager,
-			$this->logger
+			$this->logger,
+			$this->createMock(\OCP\IAppConfig::class),
+			$this->createMock(\OCP\BackgroundJob\IJobList::class),
 		);
 	}
 

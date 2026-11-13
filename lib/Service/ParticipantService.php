@@ -15,6 +15,7 @@ use OCA\Circles\Model\Member;
 use OCA\Files_Sharing\Event\UserShareAccessUpdatedEvent;
 use OCA\Talk\CachePrefix;
 use OCA\Talk\Chat\ChatManager;
+use OCA\Talk\BackgroundJob\EndEmptyCall;
 use OCA\Talk\Config;
 use OCA\Talk\Controller\CallNotificationController;
 use OCA\Talk\Events\AAttendeeRemovedEvent;
@@ -64,12 +65,14 @@ use OCA\Talk\Webinary;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\Comments\IComment;
 use OCP\DB\Exception;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Federation\ICloudIdManager;
 use OCP\ICacheFactory;
+use OCP\IAppConfig;
 use OCP\IDBConnection;
 use OCP\IGroup;
 use OCP\IGroupManager;
@@ -134,6 +137,8 @@ class ParticipantService {
 		private readonly ICacheFactory $cacheFactory,
 		private readonly IUserStatusManager $userStatusManager,
 		private readonly LoggerInterface $logger,
+		private readonly IAppConfig $serverAppConfig,
+		private readonly IJobList $jobList,
 	) {
 	}
 
@@ -2342,7 +2347,13 @@ class ParticipantService {
 		}
 	}
 
-	protected function resetCallStateWhenNeeded(Room $room): void {
+	/**
+	 * ket4tec (NAS_CLOUD#129): единственная точка «в звонке никого нет». Звонок не завершается сразу,
+	 * а помечается пустым (empty_call_<roomId>) и закрывается задачей EndEmptyCall через GRACE секунд,
+	 * если никто не вернулся (переключение устройства, перезагрузка вкладки).
+	 * Немедленно завершают только явные пути: endCallForEveryone, удаление комнаты.
+	 */
+	public function resetCallStateWhenNeeded(Room $room): void {
 		if ($room->getCallFlag() === Participant::FLAG_DISCONNECTED) {
 			// No call
 			return;
@@ -2353,8 +2364,20 @@ class ParticipantService {
 			return;
 		}
 
-		$roomService = Server::get(RoomService::class);
-		$roomService->resetActiveSince($room, null);
+		// Только 1-1: звонящий сбросил до ответа, входящий должен погаснуть сразу, а не после тика cron.
+		// В групповых и публичных отсрочка всегда (один человек в звонке меняет устройство, #129).
+		$activeSince = $room->getActiveSince();
+		$isOneToOne = \in_array($room->getType(), [Room::TYPE_ONE_TO_ONE, Room::TYPE_ONE_TO_ONE_FORMER], true);
+		if ($isOneToOne && ($activeSince === null || \count($this->getParticipantsJoinedCurrentCall($room, $activeSince->getTimestamp())) <= 1)) {
+			Server::get(RoomService::class)->resetActiveSince($room, null);
+			return;
+		}
+
+		$argument = ['roomId' => $room->getId()];
+		$this->serverAppConfig->setValueInt('spreed', EndEmptyCall::key($room->getId()), $this->timeFactory->getTime());
+		if (!$this->jobList->has(EndEmptyCall::class, $argument)) {
+			$this->jobList->scheduleAfter(EndEmptyCall::class, $this->timeFactory->getTime() + EndEmptyCall::GRACE, $argument);
+		}
 	}
 
 	/**

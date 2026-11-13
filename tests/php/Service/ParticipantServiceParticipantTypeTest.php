@@ -32,6 +32,7 @@ use OCP\IUserManager;
 use OCP\Security\ISecureRandom;
 use OCP\UserStatus\IManager;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
 use Test\TestCase;
@@ -42,6 +43,7 @@ use Test\TestCase;
  * only way promotions and demotions triggered by a user reach
  * {@see ParticipantService::updateParticipantType()}.
  */
+#[Group('DB')]
 class ParticipantServiceParticipantTypeTest extends TestCase {
 	protected AttendeeMapper&MockObject $attendeeMapper;
 	protected ParticipantService $service;
@@ -71,6 +73,8 @@ class ParticipantServiceParticipantTypeTest extends TestCase {
 			$this->createMock(ICacheFactory::class),
 			$this->createMock(IManager::class),
 			$this->createMock(LoggerInterface::class),
+			$this->createMock(\OCP\IAppConfig::class),
+			$this->createMock(\OCP\BackgroundJob\IJobList::class),
 		];
 	}
 
