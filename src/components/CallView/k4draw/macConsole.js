@@ -22,8 +22,10 @@ const cv = document.createElement('canvas')
 cv.width = cv.height = SQ
 let box = null
 const last = new Map() // id плитки -> прошлый jpg (ответ на tick v2 без перекодирования)
-let cost = 0 // скользящее среднее времени кодирования одного кадра, мс
-let nextAt = 0 // не кодировать раньше (держим кодирование в ~10% главного потока)
+let cost = 0 // скользящее среднее времени ответа на fr (кодирование всех плиток + отправка), мс
+let nextAt = 0 // не отвечать на fr раньше (держим ответы в ~12% главного потока)
+// счётчики для замера в живом звонке: window.__k4fr
+const stat = (window.__k4fr = { n: 0, ms: 0, skip: 0 })
 
 /**
  * Скрытый, но в DOM: Safari не отдаёт кадры <video> вне документа.
@@ -96,9 +98,7 @@ const frame = (id, stream, on, fresh) => {
 	if (!fresh && last.has(id)) {
 		return last.get(id)
 	}
-	const t = performance.now()
 	const j = jpg(v)
-	cost = cost ? cost * 0.8 + (performance.now() - t) * 0.2 : performance.now() - t
 	j ? last.set(id, j) : last.delete(id)
 	return j
 }
@@ -148,18 +148,24 @@ export function consoleTick(send, v2 = false) {
 }
 
 /**
- * `fr` приложения (~12/с): свежие кадры камер. Бюджет ~10% главного потока: следующее кодирование не раньше
- * чем через 9 × среднее время предыдущего (при дешёвом кодировании пропусков нет, при дорогом — реже).
+ * `fr` приложения (до 25/с): свежие кадры камер на каждый fr, пока ответы укладываются в ~12% главного потока:
+ * следующий ответ не раньше чем через 7 × среднее время предыдущего. Дорого (много камер, слабая машина) —
+ * fr пропускаем, приложение само повторит через 200 мс; частота падает, вкладка не тормозит.
  *
  * @param send отправка в окно моста
  */
 export function consoleFrame(send) {
 	const now = performance.now()
 	if (now < nextAt) {
+		stat.skip++
 		return
 	}
 	send(snapshot(true))
-	nextAt = now + cost * 9
+	const d = performance.now() - now
+	cost = cost ? cost * 0.8 + d * 0.2 : d
+	stat.n++
+	stat.ms += d
+	nextAt = now + d + cost * 7
 }
 
 /** */
