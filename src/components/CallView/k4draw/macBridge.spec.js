@@ -1,12 +1,13 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@nextcloud/dialogs', () => ({ showWarning: vi.fn() }))
 vi.mock('@nextcloud/router', () => ({ getRootUrl: () => '/sub' }))
-const call = vi.hoisted(() => ({ in: true }))
-vi.mock('./macConsole.js', () => ({ consoleCmd: vi.fn(), consoleFrame: vi.fn(), consoleTick: vi.fn(), inCall: () => call.in, stopConsole: vi.fn() }))
+const call = vi.hoisted(() => ({ in: true, leave: null }))
+vi.mock('./macConsole.js', () => ({ consoleCmd: vi.fn(), consoleFrame: vi.fn(), consoleTick: vi.fn(), inCall: () => call.in, onCallLeave: (cb) => (call.leave = cb), stopConsole: vi.fn() }))
 
 describe('macBridge: запуск без служебных окон', () => {
 	let mod
@@ -192,15 +193,55 @@ describe('macBridge: запуск без служебных окон', () => {
 		expect(mod.mac.st).toBe('noapp')
 	})
 
-	it('все ответы 120 с — ожидание запроса: плашка «разрешите доступ» остаётся, не noapp', async () => {
-		vi.stubGlobal('fetch', pendingFetch({}))
+	it('ответа на запрос браузера нет дольше 120 с: опрос продолжается, поздний Allow открывает мост', async () => {
+		const state = {}
+		vi.stubGlobal('fetch', pendingFetch(state))
 		const p = mod.openMac()
 		await vi.advanceTimersByTimeAsync(130000)
-		await p
-		expect(mod.mac.st).toBe('allow')
-		await vi.advanceTimersByTimeAsync(10000)
 		expect(mod.mac.st).toBe('allow')
 		expect(open).not.toHaveBeenCalled()
+		state.answer = 'allow'
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(open).toHaveBeenCalledTimes(1)
+	})
+
+	it('плашку allow закрыли после 120 с: опрос прекращается', async () => {
+		const state = {}
+		vi.stubGlobal('fetch', pendingFetch(state))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(130000)
+		mod.closeMissing()
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(mod.mac.st).toBe('idle')
+	})
+
+	it('вышли и снова вошли в звонок во время ожидания: старый запуск мост не открывает', async () => {
+		const state = {}
+		vi.stubGlobal('fetch', pendingFetch(state))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(3000)
+		expect(mod.mac.st).toBe('allow')
+		call.in = false
+		call.leave() // сигнал выхода из звонка
+		call.in = true // вошли снова, пока старый запуск ждёт
+		state.answer = 'allow'
+		await vi.advanceTimersByTimeAsync(3000)
+		await p
+		expect(open).not.toHaveBeenCalled()
+		expect(mod.mac.st).toBe('idle')
+	})
+
+	it('«Подключить вручную»: окно не ответило — «не удалось проверить», не «не найдено»', async () => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('x'))))
+		const p = mod.openMac()
+		await vi.advanceTimersByTimeAsync(9000)
+		await p
+		expect(mod.mac.st).toBe('unverified')
+		mod.connectAnyway()
+		await vi.advanceTimersByTimeAsync(2000)
+		expect(mod.mac.st).toBe('unverified')
 	})
 
 	it('вышли из звонка (inCall=false) во время ожидания: мост не открывается, всё сброшено', async () => {

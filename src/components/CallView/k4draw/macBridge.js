@@ -1,4 +1,7 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
  * ket4tec: k4draw. Мост к приложению для Мака «Рисовать на экране» (NAS_CLOUD mac/k4draw, PROTOCOL.md).
  * Вкладка показывающего открывает окно http://127.0.0.1:47811/ (его отдаёт приложение), окно держит ws
  * с приложением и пересылает сообщения сюда через postMessage. Прямой ws://127.0.0.1 из https-страницы
@@ -7,7 +10,7 @@
 import { showWarning } from '@nextcloud/dialogs'
 import { getRootUrl } from '@nextcloud/router'
 import { reactive } from 'vue'
-import { consoleCmd, consoleFrame, consoleTick, inCall, stopConsole } from './macConsole.js'
+import { consoleCmd, consoleFrame, consoleTick, inCall, onCallLeave, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
 import { clearAll, eraseMarks, hash, identity, localScreen, moveMark, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
@@ -34,6 +37,8 @@ let watch = 0
 // уже просили запустить: следующий неответ = приложения нет. Раньше не узнать: в Safari окно после k4draw://
 // остаётся about:blank и когда приложение есть, и когда схемы нет (проверено 09.11)
 let launched = false
+// «Подключить вручную»: окно не ответило — это не «приложения нет», пользователь сказал, что оно установлено
+let manual = false
 let gen = 0 // поколение звонка: отложенные итоги запуска после finish() игнорируем
 
 const show = myShow // по ключу показа: id сессии сигналинга мог смениться посреди показа
@@ -135,6 +140,7 @@ function finish() {
 	gen++
 	busy = false
 	launched = false
+	manual = false
 	mac.st = 'idle'
 }
 
@@ -247,8 +253,9 @@ function retry() {
 		}
 		pop?.close()
 		pop = null
-		mac.st = launched ? 'noapp' : 'launch'
+		mac.st = manual ? 'unverified' : launched ? 'noapp' : 'launch'
 		launched = false
+		manual = false
 	}, 1500)
 }
 
@@ -333,7 +340,8 @@ async function launchApp(g, first) {
 	let no = 0
 	let pending = first === 'wait'
 	const t0 = Date.now()
-	while (no < 27 && Date.now() - t0 < 120000) {
+	// пока браузер ждёт ответа пользователя (pending), опрашиваем без предела: выход по stale (закрыли плашку, вышли из звонка)
+	while (no < 27 && (pending || Date.now() - t0 < 120000)) {
 		pending && (mac.st = 'allow')
 		await sleep(300)
 		if (stale(g)) {
@@ -362,9 +370,6 @@ async function launchApp(g, first) {
 			return { r: 'denied' }
 		}
 		no++
-	}
-	if (pending) {
-		return { r: 'allow' } // всё время ждали ответа на запрос браузера: плашка остаётся, «не найдено» не пишем
 	}
 	// без Permissions API (Safari) быстрый отказ fetch не отличить от mixed content: «не удалось проверить»
 	return { r: await netPerm() === '' ? 'unverified' : 'noapp' }
@@ -397,7 +402,7 @@ export function closeMissing() {
 
 /** «Уже установлено — подключить»: открыть окно моста вручную (когда признаков запуска не видно, например в Safari). */
 export function connectAnyway() {
-	launched = true
+	manual = true
 	openBridge()
 }
 
@@ -410,6 +415,7 @@ export async function openMac() {
 		off = onDraw(onEv)
 		window.addEventListener('message', onMsg)
 		window.addEventListener('pagehide', finish)
+		onCallLeave(finish) // выход из звонка сбрасывает запуск, даже если за время ожидания успели войти снова
 	}
 	if (busy) {
 		return
@@ -423,6 +429,7 @@ export async function openMac() {
 		return openBridge()
 	}
 	launched = false
+	manual = false
 	busy = true
 	mac.st = 'wait'
 	const g = gen

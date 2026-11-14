@@ -1,4 +1,7 @@
-/*
+/**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
  * ket4tec: k4draw (NAS_CLOUD#108) — второе касание на показе (в т.ч. на поле вокруг кадра) отменяет штрих
  */
 import { mount } from '@vue/test-utils'

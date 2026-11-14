@@ -1,4 +1,5 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 // ket4tec (NAS_CLOUD#114): рисунок сохраняется сам при закрытии доски и конце показа

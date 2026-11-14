@@ -1,4 +1,7 @@
 <!--
+  - SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+  -
   - ket4tec: k4draw. Шапка и док инструментов режима рисования (заменяют нижнюю панель звонка).
   - Вёрстка и движение — из прототипа talk-draw и гайда §5–§7а.
 -->

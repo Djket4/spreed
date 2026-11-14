@@ -1,4 +1,7 @@
-/*
+/**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
  * ket4tec: плашка связи в плитках полосы доски (NAS_CLOUD#189)
  */
 import { readFileSync } from 'node:fs'

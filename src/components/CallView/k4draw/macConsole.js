@@ -1,4 +1,7 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
  * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер (v2: квадрат 128×128, старое приложение: 160×90)
  * (MediaStream между источниками не передать), команды микрофон / камера / остановить показ / покинуть.
  */
@@ -208,6 +211,13 @@ export function stopConsole() {
 
 /** Вкладка ещё в звонке. */
 export const inCall = () => !!localMediaModel.attributes.token && store.getters.isInCall(localMediaModel.attributes.token)
+
+/**
+ * Подписка на выход из звонка (true → false), срабатывает независимо от того, кто и когда опрашивает inCall.
+ *
+ * @param cb вызывается при выходе
+ */
+export const onCallLeave = (cb) => store.watch(inCall, (v) => v || cb())
 
 /**
  * Команда пульта. Возвращает true, если команда его.

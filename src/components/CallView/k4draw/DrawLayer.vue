@@ -1,4 +1,7 @@
 <!--
+  - SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+  -
   - ket4tec: k4draw. SVG-слой пометок поверх показа экрана.
   - Координаты пометок 0..1 от кадра показа (не от окна): область кадра внутри <video object-fit: contain> считается заново при каждой отрисовке.
   - Рендер перенесён из прототипа talk-draw (NAS_CLOUD, ветка talk-draw).

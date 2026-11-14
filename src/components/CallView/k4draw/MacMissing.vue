@@ -1,4 +1,5 @@
 <!--
+  - SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
   - SPDX-License-Identifier: AGPL-3.0-or-later
   -
   - ket4tec: k4draw. Плашка «Приложение не найдено»: схема k4draw:// не сработала.

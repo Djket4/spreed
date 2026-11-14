@@ -1,4 +1,7 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
  * ket4tec: k4draw. Рисование поверх показа экрана: транспорт (сигналинг HPB, протокол v1) и состояние.
  * Один модуль на всех: слой, док и кнопка в панели звонка работают с одним `state` и одним набором показов.
  */

@@ -1,4 +1,7 @@
 <!--
+  - SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+  -
   - ket4tec: k4draw. Доска в звонке: общий холст на месте главной плитки. Рисуют все (гости — пока разрешает модератор).
   - Холст — тот же слой пометок, что поверх показа, только без кадра: соотношение сторон задаёт открывший.
 -->
