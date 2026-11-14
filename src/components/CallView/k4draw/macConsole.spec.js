@@ -5,8 +5,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const H = vi.hoisted(() => ({ models: [], L: null }))
-const mkTrack = () => {
-	const t = { readyState: 'live', stopped: false, getSettings: () => ({ width: 640, height: 480 }), stop: () => { t.stopped = true }, clone: () => Object.assign(mkTrack(), { getSettings: t.getSettings }) }
+function mkTrack() {
+	const t = { readyState: 'live', stopped: false, getSettings: () => ({ width: 640, height: 480 }), stop: () => {
+		t.stopped = true
+	}, clone: () => Object.assign(mkTrack(), { getSettings: t.getSettings }) }
 	return t
 }
 const track = mkTrack()
@@ -118,7 +120,9 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 	const flush = () => new Promise((r) => setTimeout(r, 0))
 	const remote = (id, on = true) => {
 		const m = { attributes: { peerId: id, name: id, videoAvailable: on, audioAvailable: true, stream: null } }
-		m.set = (t) => { m.attributes.stream = { getVideoTracks: () => [t] } }
+		m.set = (t) => {
+			m.attributes.stream = { getVideoTracks: () => [t] }
+		}
 		m.set(mkTrack())
 		return m
 	}
@@ -145,20 +149,40 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 				this.closed = false
 				pcs.push(this)
 			}
+
 			addTransceiver(t, o) {
-				const tr = { mid: null, track: t, o, stopped: false, stop() { tr.stopped = true }, sender: { pars: { encodings: [{ ...o.sendEncodings[0] }] }, getParameters() { return this.pars }, setParameters: vi.fn(async function (p) { this.pars = p }), replaceTrack: vi.fn(async () => { if (swapFail) { throw new Error('x') } }) } }
+				const tr = { mid: null, track: t, o, stopped: false, stop() {
+					tr.stopped = true
+				}, sender: {
+					pars: { encodings: [{ ...o.sendEncodings[0] }] },
+					getParameters() {
+						return this.pars
+					},
+					setParameters: vi.fn(async function(p) {
+						this.pars = p
+					}),
+					replaceTrack: vi.fn(async () => {
+						if (swapFail) {
+							throw new Error('x')
+						}
+					}),
+				}}
 				this.trs.push(tr)
 				return tr
 			}
+
 			async createOffer() { return { type: 'offer', sdp: 'o' } }
 			async setLocalDescription(d) {
 				if (gate) {
 					await gate
 				}
 				this.signalingState = 'have-local-offer'
-				this.trs.forEach((t, i) => { t.mid ??= String(i) })
+				this.trs.forEach((t, i) => {
+					t.mid ??= String(i)
+				})
 				this.localDescription = { toJSON: () => ({ type: 'offer', sdp: 'o' + this.trs.length }) }
 			}
+
 			async setRemoteDescription() { this.signalingState = 'stable' }
 			async addIceCandidate() {}
 			close() { this.closed = true }
@@ -301,7 +325,9 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 
 	it('tick с новой дорожкой, пока offer в работе: второй offer только после answer', async () => {
 		let open
-		gate = new Promise((r) => { open = r })
+		gate = new Promise((r) => {
+			open = r
+		})
 		await tick()
 		H.models.push(remote('p1'))
 		await tick() // setLocalDescription ещё не завершился, signalingState = stable
@@ -363,7 +389,9 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 
 		it('ошибка обмена offer/answer: bye и пауза', async () => {
 			await ftick()
-			pcs[0].setRemoteDescription = async () => { throw new Error('bad') }
+			pcs[0].setRemoteDescription = async () => {
+				throw new Error('bad')
+			}
 			await mod.consoleRtc({ sdp: { type: 'answer', sdp: 'a' } })
 			expect(sent('bye')).toHaveLength(1)
 			await ftick()

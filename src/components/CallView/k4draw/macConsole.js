@@ -141,7 +141,7 @@ const rtcMid = (id) => trs.get(id)?.mid ?? null
  *
  * @param clone дорожка-клон
  */
-const enc = (clone) => {
+function enc(clone) {
 	const { width: w, height: h } = clone.getSettings()
 	return { active: !paused, scaleResolutionDownBy: Math.max(1, Math.min(w || TILE, h || TILE) / TILE), maxFramerate: 30, maxBitrate: 300000, priority: 'low', networkPriority: 'low' }
 }
@@ -162,6 +162,10 @@ function wanted() {
 	return w
 }
 
+/**
+ *
+ * @param id
+ */
 function dropTr(id) {
 	const e = trs.get(id)
 	try {
@@ -198,6 +202,9 @@ function closeRtc(bye, wait = COOL) {
 	}
 }
 
+/**
+ *
+ */
 function newPc() {
 	const p = (pc = new RTCPeerConnection({}))
 	p.onicecandidate = (e) => e.candidate?.candidate && pc === p && out({ t: 'rtc', ice: e.candidate.toJSON() })
@@ -215,6 +222,9 @@ function newPc() {
 	}
 }
 
+/**
+ *
+ */
 async function offer() {
 	if (busy) {
 		return // изменения уже в dirty: уйдут следующим offer
@@ -270,7 +280,11 @@ function swapSrc(id, t) {
 	old.stop()
 }
 
-/** Привести дорожки к набору плиток; при изменении — новый offer (или bye, если камер не осталось). */
+/**
+ * Привести дорожки к набору плиток; при изменении — новый offer (или bye, если камер не осталось).
+ *
+ * @param on
+ */
 function rtcSync(on) {
 	if (!on) {
 		return closeRtc(false) // rtc:0 — видео сейчас не предлагать
@@ -315,6 +329,9 @@ function rtcSync(on) {
 	}
 }
 
+/**
+ *
+ */
 async function setActive() {
 	const p = pc
 	for (const e of [...trs.values()]) {
