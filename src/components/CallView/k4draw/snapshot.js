@@ -1,4 +1,7 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
  * ket4tec: k4draw. Снимок «кадр показа + постоянные пометки» → PNG → сервер (K4DrawController).
  * Пометки берём из DOM слоя (тот же рендер, что на экране): клон SVG постоянных штрихов с вшитыми стилями + подписи рисуются на canvas.
  */

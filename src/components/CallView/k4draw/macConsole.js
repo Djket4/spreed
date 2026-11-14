@@ -1,5 +1,8 @@
 /**
- * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер 160×90
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер (v2: квадрат 128×128, старое приложение: 160×90)
  * (MediaStream между источниками не передать), команды микрофон / камера / остановить показ / покинуть.
  */
 import store from '../../../store/index.js'
@@ -7,6 +10,7 @@ import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 
 const MAX = 8
+const SQ = 128
 const vids = new Map() // id плитки -> <video> со своим потоком
 // Talk не принимает камеру участника, чья плитка не видна (при показе экрана полоса скрыта) — пока пульт
 // подключён, его плитки считаются видимыми: id -> RemoteVideoBlocker, которому добавлен счётчик
@@ -18,9 +22,18 @@ window.__k4mc = () => callParticipantCollection.callParticipantModels.map((m) =>
 	return { peer: String(a.peerId).slice(0, 6), video: a.videoAvailable, tracks: a.stream?.getVideoTracks().length ?? null, blocked: b?._blocked, counter: b?._visibleCounter, held: held.has(String(a.peerId)), vw: vids.get(String(a.peerId))?.videoWidth ?? null }
 })
 const cv = document.createElement('canvas')
-cv.width = 160
-cv.height = 90
+cv.width = cv.height = SQ
+// приложение 1.6/1.6.1 (tick без v) рисует плитку 180×101 растяжением: ему по-прежнему 160×90 cover
+const cvOld = document.createElement('canvas')
+cvOld.width = 160
+cvOld.height = 90
 let box = null
+const last = new Map() // id плитки -> прошлый jpg (ответ на tick v2 без перекодирования)
+let cost = 0 // скользящее среднее времени ответа на fr (кодирование всех плиток + отправка), мс
+let late = 0 // таймер отложенного ответа на fr
+let nextAt = 0 // не отвечать на fr раньше (держим ответы в ~12% главного потока)
+// счётчики для замера в живом звонке: window.__k4fr
+const stat = (window.__k4fr = { n: 0, ms: 0, skip: 0 })
 
 /**
  * Скрытый, но в DOM: Safari не отдаёт кадры <video> вне документа.
@@ -51,19 +64,37 @@ function video(id, stream) {
 }
 
 /**
- * Кадр 160×90 «по заполнению», base64 JPEG без префикса.
+ * Окно исходного кадра, которое идёт в квадрат. Сейчас — центр (cover, как плитка в звонке);
+ * когда ветка face-center сдвинет окно к лицу у получателя, подменить только эту функцию.
+ *
+ * @param w ширина кадра
+ * @param h высота кадра
+ * @return {[number, number, number, number]} sx, sy, sw, sh
+ */
+export function cropWindow(w, h) {
+	const m = Math.min(w, h)
+	return [(w - m) / 2, (h - m) / 2, m, m]
+}
+
+/**
+ * Квадрат 128×128 «по заполнению» (sq) или прежний 160×90 cover для старого приложения, base64 JPEG без префикса.
  *
  * @param v
+ * @param sq квадрат (приложение v2)
  */
-function jpg(v) {
+export function jpg(v, sq = true) {
 	const w = v.videoWidth
 	const h = v.videoHeight
 	if (!w || !h) {
 		return null
 	}
-	const k = Math.max(160 / w, 90 / h)
-	const g = cv.getContext('2d')
-	g.drawImage(v, (160 - w * k) / 2, (90 - h * k) / 2, w * k, h * k)
+	if (!sq) {
+		const k = Math.max(160 / w, 90 / h)
+		cvOld.getContext('2d').drawImage(v, (160 - w * k) / 2, (90 - h * k) / 2, w * k, h * k)
+		return cvOld.toDataURL('image/jpeg', 0.6).slice(23)
+	}
+	const [sx, sy, sw, sh] = cropWindow(w, h)
+	cv.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, SQ, SQ)
 	return cv.toDataURL('image/jpeg', 0.6).slice(23)
 }
 
@@ -71,22 +102,39 @@ function jpg(v) {
  * @param id
  * @param stream
  * @param on камера включена
+ * @param fresh
+ * @param sq
  */
-const frame = (id, stream, on) => (on && stream?.getVideoTracks().length ? jpg(video(id, stream)) : null)
+function frame(id, stream, on, fresh, sq) {
+	if (!(on && stream?.getVideoTracks().length)) {
+		last.delete(id)
+		return null
+	}
+	const v = video(id, stream)
+	if (!fresh && last.has(id)) {
+		return last.get(id)
+	}
+	const j = jpg(v, sq)
+	j ? last.set(id, j) : last.delete(id)
+	return j
+}
 
 /**
  * Состояние звонка и плитки; свои первыми.
+ *
+ * @param fresh
+ * @param sq
  */
-function snapshot() {
+function snapshot(fresh = true, sq = true) {
 	const L = localMediaModel.attributes
-	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled) }]
+	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled, fresh, sq) }]
 	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
 		const a = m.attributes
 		if (m.k4VideoBlocker && !held.has(String(a.peerId))) {
 			m.k4VideoBlocker.increaseVisibleCounter()
 			held.set(String(a.peerId), m.k4VideoBlocker)
 		}
-		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable) })
+		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable, fresh, sq) })
 	})
 	const ids = new Set(tiles.map((t) => t.id))
 	held.forEach((b, id) => {
@@ -97,6 +145,7 @@ function snapshot() {
 	})
 	vids.forEach((v, id) => {
 		if (!ids.has(id)) {
+			last.delete(id)
 			v.srcObject = null
 			v.remove()
 			vids.delete(id)
@@ -106,12 +155,41 @@ function snapshot() {
 }
 
 /**
- * Кадр пульта: по `tick` приложения (5 раз в секунду), а не по своему таймеру — в фоновой вкладке Safari он спит.
+ * Кадр пульта по `tick` приложения (часы приложения: свой таймер в фоновой вкладке Safari спит).
+ * Приложение 1.6.1 и старее (tick без v): свежие кадры на каждый tick. v2: прошлые jpg без перекодирования,
+ * свежие приходят на `fr`.
+ *
+ * @param send отправка в окно моста
+ * @param v2 tick с `v:2`
+ */
+export function consoleTick(send, v2 = false) {
+	send(snapshot(!v2, v2))
+}
+
+/**
+ * `fr` приложения (до 25/с): свежие кадры камер на каждый fr, пока ответы укладываются в ~12% главного потока:
+ * следующий ответ не раньше чем через 7 × среднее время предыдущего. Дорого (много камер, слабая машина) —
+ * ответ откладываем (приложение ждёт до 200 мс); частота падает, вкладка не тормозит.
  *
  * @param send отправка в окно моста
  */
-export function consoleTick(send) {
-	send(snapshot())
+export function consoleFrame(send) {
+	const now = performance.now()
+	if (now < nextAt) {
+		// слишком рано: отвечаем, когда уложимся в бюджет (приложение ждёт ответ до 200 мс, потом шлёт fr снова)
+		stat.skip++
+		late ||= setTimeout(() => {
+			late = 0
+			inCall() && consoleFrame(send)
+		}, nextAt - now)
+		return
+	}
+	send(snapshot(true))
+	const d = performance.now() - now
+	cost = cost ? cost * 0.8 + d * 0.2 : d
+	stat.n++
+	stat.ms += d
+	nextAt = now + cost * 7
 }
 
 /** */
@@ -122,12 +200,24 @@ export function stopConsole() {
 		v.srcObject = null
 	})
 	vids.clear()
+	last.clear()
+	clearTimeout(late)
+	late = 0
+	cost = 0
+	nextAt = 0
 	box?.remove()
 	box = null
 }
 
 /** Вкладка ещё в звонке. */
 export const inCall = () => !!localMediaModel.attributes.token && store.getters.isInCall(localMediaModel.attributes.token)
+
+/**
+ * Подписка на выход из звонка (true → false), срабатывает независимо от того, кто и когда опрашивает inCall.
+ *
+ * @param cb вызывается при выходе
+ */
+export const onCallLeave = (cb) => store.watch(inCall, (v) => v || cb())
 
 /**
  * Команда пульта. Возвращает true, если команда его.

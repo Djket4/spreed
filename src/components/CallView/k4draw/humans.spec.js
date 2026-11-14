@@ -1,4 +1,5 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 // ket4tec (NAS_CLOUD#158): служебные сессии (робот записи, SIP) не люди — как фильтр сетки в CallView.vue

@@ -1,4 +1,7 @@
 <!--
+  - SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+  -
   - ket4tec (NAS_CLOUD#91/#92): вкладка «Файлы» в звонке — снимки доски и картинки из беседы.
   - Тап по превью — «Показать всем»: картинка становится фоном доски у всех (гость видит), рисуют поверх тем же «Рисовать».
 -->
