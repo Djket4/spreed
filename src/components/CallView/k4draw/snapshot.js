@@ -20,6 +20,31 @@ const keep = (tool, ttl, el, all) => !el.classList.contains('out') && (all || (P
 const STYLE = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight']
 
 /**
+ * Сдвиг [dx, dy], возвращающий рамку [x, y, w, h] внутрь кадра W×H; больше кадра — к левому/верхнему краю.
+ *
+ * @param {number[]} b рамка [x, y, w, h]
+ * @param {number} W ширина кадра
+ * @param {number} H высота кадра
+ */
+export function clampBox([x, y, w, h], W, H) {
+	const f = (p, s, m) => (p < 0 || s > m ? -p : p + s > m ? m - s - p : 0)
+	return [f(x, w, W) || 0, f(y, h, H) || 0]
+}
+
+/**
+ * Рамка капсулы текста в координатах viewBox + сдвиг внутрь кадра (на экране капсула может выходить за край).
+ *
+ * @param g
+ * @param W
+ * @param H
+ */
+function textShift(g, W, H) {
+	const r = g.querySelector('rect')
+	const b = r && ['x', 'y', 'width', 'height'].map((a) => +r.getAttribute(a))
+	return b && { b, d: clampBox(b, W, H) }
+}
+
+/**
  * Слушатель событий `snap` (счётчик и тост у остальных). Вернуть отписку.
  */
 export function watchSnaps() {
@@ -107,6 +132,10 @@ async function render(all = false) {
 			el.setAttribute('style', STYLE.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(';'))
 		})
 		c.setAttribute('style', 'opacity:1')
+		const sh = g.classList.contains('text') && textShift(g, W, H)
+		if (sh && (sh.d[0] || sh.d[1])) {
+			c.setAttribute('transform', `translate(${sh.d[0]},${sh.d[1]})`)
+		}
 		svg.append(c)
 	})
 	const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg))
@@ -117,8 +146,8 @@ async function render(all = false) {
 	// Разрешение PNG = разрешение принятого видео: у гостя при показе 4K приходит 1920x1080/2560x1440, у показывающего полное.
 	const fh = vh * 0.016 * 1.6 // высота капсулы; кегль 1,6% высоты кадра
 	const texts = [...ink.querySelectorAll(':scope > g.text')].filter((g) => keep('text', g.dataset.ttl, g, all)).map((g) => {
-		const r = g.querySelector('rect')
-		return r && [+r.getAttribute('x') * k, +r.getAttribute('y') * k, +r.getAttribute('width') * k, +r.getAttribute('height') * k]
+		const sh = textShift(g, W, H)
+		return sh && [(sh.b[0] + sh.d[0]) * k, (sh.b[1] + sh.d[1]) * k, sh.b[2] * k, sh.b[3] * k]
 	}).filter(Boolean)
 	const done = new Set()
 	const placed = []

@@ -471,7 +471,7 @@ OC.L10N.register(
     "Dismiss reminder" : "Отменить напоминание",
     "View chat" : "Просмотреть чат",
     "{user} invited you to a group conversation: {call}" : "{user} пригласил(а) вас в групповое обсуждение {call}",
-    "Join call" : "Войти в звонок",
+    "Join call" : "Подключиться",
     "Answer call" : "Ответить на вызов",
     "{user} would like to talk with you" : "{user} хочет поговорить с вами",
     "Call back" : "Перезвонить",

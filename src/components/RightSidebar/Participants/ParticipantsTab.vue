@@ -5,7 +5,8 @@
 
 <template>
 	<div ref="wrapper" class="wrapper">
-		<div class="search-form">
+		<!-- ket4tec #233: в звонке строки поиска нет -->
+		<div v-if="!isInCall" class="search-form">
 			<SearchBox
 				v-if="canSearch"
 				ref="searchBox"
