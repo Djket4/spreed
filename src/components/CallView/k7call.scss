@@ -612,3 +612,26 @@ body:has(#call-container.k4-selflost) :is(.top-bar--in-call, .app-sidebar__toggl
 	#content-vue .top-bar .conversation-header__text:has(.k4-shows) > :not(.title, .k4-shows) { flex-basis: 100%; }
 	#content-vue .top-bar .k4-shows { margin: 0; }
 }
+
+// ket4tec #233: вкладка «Участники» в панели звонка — в вёрстке Стола (тёплый тёмный фон, капсульные строки, Слива)
+#content-vue.in-call #app-sidebar-vue,
+#content-vue.in-call #tab-participants {
+	background: var(--k7-bg);
+	color: var(--k7-fg);
+	font-family: var(--k7-font);
+}
+#content-vue.in-call #tab-participants {
+	.participant {
+		margin: 2px 8px;
+		padding: 6px 8px;
+		border-radius: 16px;
+		border-bottom: 1px solid var(--k7-line);
+		color: var(--k7-fg);
+		&:hover, &:focus-within { background: var(--k7-bg3); }
+		&__user-name { color: var(--k7-fg); font-weight: 600; }
+		&__user-badge, &__status { color: var(--k7-fg2); }
+		&__status--highlighted { color: var(--k7-acc); }
+		&__call-state { color: var(--k7-fg2); }
+	}
+	.avatardiv { border-radius: 50%; background: var(--k7-bg3); }
+}

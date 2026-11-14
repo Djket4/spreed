@@ -2,7 +2,7 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-<!-- ket4tec v7: пустое место гостя вместо скрытого чата — название, имя, «Войти в звонок» -->
+<!-- ket4tec v7: пустое место гостя вместо скрытого чата — название, имя, «Подключиться» -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useStore } from 'vuex'

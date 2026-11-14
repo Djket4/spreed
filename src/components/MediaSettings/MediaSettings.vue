@@ -223,7 +223,7 @@
 
 					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна -->
 					<p v-if="isBeforeJoinCall && isGuest && !guestNameStore.guestUserName.length" class="k4-join-hint">
-						Введите имя, чтобы войти
+						Введите имя, чтобы подключиться
 					</p>
 					<NcButton
 						v-if="showUpdateChangesButton"
