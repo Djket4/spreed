@@ -11,6 +11,8 @@ import { callParticipantCollection, localMediaModel } from '../../../utils/webrt
 
 const MAX = 8
 const SQ = 128
+const RTC_MAX = 6 // приложение показывает первые 6 плиток: дорожек больше не кодируем
+const TILE = 240 // короткая сторона дорожки v3
 const vids = new Map() // id плитки -> <video> со своим потоком
 // Talk не принимает камеру участника, чья плитка не видна (при показе экрана полоса скрыта) — пока пульт
 // подключён, его плитки считаются видимыми: id -> RemoteVideoBlocker, которому добавлен счётчик
@@ -119,6 +121,265 @@ function frame(id, stream, on, fresh, sq) {
 	return j
 }
 
+// --- v3: настоящее видео по WebRTC (PROTOCOL.md, «Видео камер вместо кадров») ---
+let out = () => {} // последняя отправка в окно моста
+let pc = null
+const trs = new Map() // id плитки -> { tr, clone, src, mid }
+let paused = false // приложение спрятало плитки
+let dirty = false // набор дорожек изменился, пока шёл обмен offer/answer
+let offerAt = 0
+let busy = false // offer в работе (createOffer / setLocalDescription): изменения копятся в dirty
+let setupT = 0 // таймер «10 с без connected после offer»
+let cool = 0 // не предлагать видео до (после любого bye)
+const COOL = 30000 // пауза после собственного bye (сбой, таймаут): приложение в это время и так на v2
+let down = 0 // таймер «disconnected дольше 3 с»
+
+const rtcMid = (id) => trs.get(id)?.mid ?? null
+
+/**
+ * Параметры отправки: короткая сторона 240, до 30 к/с, ~300 кбит/с, низкий приоритет (звонок важнее плиток).
+ *
+ * @param clone дорожка-клон
+ */
+function enc(clone) {
+	const { width: w, height: h } = clone.getSettings()
+	return { active: !paused, scaleResolutionDownBy: Math.max(1, Math.min(w || TILE, h || TILE) / TILE), maxFramerate: 30, maxBitrate: 300000, priority: 'low', networkPriority: 'low' }
+}
+
+/** Дорожки, которые нужны приложению: первые RTC_MAX плиток с включённой камерой. */
+function wanted() {
+	const L = localMediaModel.attributes
+	const list = [['me', L.videoEnabled, L.localStream]]
+	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
+		const a = m.attributes
+		list.push([String(a.peerId), a.videoAvailable, a.stream])
+	})
+	const w = new Map()
+	list.slice(0, RTC_MAX).forEach(([id, on, st]) => {
+		const t = on && st?.getVideoTracks()[0]
+		t && t.readyState !== 'ended' && w.set(id, t)
+	})
+	return w
+}
+
+/**
+ *
+ * @param id
+ */
+function dropTr(id) {
+	const e = trs.get(id)
+	try {
+		e.tr.stop()
+	} catch (_) { /* transceiver уже остановлен */ }
+	e.clone.stop()
+	trs.delete(id)
+}
+
+/**
+ * Закрыть соединение, остановить клоны дорожек.
+ *
+ * @param bye сообщить приложению (оно вернётся на v2)
+ * @param wait сколько мс не предлагать видео заново (сбой — COOL; «камер не осталось» — 0)
+ */
+function closeRtc(bye, wait = COOL) {
+	clearTimeout(down)
+	clearTimeout(setupT)
+	setupT = 0
+	if (!pc) {
+		return
+	}
+	const p = pc
+	pc = null
+	p.onconnectionstatechange = p.onicecandidate = null
+	p.close()
+	;[...trs.keys()].forEach(dropTr)
+	paused = false
+	dirty = false
+	busy = false
+	if (bye) {
+		cool = Date.now() + wait
+		out({ t: 'rtc', bye: 1 })
+	}
+}
+
+/**
+ *
+ */
+function newPc() {
+	const p = (pc = new RTCPeerConnection({}))
+	p.onicecandidate = (e) => e.candidate?.candidate && pc === p && out({ t: 'rtc', ice: e.candidate.toJSON() })
+	p.onconnectionstatechange = () => {
+		clearTimeout(down)
+		const s = p.connectionState
+		if (s === 'connected') {
+			clearTimeout(setupT)
+			setupT = 0
+		} else if (s === 'failed') {
+			closeRtc(true)
+		} else if (s === 'disconnected') {
+			down = setTimeout(() => pc === p && closeRtc(true), 3000)
+		}
+	}
+}
+
+/**
+ *
+ */
+async function offer() {
+	if (busy) {
+		return // изменения уже в dirty: уйдут следующим offer
+	}
+	busy = true
+	dirty = false
+	offerAt = Date.now()
+	const p = pc
+	try {
+		await p.setLocalDescription(await p.createOffer())
+		if (pc !== p) {
+			return
+		}
+		trs.forEach((e) => {
+			e.mid = e.tr.mid
+		})
+		out({ t: 'rtc', sdp: p.localDescription.toJSON() })
+		if (!setupT && p.connectionState !== 'connected') {
+			setupT = setTimeout(() => pc === p && p.connectionState !== 'connected' && closeRtc(true), 10000)
+		}
+	} finally {
+		pc === p && (busy = false)
+	}
+}
+
+/**
+ * Источник дорожки сменился (другая камера): тот же отправитель, новый клон, масштаб пересчитан.
+ * Отказ replaceTrack — убираем transceiver, на следующем tick он создаётся заново.
+ *
+ * @param id плитка
+ * @param t новая исходная дорожка
+ */
+function swapSrc(id, t) {
+	const e = trs.get(id)
+	const old = e.clone
+	e.src = t
+	e.clone = t.clone()
+	e.clone.contentHint = 'motion'
+	const clone = e.clone
+	const p = pc
+	e.tr.sender.replaceTrack(clone).then(() => {
+		const par = e.tr.sender.getParameters()
+		if (pc === p && par.encodings?.[0]) {
+			par.encodings[0].scaleResolutionDownBy = enc(clone).scaleResolutionDownBy
+			return e.tr.sender.setParameters(par)
+		}
+	}).catch(() => {
+		if (pc === p && trs.get(id) === e) {
+			dropTr(id)
+			dirty = true
+		}
+	})
+	old.stop()
+}
+
+/**
+ * Привести дорожки к набору плиток; при изменении — новый offer (или bye, если камер не осталось).
+ *
+ * @param on
+ */
+function rtcSync(on) {
+	if (!on) {
+		return closeRtc(false) // rtc:0 — видео сейчас не предлагать
+	}
+	const w = wanted()
+	if (!pc) {
+		if (!w.size || Date.now() < cool) {
+			return
+		}
+		newPc()
+	}
+	let changed = false
+	;[...trs.keys()].forEach((id) => {
+		const e = trs.get(id)
+		if (!w.has(id)) {
+			dropTr(id)
+			changed = true
+		} else if (e.src !== w.get(id)) { // камера переключена: та же дорожка-отправитель, новый источник
+			swapSrc(id, w.get(id))
+		}
+	})
+	w.forEach((t, id) => {
+		if (!trs.has(id)) {
+			const clone = t.clone()
+			clone.contentHint = 'motion'
+			trs.set(id, { tr: pc.addTransceiver(clone, { direction: 'sendonly', sendEncodings: [enc(clone)] }), clone, src: t, mid: null })
+			changed = true
+		}
+	})
+	if (!trs.size) {
+		return closeRtc(true, 0) // камеры кончились: новая камера — сразу новый offer
+	}
+	if (changed) {
+		dirty = true
+	}
+	if (busy) {
+		// offer в работе: ждём
+	} else if (pc.signalingState === 'stable') {
+		dirty && offer().catch(() => closeRtc(true))
+	} else if (Date.now() - offerAt > 5000) {
+		closeRtc(true) // answer не пришёл: приложение само вернётся на v2
+	}
+}
+
+/**
+ *
+ */
+async function setActive() {
+	const p = pc
+	for (const e of [...trs.values()]) {
+		const sender = e.tr.sender
+		const par = sender.getParameters()
+		if (par.encodings?.[0] && par.encodings[0].active !== !paused) {
+			par.encodings[0].active = !paused
+			await sender.setParameters(par).catch(() => {})
+		}
+		if (pc !== p) {
+			return
+		}
+	}
+}
+
+/**
+ * Сообщение `rtc` от приложения: answer, ice, pause / resume, bye.
+ *
+ * @param d сообщение
+ */
+export async function consoleRtc(d) {
+	if (d.bye) {
+		cool = Date.now() + 2000 // защита от петли bye -> offer -> bye
+		return closeRtc(false)
+	}
+	if (!pc) {
+		return
+	}
+	const p = pc
+	try {
+		if (d.pause || d.resume) {
+			paused = !!d.pause
+			await setActive()
+		} else if (d.sdp?.type === 'answer' && p.signalingState === 'have-local-offer') {
+			await p.setRemoteDescription(d.sdp)
+			pc === p && (await setActive())
+			pc === p && dirty && trs.size && (await offer())
+		} else if (d.ice?.candidate) {
+			await p.addIceCandidate(d.ice)
+		}
+	} catch (_) {
+		pc === p && closeRtc(true)
+	}
+}
+
+/** Для живой проверки: window.__k4rtc() */
+window.__k4rtc = () => ({ state: pc?.connectionState ?? null, signaling: pc?.signalingState ?? null, paused, mids: [...trs].map(([id, e]) => [id.slice(0, 6), e.mid]) })
+
 /**
  * Состояние звонка и плитки; свои первыми.
  *
@@ -127,14 +388,24 @@ function frame(id, stream, on, fresh, sq) {
  */
 function snapshot(fresh = true, sq = true) {
 	const L = localMediaModel.attributes
-	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled, fresh, sq) }]
+	const live = new Set() // плитки, которые уже идут видео: jpg не кодируем
+	const fr = (id, stream, on) => {
+		const mid = rtcMid(id)
+		if (mid === null) {
+			return { jpg: frame(id, stream, on, fresh, sq) }
+		}
+		const ok = pc?.connectionState === 'connected'
+		ok && live.add(id)
+		return { vid: mid, jpg: ok ? null : frame(id, stream, on, fresh, sq) }
+	}
+	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, ...fr('me', L.localStream, L.videoEnabled) }]
 	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
 		const a = m.attributes
 		if (m.k4VideoBlocker && !held.has(String(a.peerId))) {
 			m.k4VideoBlocker.increaseVisibleCounter()
 			held.set(String(a.peerId), m.k4VideoBlocker)
 		}
-		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable, fresh, sq) })
+		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, ...fr(String(a.peerId), a.stream, a.videoAvailable) })
 	})
 	const ids = new Set(tiles.map((t) => t.id))
 	held.forEach((b, id) => {
@@ -144,7 +415,7 @@ function snapshot(fresh = true, sq = true) {
 		}
 	})
 	vids.forEach((v, id) => {
-		if (!ids.has(id)) {
+		if (!ids.has(id) || live.has(id)) {
 			last.delete(id)
 			v.srcObject = null
 			v.remove()
@@ -160,9 +431,12 @@ function snapshot(fresh = true, sq = true) {
  * свежие приходят на `fr`.
  *
  * @param send отправка в окно моста
- * @param v2 tick с `v:2`
+ * @param v2 tick с `v:2` или `v:3`
+ * @param rtc null — приложение без v3; иначе `tick.rtc` (1 — видео можно предлагать, 0 — нельзя)
  */
-export function consoleTick(send, v2 = false) {
+export function consoleTick(send, v2 = false, rtc = null) {
+	out = send
+	rtc === null ? closeRtc(true) : rtcSync(rtc)
 	send(snapshot(!v2, v2))
 }
 
@@ -194,6 +468,7 @@ export function consoleFrame(send) {
 
 /** */
 export function stopConsole() {
+	closeRtc(false)
 	held.forEach((b) => b.decreaseVisibleCounter())
 	held.clear()
 	vids.forEach((v) => {
