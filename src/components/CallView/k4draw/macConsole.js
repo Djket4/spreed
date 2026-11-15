@@ -130,6 +130,7 @@ let setupT = 0 // таймер «10 с без connected после offer»
 let cool = 0 // не предлагать видео до (после любого bye)
 const COOL = 30000 // пауза после собственного bye (сбой, таймаут): приложение в это время и так на v2
 let down = 0 // таймер «disconnected дольше 3 с»
+let unLeave = null // отписка от leaveCall
 
 const rtcMid = (id) => trs.get(id)?.mid ?? null
 
@@ -154,9 +155,43 @@ function wanted() {
 	const w = new Map()
 	list.slice(0, RTC_MAX).forEach(([id, on, st]) => {
 		const t = on && st?.getVideoTracks()[0]
-		t && t.readyState !== 'ended' && w.set(id, t)
+		t && t.readyState !== 'ended' && t.enabled !== false && !t.muted && w.set(id, t)
 	})
 	return w
+}
+
+/**
+ * Камеру выключили, дорожка кончилась или замолчала: клон останавливаем сразу, не дожидаясь tick
+ * (выключенная камера Talk — `enabled = false` у исходной дорожки, клон бы продолжал слать видео).
+ *
+ * @param id плитка
+ * @param t исходная дорожка
+ * @return {Function} снять подписки
+ */
+function hook(id, t) {
+	const m = id === 'me' ? localMediaModel : callParticipantCollection.callParticipantModels.find((x) => String(x.attributes.peerId) === id)
+	const ev = id === 'me' ? 'change:videoEnabled' : 'change:videoAvailable'
+	const h = () => pc && rtcSync(1)
+	t.addEventListener?.('ended', h)
+	t.addEventListener?.('mute', h)
+	m?.on?.(ev, h)
+	return () => {
+		t.removeEventListener?.('ended', h)
+		t.removeEventListener?.('mute', h)
+		m?.off?.(ev, h)
+	}
+}
+
+/**
+ * Новый клон исходной дорожки с подписками на её выключение.
+ *
+ * @param id плитка
+ * @param t исходная дорожка
+ */
+function mkClone(id, t) {
+	const clone = t.clone()
+	clone.contentHint = 'motion'
+	return { clone, src: t, unhook: hook(id, t) }
 }
 
 /**
@@ -165,6 +200,7 @@ function wanted() {
  */
 function dropTr(id) {
 	const e = trs.get(id)
+	e.unhook()
 	try {
 		e.tr.stop()
 	} catch (_) { /* transceiver уже остановлен */ }
@@ -257,9 +293,8 @@ async function offer() {
 function swapSrc(id, t) {
 	const e = trs.get(id)
 	const old = e.clone
-	e.src = t
-	e.clone = t.clone()
-	e.clone.contentHint = 'motion'
+	e.unhook()
+	Object.assign(e, mkClone(id, t))
 	const clone = e.clone
 	const p = pc
 	e.tr.sender.replaceTrack(clone).then(() => {
@@ -305,9 +340,8 @@ function rtcSync(on) {
 	})
 	w.forEach((t, id) => {
 		if (!trs.has(id)) {
-			const clone = t.clone()
-			clone.contentHint = 'motion'
-			trs.set(id, { tr: pc.addTransceiver(clone, { direction: 'sendonly', sendEncodings: [enc(clone)] }), clone, src: t, mid: null })
+			const c = mkClone(id, t)
+			trs.set(id, { ...c, tr: pc.addTransceiver(c.clone, { direction: 'sendonly', sendEncodings: [enc(c.clone)] }), mid: null })
 			changed = true
 		}
 	})
@@ -326,22 +360,27 @@ function rtcSync(on) {
 	}
 }
 
+let actQ = Promise.resolve() // pause / resume по очереди: getParameters до завершения setParameters отдаёт старое
+
 /**
- *
+ * Применить актуальное `paused` ко всем отправителям, после предыдущего применения.
  */
-async function setActive() {
+function setActive() {
 	const p = pc
-	for (const e of [...trs.values()]) {
-		const sender = e.tr.sender
-		const par = sender.getParameters()
-		if (par.encodings?.[0] && par.encodings[0].active !== !paused) {
-			par.encodings[0].active = !paused
-			await sender.setParameters(par).catch(() => {})
+	actQ = actQ.then(async () => {
+		for (const e of [...trs.values()]) {
+			if (pc !== p) {
+				return
+			}
+			const sender = e.tr.sender
+			const par = sender.getParameters()
+			if (par.encodings?.[0] && par.encodings[0].active !== !paused) {
+				par.encodings[0].active = !paused
+				await sender.setParameters(par).catch(() => {})
+			}
 		}
-		if (pc !== p) {
-			return
-		}
-	}
+	})
+	return actQ
 }
 
 /**
@@ -433,6 +472,15 @@ function snapshot(fresh = true, sq = true) {
  */
 export function consoleTick(send, v2 = false, rtc = null) {
 	out = send
+	// выход из звонка (кнопка Talk или пульт): видео останавливаем сразу, а не через секунду по watch / tick
+	unLeave ||= store.subscribeAction?.({
+		before: (a) => {
+			if (a.type === 'leaveCall' && a.payload?.token === localMediaModel.attributes.token) {
+				closeRtc(false)
+				cool = Infinity // до stopConsole: пока звонок уходит, isInCall ещё true и tick создал бы pc заново
+			}
+		},
+	})
 	rtc === null ? closeRtc(true) : rtcSync(rtc)
 	send(snapshot(!v2, v2))
 }
@@ -466,6 +514,9 @@ export function consoleFrame(send) {
 /** */
 export function stopConsole() {
 	closeRtc(false)
+	unLeave?.()
+	unLeave = null
+	cool = 0
 	held.forEach((b) => b.decreaseVisibleCounter())
 	held.clear()
 	vids.forEach((v) => {
