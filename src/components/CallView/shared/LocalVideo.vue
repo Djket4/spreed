@@ -346,6 +346,9 @@ export default {
 			this.resizeObserver = new ResizeObserver(this.updateContainerAspectRatio)
 			this.resizeObserver.observe(this.$refs.videoContainer)
 		}
+		// ket4tec (NAS_CLOUD#239): камера меняет размер кадра после старта (ограничения качества, поворот iPhone,
+		// кадр по лицу) — «playing» второй раз не приходит, и обёртка оставалась старой формы с полем по краю
+		this.$refs.video.addEventListener('resize', this.updateVideoAspectRatio)
 	},
 
 	beforeUnmount() {
@@ -415,9 +418,12 @@ export default {
 			if (!this.isBig) {
 				return
 			}
-			this.videoAspectRatio = this.localMediaModel.attributes.localStream.getVideoTracks()?.[0].getSettings().aspectRatio
-				// Fallback for Firefox
-				?? this.$refs.video.videoWidth / this.$refs.video.videoHeight
+			// ket4tec (NAS_CLOUD#239): пропорция — по кадру, который реально показан (на iPhone в портрете
+			// getSettings() камеры отдаёт альбомную пропорцию, а на выходе может быть канвас кадра по лицу)
+			const { videoWidth, videoHeight } = this.$refs.video
+			this.videoAspectRatio = videoWidth && videoHeight
+				? videoWidth / videoHeight
+				: this.localMediaModel.attributes.localStream?.getVideoTracks()?.[0]?.getSettings().aspectRatio ?? null
 		},
 	},
 

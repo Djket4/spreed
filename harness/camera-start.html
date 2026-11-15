@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Старт камеры стенд</title>
+<style>
+body { font: 14px system-ui; margin: 0; padding: 12px; background: #1a1718; color: #f3eee9 }
+.tile { width: 320px; height: 320px; border-radius: 24px; overflow: hidden; position: relative }
+.tile video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1) }
+#log { font: 13px/1.35 ui-monospace, monospace; white-space: pre; margin-top: 8px }
+</style>
+</head>
+<body>
+<!-- NAS_CLOUD#239: старт камеры как в звонке: getUserMedia -> TrackConstrainer -> FaceFrame -> плитка, через 300 мс ограничитель качества HIGH -->
+<div class="tile"><video id="tile" autoplay muted playsinline></video></div>
+<div id="log"></div>
+<script type="module" src="/harness/camera-start.js"></script>
+</body>
+</html>

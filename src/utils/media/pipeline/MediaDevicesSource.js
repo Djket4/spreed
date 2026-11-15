@@ -8,6 +8,19 @@ import { mediaDevicesManager } from '../../webrtc/index.js'
 import TrackSource from './TrackSource.js'
 
 /**
+ * ket4tec (NAS_CLOUD#239): стартовый размер камеры вне Chromium = качество HIGH из VideoConstrainer, но без
+ * нижних границ (камера ниже 720p не должна отказывать). Без этого Safari открывает камеру в 640x480,
+ * следом ограничитель качества переключает её на 1080p, и на iPhone кадр дёргается и меняет масштаб.
+ * Те же значения у превью проверки устройств (useDevices): камера одна на все треки страницы.
+ */
+export const START_VIDEO_CONSTRAINTS = Object.freeze({
+	width: { ideal: 1920, max: 1920 },
+	height: { ideal: 1080, max: 1080 },
+	frameRate: { ideal: 30, max: 30 },
+	resizeMode: 'none',
+})
+
+/**
  * Source node to get audio and video tracks from MediaDevicesManager.
  *
  * Two output tracks with "audio" and "video" as ids are provided.
@@ -249,16 +262,17 @@ export default class MediaDevicesSource extends TrackSource {
 	 * @param {object} constraints the constraints to be adjusted
 	 */
 	_adjustVideoConstraintsForChromium(constraints) {
-		if (!isChromium) {
-			return
-		}
-
 		if (!constraints.video) {
 			return
 		}
 
 		if (!(constraints.video instanceof Object)) {
 			constraints.video = {}
+		}
+
+		if (!isChromium) {
+			Object.assign(constraints.video, START_VIDEO_CONSTRAINTS)
+			return
 		}
 
 		constraints.video.width = 1920
