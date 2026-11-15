@@ -1,18 +1,37 @@
+/**
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 /* eslint-disable @stylistic/max-statements-per-line -- компактные заглушки WebRTC в тесте */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const H = vi.hoisted(() => ({ models: [], L: null }))
+const H = vi.hoisted(() => {
+	// эмиттер как EmitterMixin Talk и Vuex subscribeAction / dispatch
+	const emitter = (o) => Object.assign(o, { hs: {}, on(e, f) { (this.hs[e] ||= []).push(f) }, off(e, f) { this.hs[e] = (this.hs[e] || []).filter((x) => x !== f) }, emit(e) { (this.hs[e] || []).slice().forEach((f) => f()) } })
+	const subs = []
+	return {
+		models: [],
+		L: null,
+		emitter,
+		subs,
+		store: {
+			getters: { isInCall: () => true },
+			subscribeAction(o) { subs.push(o); return () => subs.splice(subs.indexOf(o), 1) },
+			dispatch(type, payload) { subs.slice().forEach((o) => o.before?.({ type, payload })); return Promise.resolve() },
+		},
+	}
+})
 function mkTrack() {
-	const t = { readyState: 'live', stopped: false, getSettings: () => ({ width: 640, height: 480 }), stop: () => { t.stopped = true }, clone: () => Object.assign(mkTrack(), { getSettings: t.getSettings }) }
+	const hs = {}
+	const t = { readyState: 'live', enabled: true, muted: false, stopped: false, getSettings: () => ({ width: 640, height: 480 }), stop: () => { t.stopped = true }, clone: () => Object.assign(mkTrack(), { getSettings: t.getSettings }), addEventListener: (e, f) => { (hs[e] ||= []).push(f) }, removeEventListener: (e, f) => { hs[e] = (hs[e] || []).filter((x) => x !== f) }, fire: (e) => (hs[e] || []).slice().forEach((f) => f()) }
 	return t
 }
 const track = mkTrack()
 const stream = { getVideoTracks: () => [track] }
-vi.mock('../../../store/index.js', () => ({ default: { getters: { isInCall: () => true }, dispatch: vi.fn() } }))
+vi.mock('../../../store/index.js', () => ({ default: H.store }))
 vi.mock('../../../stores/actor.ts', () => ({ useActorStore: () => ({}) }))
 vi.mock('../../../utils/webrtc/index.js', () => ({
 	callParticipantCollection: { callParticipantModels: H.models },
-	localMediaModel: { attributes: { token: 't', audioEnabled: true, videoEnabled: true, localStream: stream } },
+	localMediaModel: H.emitter({ attributes: { token: 't', audioEnabled: true, videoEnabled: true, localStream: stream } }),
 }))
 
 describe('macConsole: кадры камер для приложения', () => {
@@ -77,7 +96,7 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 	const lastCall = () => send.mock.calls.map((c) => c[0]).filter((m) => m.t === 'call').at(-1)
 	const flush = () => new Promise((r) => setTimeout(r, 0))
 	const remote = (id, on = true) => {
-		const m = { attributes: { peerId: id, name: id, videoAvailable: on, audioAvailable: true, stream: null } }
+		const m = H.emitter({ attributes: { peerId: id, name: id, videoAvailable: on, audioAvailable: true, stream: null } })
 		m.set = (t) => { m.attributes.stream = { getVideoTracks: () => [t] } }
 		m.set(mkTrack())
 		return m
@@ -93,6 +112,8 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 	beforeEach(async () => {
 		vi.resetModules()
 		H.models.length = 0
+		H.subs.length = 0 // подписки модулей прошлых тестов
+		;(await import('../../../utils/webrtc/index.js')).localMediaModel.hs = {}
 		pcs = []
 		gate = null
 		swapFail = false
@@ -211,6 +232,77 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 		expect(pcs[0].trs.map((t) => t.sender.pars.encodings[0].active)).toEqual([false, false])
 		await mod.consoleRtc({ resume: 1 })
 		expect(pcs[0].trs.map((t) => t.sender.pars.encodings[0].active)).toEqual([true, true])
+	})
+
+	it('камера выключена (enabled=false у исходной дорожки): клон остановлен сразу, без tick', async () => {
+		const { localMediaModel } = await import('../../../utils/webrtc/index.js')
+		await tick()
+		await answer()
+		const clone = pcs[0].trs[0].track
+		track.enabled = false
+		localMediaModel.attributes.videoEnabled = false
+		try {
+			localMediaModel.emit('change:videoEnabled')
+			expect(clone.stopped).toBe(true)
+			expect(sent('bye')).toHaveLength(1)
+		} finally {
+			track.enabled = true
+			localMediaModel.attributes.videoEnabled = true
+		}
+	})
+
+	it('исходная дорожка участника кончилась или замолчала: его клон остановлен сразу', async () => {
+		const m = remote('p1')
+		const m2 = remote('p2')
+		H.models.push(m, m2)
+		await tick()
+		await answer()
+		const [, c1, c2] = pcs[0].trs.map((t) => t.track)
+		const src1 = m.attributes.stream.getVideoTracks()[0]
+		src1.readyState = 'ended'
+		src1.fire('ended')
+		expect(c1.stopped).toBe(true)
+		expect(c2.stopped).toBe(false)
+		const src2 = m2.attributes.stream.getVideoTracks()[0]
+		src2.muted = true
+		src2.fire('mute')
+		expect(c2.stopped).toBe(true)
+	})
+
+	it('выход из звонка через «Покинуть» (leaveCall): клоны остановлены сразу, tick до конца выхода видео не поднимает', async () => {
+		H.models.push(remote('p1'))
+		await tick()
+		await answer()
+		const clones = pcs[0].trs.map((t) => t.track)
+		expect(H.subs).toHaveLength(1)
+		expect(mod.consoleCmd('leave')).toBe(true)
+		expect(clones.every((c) => c.stopped)).toBe(true)
+		expect(pcs[0].closed).toBe(true)
+		await tick() // isInCall ещё true, пока сервер не ответил
+		expect(pcs).toHaveLength(1)
+		mod.stopConsole()
+		expect(H.subs).toHaveLength(0)
+	})
+
+	it('resume во время незавершённого pause: итог active=true (по очереди, по актуальному значению)', async () => {
+		await tick()
+		await answer()
+		const sender = pcs[0].trs[0].sender
+		let applied = structuredClone(sender.pars)
+		const pend = []
+		sender.getParameters = () => structuredClone(applied) // как в браузере: копия уже применённого
+		sender.setParameters = vi.fn((p) => new Promise((r) => pend.push(() => { applied = p; r() })))
+		const a = mod.consoleRtc({ pause: 1 })
+		await flush()
+		const b = mod.consoleRtc({ resume: 1 })
+		await flush()
+		while (pend.length) {
+			pend.shift()()
+			await flush()
+		}
+		await Promise.all([a, b])
+		expect(applied.encodings[0].active).toBe(true)
+		expect(sender.setParameters).toHaveBeenCalledTimes(2)
 	})
 
 	it('bye от приложения: закрыть, остановить клоны, ничего не слать в ответ, v2', async () => {
@@ -347,6 +439,32 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 		expect(tr.sender.replaceTrack).toHaveBeenCalledTimes(1)
 		expect(tr.sender.pars.encodings[0].scaleResolutionDownBy).toBe(3)
 		expect(pcs[0].trs).toHaveLength(2)
+	})
+
+	it('смена камеры во время незавершённого resume: итог active=true, масштаб пересчитан', async () => {
+		const m = remote('p1')
+		H.models.push(m)
+		await tick()
+		await answer()
+		await mod.consoleRtc({ pause: 1 })
+		const sender = pcs[0].trs[1].sender
+		let applied = structuredClone(sender.pars)
+		const pend = []
+		sender.getParameters = () => structuredClone(applied)
+		sender.setParameters = vi.fn((p) => new Promise((r) => pend.push(() => { applied = p; r() })))
+		const b = mod.consoleRtc({ resume: 1 })
+		await flush()
+		const t2 = mkTrack()
+		t2.getSettings = () => ({ width: 1280, height: 720 })
+		m.set(t2)
+		await tick()
+		while (pend.length) {
+			pend.shift()()
+			await flush()
+		}
+		await b
+		expect(applied.encodings[0].active).toBe(true)
+		expect(applied.encodings[0].scaleResolutionDownBy).toBe(3)
 	})
 
 	it('replaceTrack отказал: transceiver пересоздаётся, новый offer', async () => {
