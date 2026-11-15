@@ -14,8 +14,8 @@ import { calllog } from './calllog.js'
  * Предупреждение по участнику.
  *
  * @typedef {object} K4Warn
- * @property {'drop'|'loss'|'rtt'|'jit'|'novideo'|'noaudio'|'fps'|'own'} w вид: обрыв, потери, задержка, дрожание звука,
- *   нет видео, нет звука, видео рывками, свой канал (только у 'local')
+ * @property {'drop'|'loss'|'rtt'|'jit'|'novideo'|'noaudio'|'fps'|'own'|'stall'} w вид: обрыв, потери, задержка, дрожание звука,
+ *   нет видео, нет звука, видео рывками, свой канал (только у 'local'), поток стоит (NAS_CLOUD#183)
  * @property {'yellow'|'red'} lvl уровень
  */
 
@@ -135,6 +135,19 @@ export function sample(prevReport, report, dir = 'in') {
 	}
 }
 
+/**
+ * Все заявленные участником потоки молчат (null = нет данных, не молчание).
+ *
+ * @param {object} s результат sample()
+ * @param {object} flags audioAvailable, videoAvailable, videoBlocked
+ * @return {boolean}
+ */
+function stalled(s, flags) {
+	const a = flags.audioAvailable === true
+	const v = flags.videoAvailable === true && !flags.videoBlocked
+	return (a || v) && (!a || s.ab === 0) && (!v || s.vb === 0)
+}
+
 const level = (v, yellow, red) => (v === null ? null : v >= red ? 'red' : v >= yellow ? 'yellow' : null)
 
 /**
@@ -143,7 +156,7 @@ const level = (v, yellow, red) => (v === null ? null : v >= red ? 'red' : v >= y
  *
  * @param {{cnt: object, on: object}|null} prevState состояние прошлого вызова (null = начало)
  * @param {object} s результат sample()
- * @param {{conn?: string, videoAvailable?: boolean, audioAvailable?: boolean, own?: 'yellow'|'red'|null}} flags
+ * @param {{conn?: string, videoAvailable?: boolean, videoBlocked?: boolean, audioAvailable?: boolean, own?: 'yellow'|'red'|null}} flags
  * @return {{state: object, warn: K4Warn[], changes: Array<{w: string, lvl: string, on: 0|1}>}}
  */
 export function classify(prevState, s, flags = {}) {
@@ -158,6 +171,8 @@ export function classify(prevState, s, flags = {}) {
 		noaudio: flags.audioAvailable === true && s.ab === 0 ? 'red' : null,
 		fps: flags.videoAvailable === true && s.fps !== null && s.fps < 8 ? 'yellow' : null,
 		own: flags.own || null,
+		// ket4tec (NAS_CLOUD#183): от участника не идёт ни один заявленный поток (видео, отключённое у нас ради экономии, не ждём)
+		stall: stalled(s, flags) ? 'red' : null,
 	}
 	// пустой замер (соединение пересоздаётся, нет данных) не хороший и не плохой: счётчики метрик не трогаем
 	const empty = ['kbps', 'loss', 'rtt', 'jit', 'fps', 'ab', 'vb'].every((k) => s[k] === null)
@@ -177,7 +192,7 @@ export function classify(prevState, s, flags = {}) {
 		} else {
 			c.good++
 			c.bad = 0
-			if (c.good >= 3 && on[w]) {
+			if (c.good >= (w === 'stall' ? 1 : 3) && on[w]) { // поток пошёл — плашка «возвращается» гаснет сразу
 				changes.push({ w, lvl: on[w], on: 0 })
 				delete on[w]
 			}
@@ -288,7 +303,7 @@ async function tick() {
 			const id = m.get('peerId')
 			if (id) {
 				seen.add(id)
-				jobs.push(measure(id, m.get('peer')?.pc, 'in', { conn: m.get('connectionState'), videoAvailable: m.get('videoAvailable'), audioAvailable: m.get('audioAvailable') }))
+				jobs.push(measure(id, m.get('peer')?.pc, 'in', { conn: m.get('connectionState'), videoAvailable: m.get('videoAvailable'), videoBlocked: m.get('videoBlocked'), audioAvailable: m.get('audioAvailable') }))
 			}
 		}
 		for (const id of Object.keys(per)) {

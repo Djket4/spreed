@@ -76,7 +76,7 @@
 			<IconAccountCircleOutline v-if="isPromoted || isSelected" fillColor="#FFFFFF" :size="64" />
 		</div>
 		<!-- ket4tec (NAS_CLOUD#195 п.6/7): связь с участником пропала — шум «NO SIGNAL»; пропала у меня — общая плашка в CallView, в плитках ничего -->
-		<K4NoSignal v-if="k4Recon && !k4net.selfLost" />
+		<K4NoSignal v-if="k4Recon && !k4net.selfLost" label="Связь потеряна, возвращается…" caption />
 		<div
 			v-else-if="connectionMessage && !k4net.selfLost"
 			:class="connectionMessageClass"
@@ -139,7 +139,7 @@ import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
 import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
-import { k4net, useTapReveal } from './k4peer.js' // ket4tec (NAS_CLOUD#195)
+import { k4net, peerGone, useTapReveal } from './k4peer.js' // ket4tec (NAS_CLOUD#195)
 
 export default {
 
@@ -595,7 +595,9 @@ export default {
 		// ket4tec: k4stk. Гифка/стикер этого участника (не на плитке показа экрана и не в заглушке «закреплённого»)
 		/** ket4tec: связь была и пропала (не первое подключение) */
 		k4Recon() {
-			return this.wasConnectedAtLeastOnce && !this.placeholderForPromoted && !this.isSidebar && (this.isDisconnected || this.isReconnecting || this.isNoLongerTryingToReconnect)
+			return !this.placeholderForPromoted && !this.isSidebar
+				&& ((this.wasConnectedAtLeastOnce && (this.isDisconnected || this.isReconnecting || this.isNoLongerTryingToReconnect))
+					|| peerGone(this.model.attributes)) // ket4tec (NAS_CLOUD#183): поток стоит или плитка держится после ухода
 		},
 
 		/** ket4tec (NAS_CLOUD#195): значок «микрофон выключен»; без связи и на открытых кнопках не нужен */

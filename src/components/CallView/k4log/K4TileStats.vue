@@ -36,6 +36,7 @@ const WARN_TEXT = {
 	noaudio: 'нет звука',
 	fps: 'рывки',
 	own: 'свой канал',
+	stall: 'поток встал',
 }
 
 const DASH = '—'
@@ -48,11 +49,13 @@ export default {
 			type: String,
 			required: true,
 		},
+
 		/** маленькая плитка (полоса доски): только битрейт, цвет по худшему предупреждению */
 		compact: {
 			type: Boolean,
 			default: false,
 		},
+
 		/** верхний правый угол (у плитки со стикером левый и имя заняты) */
 		right: {
 			type: Boolean,

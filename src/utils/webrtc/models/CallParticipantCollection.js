@@ -19,9 +19,22 @@ export function CallParticipantCollection() {
 
 CallParticipantCollection.prototype = {
 
-	add(options) {
+	/**
+	 * @param {object} options параметры модели
+	 * @param {object} [instead] ket4tec (NAS_CLOUD#183): модель-призрак, место которой занять (тот же слот сетки)
+	 * @return {object} новая модель
+	 */
+	add(options, instead) {
 		const callParticipantModel = new CallParticipantModel(options)
-		this.callParticipantModels.push(callParticipantModel)
+		const at = instead ? this.callParticipantModels.indexOf(instead) : -1
+		if (at === -1) {
+			this.callParticipantModels.push(callParticipantModel)
+		} else {
+			clearTimeout(instead.k4hold)
+			this.callParticipantModels.splice(at, 1, callParticipantModel)
+			this._trigger('remove', [instead])
+			instead.destroy()
+		}
 
 		k4log('peer.add', { id: options?.peerId, name: options?.name })
 		this._trigger('add', [callParticipantModel])
