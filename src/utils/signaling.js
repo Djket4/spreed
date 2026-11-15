@@ -614,6 +614,10 @@ Signaling.Internal.prototype._joinCallSuccess = function(token) {
 	EventBus.emit('signaling-internal-show-warning', token)
 }
 
+// ket4tec (NAS_CLOUD#183): окно, пока сервер держит сессию для resume, и потолок задержки переподключения в нём
+export const K4_RESUME_WINDOW_MS = 30000
+export const K4_FAST_RECONNECT_MS = 2000
+
 /**
  * @param {object} settings The signaling settings
  * @param {string|string[]} urls The url of the signaling server
@@ -641,6 +645,9 @@ function Standalone(settings, urls) {
 	this.initialReconnectIntervalMs = 1000
 	this.maxReconnectIntervalMs = 16000
 	this.reconnectIntervalMs = this.initialReconnectIntervalMs
+	// ket4tec (NAS_CLOUD#183): сеть вернулась — переподключиться сразу, а не через накопленную задержку
+	this._k4Online = () => this.k4Kick()
+	window.addEventListener('online', this._k4Online)
 	this.helloResponseErrorCount = 0
 	this.ownSessionJoined = false
 	this.joinedUsers = {}
@@ -660,7 +667,13 @@ Signaling.Standalone.prototype.reconnect = function() {
 
 	// Wiggle interval a little bit to prevent all clients from connecting
 	// simultaneously in case the server connection is interrupted.
-	const interval = this.reconnectIntervalMs - (this.reconnectIntervalMs / 2) + (this.reconnectIntervalMs * Math.random())
+	let interval = this.reconnectIntervalMs - (this.reconnectIntervalMs / 2) + (this.reconnectIntervalMs * Math.random())
+	// ket4tec (NAS_CLOUD#183): сервер держит сессию ~30 с после обрыва — всё это время стучимся часто, чтобы успеть resume.
+	// ponytail: одинаковый потолок у всех клиентов; при массовом обрыве сервера они придут разом в первые 30 с
+	this._k4DownAt ??= Date.now()
+	if (Date.now() - this._k4DownAt < K4_RESUME_WINDOW_MS) {
+		interval = Math.min(interval, K4_FAST_RECONNECT_MS)
+	}
 	console.info('Reconnect in', interval)
 	k4log('sig.reconnect', { in: Math.round(interval) })
 	calllog('signaling', { st: 'reconnect', ms: Math.round(interval) })
@@ -725,6 +738,7 @@ Signaling.Standalone.prototype.connect = function() {
 			this.signalingConnectionWarning = null
 		}
 		this.reconnectIntervalMs = this.initialReconnectIntervalMs
+		this._k4DownAt = null // ket4tec (NAS_CLOUD#183)
 		if (this.settings.helloAuthParams['2.0']) {
 			this.waitForWelcomeTimeout = setTimeout(this.welcomeTimeout.bind(this), this.welcomeTimeoutMs)
 		} else {
@@ -897,6 +911,7 @@ Signaling.Standalone.prototype.sendBye = function() {
 }
 
 Signaling.Standalone.prototype.disconnect = function() {
+	window.removeEventListener('online', this._k4Online) // ket4tec (NAS_CLOUD#183)
 	this.sendBye()
 	if (this.socket) {
 		this.socket.close()
@@ -926,8 +941,12 @@ Signaling.Standalone.prototype.k4Resume = function(cb) {
 		}
 	}
 	this.on('connect', this._k4ResumeCb)
-	if (this.reconnectTimer || !this.connected || !this.socket) {
-		return // переподключение уже идёт: ждём его hello
+	if (this.reconnectTimer) {
+		this.k4Kick() // переподключение ждёт задержку — стучимся сразу
+		return
+	}
+	if (!this.connected || !this.socket) {
+		return // соединение уже открывается: ждём его hello
 	}
 	const old = this.socket
 	old.onopen = old.onclose = old.onerror = old.onmessage = null // поздний onclose старого сокета не должен рвать новый
@@ -939,6 +958,18 @@ Signaling.Standalone.prototype.k4Resume = function(cb) {
 	this.socket = null
 	k4net.sigDown = true
 	this.connect()
+}
+
+/**
+ * ket4tec (NAS_CLOUD#183): сбросить накопленную задержку переподключения и, если сокет ждёт её, подключиться сейчас.
+ */
+Signaling.Standalone.prototype.k4Kick = function() {
+	this.reconnectIntervalMs = this.initialReconnectIntervalMs
+	if (this.reconnectTimer) {
+		clearTimeout(this.reconnectTimer)
+		this.reconnectTimer = null
+		this.connect()
+	}
 }
 
 Signaling.Standalone.prototype.forceReconnect = function(newSession, flags) {
