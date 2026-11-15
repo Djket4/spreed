@@ -3,6 +3,7 @@
  * Участник без связи → шум «NO SIGNAL» в его плитке; я без связи → одна общая плашка «Переподключаемся…».
  */
 import { reactive, ref } from 'vue'
+import { k4stats } from '../../../utils/k4stats.js'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 
 /**
@@ -21,6 +22,18 @@ export function peerLost(a) {
 	const disconnected = !connected && s !== ConnectionState.NEW && s !== ConnectionState.CHECKING
 	const reconnecting = !a.initialConnection && ((a.negotiating && !connected) || !!a.connecting)
 	return disconnected || reconnecting
+}
+
+/**
+ * ket4tec (NAS_CLOUD#183): участник пропал со связью — соединение потеряно, от него не идёт ни один заявленный поток
+ * (с HPB моё соединение идёт до сервера, а не до участника, и при его обрыве остаётся «connected»),
+ * или плитка уже держится после его ухода («призрак», webrtc.js).
+ *
+ * @param {object} a attributes модели участника
+ * @return {boolean}
+ */
+export function peerGone(a) {
+	return !!a?.k4ghost || peerLost(a) || !!k4stats.peers[a?.peerId]?.warn?.some((w) => w.w === 'stall')
 }
 
 /**

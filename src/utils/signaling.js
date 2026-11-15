@@ -905,6 +905,42 @@ Signaling.Standalone.prototype.disconnect = function() {
 	Signaling.Base.prototype.disconnect.apply(this, arguments)
 }
 
+/**
+ * ket4tec (NAS_CLOUD#183): смена сети — пересоздать сокет и возобновить ту же сессию (hello с resumeid), без нового входа.
+ * После смены адреса старый сокет часто «висит» (TCP молча мёртв) и не закрывается сам ещё десятки секунд, поэтому
+ * открытый сокет закрываем принудительно. Сигнальный сервер держит сессию ~30 с после обрыва: остальные никакого
+ * выхода не видят. cb вызывается после ответа hello, только если сессия та же (новая — штатный путь входа сам всё сделает).
+ *
+ * @param {Function} cb что сделать после возобновления (перезапуск ICE)
+ */
+Signaling.Standalone.prototype.k4Resume = function(cb) {
+	const sid = this.sessionId
+	if (this._k4ResumeCb) {
+		this.off('connect', this._k4ResumeCb)
+	}
+	this._k4ResumeCb = () => {
+		this.off('connect', this._k4ResumeCb)
+		this._k4ResumeCb = null
+		if (this.sessionId === sid) {
+			cb()
+		}
+	}
+	this.on('connect', this._k4ResumeCb)
+	if (this.reconnectTimer || !this.connected || !this.socket) {
+		return // переподключение уже идёт: ждём его hello
+	}
+	const old = this.socket
+	old.onopen = old.onclose = old.onerror = old.onmessage = null // поздний onclose старого сокета не должен рвать новый
+	try {
+		old.close()
+	} catch (e) {
+		// ignore
+	}
+	this.socket = null
+	k4net.sigDown = true
+	this.connect()
+}
+
 Signaling.Standalone.prototype.forceReconnect = function(newSession, flags) {
 	if (flags !== undefined) {
 		this.currentCallFlags = flags

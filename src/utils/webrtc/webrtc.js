@@ -9,14 +9,17 @@ import {
 } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { reactive } from 'vue'
+import { peerGone } from '../../components/CallView/shared/k4peer.js'
 import { PARTICIPANT } from '../../constants.ts'
 import store from '../../store/index.js'
 import { useActorStore } from '../../stores/actor.ts'
 import pinia from '../../stores/pinia.ts'
 import { useTokenStore } from '../../stores/token.ts'
 import { supportsRTCPeerConnection, supportsWebRTC } from '../browserCheck.ts'
+import { calllog } from '../calllog.js'
 import { k4log } from '../k4log.js'
 import { Sounds } from '../sounds.js'
+import { k4Ladder } from './k4reconnect.js'
 import { LocalStateBroadcasterMcu } from './LocalStateBroadcasterMcu.ts'
 import { LocalStateBroadcasterNoMcu } from './LocalStateBroadcasterNoMcu.ts'
 import SimpleWebRTC from './simplewebrtc/simplewebrtc.js'
@@ -27,7 +30,6 @@ const spreedPeerConnectionTable = []
 let previousUsersInRoom = []
 let usersInCallMapping = {}
 let ownPeer = null
-let k4FastAt = 0 // ket4tec: время последнего быстрого переподключения (k4FastReconnect)
 let ownScreenPeer = null
 let selfInCall = PARTICIPANT.CALL_FLAG.DISCONNECTED
 // Special variable to know when the local user explicitly joined and left the
@@ -42,6 +44,39 @@ const actorStore = useActorStore(pinia)
 const tokenStore = useTokenStore(pinia)
 
 let localStateBroadcaster
+
+const K4_HOLD_MS = 30000 // ket4tec (NAS_CLOUD#183): сколько держится плитка ушедшего со связью
+
+/**
+ * ket4tec (NAS_CLOUD#183): плитка-призрак того же участника (тот же actor), если держится.
+ *
+ * @param {object} user участник из сигналинга
+ * @return {object|undefined}
+ */
+function k4GhostOf(user) {
+	return user.actorId ? callParticipantCollection.callParticipantModels.find((m) => m.get('k4ghost') && m.get('actorType') === user.actorType && m.get('actorId') === user.actorId) : undefined
+}
+
+/**
+ * ket4tec (NAS_CLOUD#183): убрать все удержанные плитки (сам вышел из звонка).
+ */
+function k4DropGhosts() {
+	callParticipantCollection.callParticipantModels.filter((m) => m.get('k4ghost')).forEach((m) => {
+		clearTimeout(m.k4hold)
+		callParticipantCollection.remove(m.get('peerId'))
+	})
+}
+
+/**
+ * ket4tec (NAS_CLOUD#183): соединение установлено.
+ *
+ * @param {object} peer соединение
+ * @return {boolean}
+ */
+function k4PeerUp(peer) {
+	const s = peer?.pc?.iceConnectionState
+	return s === 'connected' || s === 'completed'
+}
 
 /**
  * @param {Array} a Source object
@@ -240,11 +275,17 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 		const nextcloudSessionId = user.nextcloudSessionId || user.nextcloudsessionid || sessionId
 
 		let callParticipantModel = callParticipantCollection.get(sessionId)
+		// ket4tec (NAS_CLOUD#183): вернулся тот, чья плитка держится, — та же модель или новая сессия в тот же слот, без звука входа
+		const k4back = callParticipantModel?.get('k4ghost') || k4GhostOf(user)
 		if (!callParticipantModel) {
 			callParticipantModel = callParticipantCollection.add({
 				peerId: sessionId,
 				webRtc: webrtc,
-			})
+			}, k4GhostOf(user))
+		}
+		if (callParticipantModel.get('k4ghost')) {
+			clearTimeout(callParticipantModel.k4hold)
+			callParticipantModel.set('k4ghost', false)
 		}
 		callParticipantModel.setActor(user.actorType, user.actorId)
 		callParticipantModel.setUserId(userId)
@@ -265,7 +306,7 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 			callParticipantModel.setPeer(null)
 		}
 
-		playJoinSound = true
+		playJoinSound ||= !k4back
 
 		const createPeer = function() {
 			const peer = webrtc.webrtc.createPeer({
@@ -335,15 +376,22 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 
 	disconnectedSessionIds.forEach(function(sessionId) {
 		console.debug('Remove disconnected peer', sessionId)
+		const model = callParticipantCollection.get(sessionId)
+		// ket4tec (NAS_CLOUD#183): ушёл со связью (поток уже стоял), а не по кнопке — плитка держится K4_HOLD_MS
+		const hold = model && !model.get('k4ghost') && selfInCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED && peerGone(model.attributes)
 		webrtc.removePeers(sessionId)
-
-		if (callParticipantCollection.remove(sessionId)) {
-			playLeaveSound = true
-		}
 
 		if (delayedConnectionToPeer[sessionId]) {
 			clearInterval(delayedConnectionToPeer[sessionId])
 			delete delayedConnectionToPeer[sessionId]
+			playLeaveSound ||= !hold
+		}
+
+		if (hold) {
+			k4log('peer.hold', { id: sessionId })
+			model.set('k4ghost', true)
+			model.k4hold = setTimeout(() => callParticipantCollection.remove(sessionId), K4_HOLD_MS)
+		} else if (!model?.get('k4ghost') && callParticipantCollection.remove(sessionId)) {
 			playLeaveSound = true
 		}
 	})
@@ -555,6 +603,8 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 
 		clearErrorNotification()
 		Sounds.playLeave(true)
+		k4ladder.stop() // ket4tec (NAS_CLOUD#183)
+		k4DropGhosts()
 
 		// The delayed connection for the own peer needs to be explicitly
 		// stopped, as the current own session is not passed along with the
@@ -698,9 +748,65 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	}
 
 	/**
-	 * ket4tec (слово владельца 11.11): быстрый возврат после обрыва. С HPB обрыв раньше лечился только по «failed» —
-	 * браузер объявляет его через ~10 с после «disconnected» (журнал iPhone: связь вернулась на 1,5 с, видео — на 20-й).
-	 * Теперь: соединение 2 с в «disconnected» — сразу новое подключение всех потоков (одно на всех, не чаще раза в 8 с).
+	 * ket4tec (NAS_CLOUD#183): MCU — подписку на поток участника начать заново (как штатно при «failed»).
+	 *
+	 * @param {object} peer входящее соединение
+	 */
+	function k4Resubscribe(peer) {
+		signaling.requestOffer(peer.id, peer.type)
+		clearInterval(delayedConnectionToPeer[peer.id])
+		delayedConnectionToPeer[peer.id] = setInterval(function() {
+			console.debug('No offer received, request offer again', peer.id, peer)
+			signaling.requestOffer(peer.id, peer.type)
+		}, 10000)
+	}
+
+	/**
+	 * ket4tec (NAS_CLOUD#183): лестница возврата своего канала с HPB. Раньше (11.11) каждый обрыв сразу вёл к входу
+	 * новой сессией: у остальных участник выходил и входил, а при смене адреса раз в 20–40 с — раз за разом.
+	 */
+	const k4ladder = k4Ladder({
+		up() {
+			if (signaling.connected === false) {
+				return false
+			}
+			if (ownPeer) {
+				return k4PeerUp(ownPeer)
+			}
+			// только смотрю: сеть моя жива, если жив хоть один входящий поток
+			const subs = webrtc.webrtc.peers.filter((p) => p !== ownScreenPeer)
+			return !subs.length || subs.some(k4PeerUp)
+		},
+		run(step) {
+			k4log('ice.fast', { how: ['restart', 'republish', 'rejoin'][step] })
+			calllog('reconnect_try', { step })
+			if (step === 2) {
+				forceReconnect(signaling)
+				return
+			}
+			const fix = function() {
+				for (const p of [ownPeer, ownScreenPeer]) {
+					if (!p || k4PeerUp(p)) {
+						continue
+					}
+					if (p === ownPeer && step === 1) {
+						// новое соединение в той же сессии (так же штатно переотправляется offer без ответа)
+						p.end()
+						checkStartPublishOwnPeer(signaling)
+					} else if (p.pc.signalingState === 'stable') {
+						p.icerestart()
+					}
+				}
+				webrtc.webrtc.peers.filter((p) => p !== ownPeer && p !== ownScreenPeer && !k4PeerUp(p)).forEach(k4Resubscribe)
+			}
+			signaling.k4Resume ? signaling.k4Resume(fix) : fix()
+		},
+	})
+
+	/**
+	 * ket4tec (слово владельца 11.11, NAS_CLOUD#183): быстрый возврат после обрыва. Браузер объявляет «failed» через
+	 * ~10 с после «disconnected», поэтому действуем через 2 с «disconnected».
+	 * HPB: свой поток — лестница k4ladder (resume + ICE restart); входящий при живом своём — только переподписка.
 	 * Без HPB — ICE restart так же через 2 с (ниже, в handleIceConnectionStateDisconnected — штатно через 5 с).
 	 *
 	 * @param {object} peer соединение, ушедшее в «disconnected»
@@ -718,13 +824,12 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 				}
 				return
 			}
-			const now = Date.now()
-			if (now - k4FastAt < 8000) {
-				return
+			if (peer === ownPeer || peer === ownScreenPeer || !ownPeer) {
+				k4ladder.go()
+			} else if (k4PeerUp(ownPeer)) {
+				k4Resubscribe(peer) // свой канал жив — пропал только этот поток
 			}
-			k4FastAt = now
-			k4log('ice.fast', { id: peer === ownPeer ? 'local' : peer.id, how: 'reconnect' })
-			forceReconnect(signaling)
+			// свой тоже не соединён — его таймер сам запустит лестницу, переподписка будет после resume
 		}, 2000)
 	}
 
@@ -736,6 +841,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 		if (spreedPeerConnectionTable[peer.id] > 0) {
 			spreedPeerConnectionTable[peer.id] = 0
 		}
+		k4ladder.ok() // ket4tec (NAS_CLOUD#183)
 	}
 
 	/**
@@ -803,15 +909,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			// the sender peer are handled in the "iceFailed" event.
 			console.debug('Request offer again', peer.id, peer)
 
-			signaling.requestOffer(peer.id, 'video')
-
-			clearInterval(delayedConnectionToPeer[peer.id])
-
-			delayedConnectionToPeer[peer.id] = setInterval(function() {
-				console.debug('No offer received, request offer again', peer.id, peer)
-
-				signaling.requestOffer(peer.id, 'video')
-			}, 10000)
+			k4Resubscribe(peer)
 		}
 	}
 
@@ -902,6 +1000,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 				case 'connected':
 				case 'completed':
 					console.debug('Connection established (own peer).', peer.id, peer)
+					k4ladder.ok() // ket4tec (NAS_CLOUD#183)
 
 					break
 				case 'disconnected':
@@ -1403,7 +1502,8 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 
 		// For now assume the connection to the MCU is interrupted on ICE
 		// failures and force a reconnection of all streams.
-		forceReconnect(signaling)
+		// ket4tec (NAS_CLOUD#183): не сразу новой сессией, а по лестнице (resume + ICE restart → новое соединение → новая сессия)
+		k4ladder.go()
 	})
 
 	let localStreamRequestedTimeout = null

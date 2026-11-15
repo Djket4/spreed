@@ -169,7 +169,7 @@
 
 		<!-- ket4tec (NAS_CLOUD#195 п.7): связь пропала у меня — один общий знак поверх приглушённого звонка -->
 		<div v-if="k4SelfLost" class="k4-selflost-veil">
-			<K4Reconnect title="Переподключаемся…" sub="Связь пропала у вас. Звонок вернётся сам" />
+			<K4Reconnect title="Связь прервалась, возвращаю…" sub="Микрофон, камера и показ экрана вернутся как были" />
 		</div>
 
 		<!-- ket4tec (NAS_CLOUD#154): просьба организатора включить микрофон -->
@@ -216,6 +216,7 @@ import { EventBus } from '../../services/EventBus.ts'
 import { LOW_SCREEN, stripeOpenForced, useCallViewStore } from '../../stores/callView.ts'
 import { useParticipantActivityStore } from '../../stores/participantActivity.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
+import { calllog } from '../../utils/calllog.js'
 import { k4log } from '../../utils/k4log.js'
 import { callParticipantCollection, localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
 import RemoteVideoBlocker from '../../utils/webrtc/RemoteVideoBlocker.js'
@@ -326,6 +327,7 @@ export default {
 			k4net, // ket4tec (NAS_CLOUD#195)
 			k4offline: !navigator.onLine,
 			k4localWas: false,
+			k4downAt: null,
 			screens: [],
 			sharedDatas: {},
 			raisedHandUnwatchers: {},
@@ -623,6 +625,14 @@ export default {
 			immediate: true,
 			handler(v) {
 				k4net.selfLost = v
+				// ket4tec (NAS_CLOUD#183): длительность провала в журнал звонка; same=1 — вернулись той же сессией (resume)
+				const peerId = this.localCallParticipantModel.attributes.peerId
+				if (v) {
+					this.k4downAt = { t: Date.now(), peerId }
+				} else if (this.k4downAt) {
+					calllog('reconnect', { ms: Date.now() - this.k4downAt.t, same: this.k4downAt.peerId === peerId ? 1 : 0 })
+					this.k4downAt = null
+				}
 			},
 		},
 

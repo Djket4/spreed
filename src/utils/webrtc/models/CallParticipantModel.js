@@ -56,6 +56,8 @@ export function CallParticipantModel(options) {
 			state: false,
 			timestamp: null,
 		},
+		// ket4tec (NAS_CLOUD#183): участник ушёл со связью, плитка держится до его возврата или до таймера
+		k4ghost: false,
 	})
 
 	this.set('peerId', options.peerId)
