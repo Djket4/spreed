@@ -11,7 +11,7 @@ import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { useResizeObserver } from '@vueuse/core'
 import debounce from 'debounce'
-import { computed, onMounted, onUnmounted, ref, toValue, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toValue, useTemplateRef, watch } from 'vue'
 import { useStore } from 'vuex'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActions from '@nextcloud/vue/components/NcActions'
@@ -37,6 +37,7 @@ import {
 	useDocumentFullscreen,
 } from '../../composables/useDocumentFullscreen.ts'
 import { useGetToken } from '../../composables/useGetToken.ts'
+import { useIsInCall } from '../../composables/useIsInCall.js'
 import { ATTENDEE, CONVERSATION } from '../../constants.ts'
 import {
 	getTalkConfig,
@@ -49,6 +50,7 @@ import { useSettingsStore } from '../../stores/settings.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts' // ket4tec: k4stk
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
+import { appPost, inApp, openMac } from './k4draw/macBridge.js' // ket4tec: k4draw, звонок в приложении (NAS_CLOUD#177)
 import { boardBtn, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
 import { state as k4stk, canUse as k4stkCan } from './k4stk/useStickers.js' // ket4tec: k4stk
 
@@ -475,6 +477,21 @@ async function disableLiveTranslation() {
 	languageType.value = LanguageType.Original
 }
 
+// ket4tec: k4draw. Звонок в приложении K4Draw: вход и выход сообщаем приложению, «Мини» прячет окно звонка
+const k4InCall = useIsInCall()
+const k4Mini = computed(() => inApp && !isSidebar && k4InCall.value)
+if (inApp && !isSidebar) {
+	watch(k4InCall, (v, old) => (v || old) && appPost(v ? 'incall' : 'left'), { immediate: true })
+	onUnmounted(() => appPost('left'))
+}
+/**
+ * «Мини»: приложение прячет окно звонка, мост поднимает камеры и панель.
+ */
+function k4MiniTap() {
+	appPost('mini')
+	openMac()
+}
+
 // ket4tec: k4draw. Меню «Вид» — только сетка и докладчик: доска общая и локально не прячется (правило 11.11)
 const viewValue = computed(() => callLayout.value)
 const showViewMenu = computed(() => !isSidebar && showCallLayoutSwitch.value)
@@ -514,6 +531,15 @@ function setCallLayout(layout: CallLayout) {
 		<DrawDock v-if="!isSidebar && k4draw.mode" />
 		<MacMissing v-if="!isSidebar" />
 		<div v-if="!isSidebar" class="bottom-bar-call-controls">
+			<!-- ket4tec: k4draw. Только в приложении K4Draw (NAS_CLOUD#177) -->
+			<NcButton
+				v-if="k4Mini"
+				variant="tertiary"
+				title="Свернуть звонок в мини"
+				aria-label="Мини"
+				@click="k4MiniTap">
+				Мини
+			</NcButton>
 			<!-- Fullscreen -->
 			<NcButton
 				v-if="isActionAvailableMask.fullscreen && !hidingList.fullscreen"

@@ -29,6 +29,33 @@ export const mac = reactive({ st: 'idle' })
 export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', allow: 'Подключаю…', denied: 'Рисовать на экране', unverified: 'Рисовать на экране', blocked: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
 
+/** Страница открыта внутри приложения K4Draw (его WKWebView; NAS_CLOUD#177) */
+export const inApp = /\bK4Draw\//.test(navigator.userAgent)
+/**
+ * Сообщение приложению: mini | browser | left | incall.
+ *
+ * @param t тип
+ */
+export const appPost = (t) => window.webkit?.messageHandlers?.k4draw?.postMessage({ t })
+/**
+ * Ссылка «Открыть звонок в приложении».
+ *
+ * @param token токен беседы
+ */
+export const appCallUrl = (token) => 'k4draw://call?u=' + encodeURIComponent(location.origin + '/call/' + token)
+/**
+ * Открыть звонок в приложении: скрытый iframe, страница не уходит. Есть ли приложение, отсюда не узнать.
+ *
+ * @param token токен беседы
+ */
+export function openInApp(token) {
+	const f = document.createElement('iframe')
+	f.style.display = 'none'
+	f.src = appCallUrl(token)
+	document.body.appendChild(f)
+	setTimeout(() => f.remove(), 3000)
+}
+
 let pop = null
 let off = null
 let timer = 0
@@ -392,7 +419,7 @@ function openBridge() {
 		return
 	}
 	mac.st = 'wait'
-	retry()
+	!inApp && retry() // в приложении ответ приходит сам
 }
 
 /** Плашка «Приложение не найдено»: закрыть. */
@@ -437,7 +464,7 @@ export async function openMac() {
 	mac.st = 'wait'
 	const g = gen
 	try {
-		const first = await pingApp()
+		const first = inApp ? 'ok' : await pingApp() // в приложении fetch к 127.0.0.1 из https блокируется, окно моста — сразу
 		if (stale(g)) {
 			return
 		}
