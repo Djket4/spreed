@@ -5,7 +5,7 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mediaDevicesManager } from '../../webrtc/index.js'
-import MediaDevicesSource from './MediaDevicesSource.js'
+import MediaDevicesSource, { START_VIDEO_CONSTRAINTS } from './MediaDevicesSource.js'
 
 /**
  * Helper function to create MediaStreamTrack mocks with just the attributes and
@@ -226,15 +226,42 @@ describe('MediaDevicesSource', () => {
 				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
 					throw new Error('Audio could not be got')
 				})
+				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
+					throw new Error('Video could not be got')
+				})
 
 				expect.hasAssertions()
 
-				return mediaDevicesSource.start(retryNoVideoCallback).catch(() => {
+				return mediaDevicesSource.start(retryNoVideoCallback).catch((error) => {
 					assertStateAfterStart()
 
-					expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(2)
+					expect(error).toEqual(new Error('Audio could not be got'))
+					expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(3)
 					expect(retryNoVideoCallback).toHaveBeenCalledTimes(1)
 					expect(retryNoVideoCallback).toHaveBeenCalledWith(new Error('Audio and video could not be got'))
+				})
+			})
+
+			// ket4tec NAS_CLOUD#98
+			test('when there are audio and video devices but the microphone could not be got', () => {
+				getUserMediaAudioTrack = newMediaStreamTrackMock('audio', 'audio')
+				getUserMediaVideoTrack = newMediaStreamTrackMock('video', 'video')
+
+				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
+					throw new Error('Permission denied by system')
+				})
+				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
+					throw new Error('Permission denied by system')
+				})
+
+				expectedVideoTrack = getUserMediaVideoTrack
+
+				return mediaDevicesSource.start(retryNoVideoCallback).then(() => {
+					assertStateAfterStart()
+
+					expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(3)
+					expect(mediaDevicesManager.getUserMedia).toHaveBeenLastCalledWith(expect.objectContaining({ audio: false }))
+					expect(retryNoVideoCallback).not.toHaveBeenCalled()
 				})
 			})
 
@@ -941,5 +968,16 @@ describe('MediaDevicesSource', () => {
 			expect(mediaDevicesManager.off).toHaveBeenNthCalledWith(1, 'change:audioInputId', mediaDevicesSource._handleAudioInputIdChangedBound)
 			expect(mediaDevicesManager.off).toHaveBeenNthCalledWith(2, 'change:videoInputId', mediaDevicesSource._handleVideoInputIdChangedBound)
 		})
+	})
+
+	// NAS_CLOUD#239: вне Chromium камера сразу открывается в размере качества HIGH, без второго скачка
+	test('стартовые ограничения видео вне Chromium = HIGH без нижних границ', () => {
+		const constraints = { audio: true, video: true }
+		new MediaDevicesSource()._adjustVideoConstraintsForChromium(constraints)
+		expect(constraints.video).toEqual(START_VIDEO_CONSTRAINTS)
+		expect(constraints.video.width.min).toBeUndefined()
+		const off = { video: false }
+		new MediaDevicesSource()._adjustVideoConstraintsForChromium(off)
+		expect(off.video).toBe(false)
 	})
 })

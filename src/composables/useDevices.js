@@ -9,7 +9,9 @@ import { computed, markRaw, onScopeDispose, ref, watch } from 'vue'
 import { PARTICIPANT } from '../constants.ts'
 import { useSoundsStore } from '../stores/sounds.js'
 import attachMediaStream from '../utils/attachmediastream.js'
+import { isChromium } from '../utils/browserCheck.ts'
 import FaceFrame from '../utils/media/pipeline/FaceFrame.js'
+import { START_VIDEO_CONSTRAINTS } from '../utils/media/pipeline/MediaDevicesSource.js'
 import TrackToStream from '../utils/media/pipeline/TrackToStream.js'
 import VirtualBackground from '../utils/media/pipeline/VirtualBackground.js'
 import { callParticipantsAudioPlayer, mediaDevicesManager } from '../utils/webrtc/index.js'
@@ -582,7 +584,8 @@ export const useDevices = createSharedComposable(function() {
 
 		pendingGetUserMediaVideoCount = 1
 
-		mediaDevicesManager.getUserMedia({ video: true })
+		// ket4tec (NAS_CLOUD#239): тот же размер, что у камеры звонка, — на iPhone при входе в звонок кадр не перестраивается
+		mediaDevicesManager.getUserMedia({ video: isChromium ? true : { ...START_VIDEO_CONSTRAINTS } })
 			.then((stream) => {
 				videoStreamError.value = null
 				if (cameraNotice.value) {

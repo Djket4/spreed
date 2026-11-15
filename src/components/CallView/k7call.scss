@@ -49,6 +49,11 @@ $glass: blur(24px) saturate(180%);
 #call-container :is(.video-container, .localVideoContainer):not(.presenter-overlay)::after { border-radius: var(--k7-r-tile); }
 #call-container :is(.video-container, .localVideoContainer).speaking::after { content: ''; box-shadow: inset 0 0 0 3px var(--k7-acc); }
 #call-container .video-container.hover::after { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--k7-acc) 70%, #fff); }
+// ket4tec (NAS_CLOUD#239): своя плитка — без белой рамки наведения (на iPhone тап «залипал» белой каймой по краю)
+// и с фоном плитки под <video>: пока камера стартует или меняет размер кадра, под видео не проступает светлый фон
+#call-container .localVideoContainer.hover-shadow::after { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--k7-acc) 70%, #fff); }
+@media (hover: none) { #call-container .localVideoContainer.hover-shadow:not(.speaking)::after { box-shadow: none; } }
+#call-container .localVideoContainer :is(.videoWrapper, video) { background: var(--k7-bg3); }
 // ket4tec (слово владельца 11.11): подпись плитки — «нижняя треть», как в ТВ: тёмная плашка с полосой фирменного градиента слева,
 // имя крупно и жирно; размер от ширины плитки (контейнер — полоса подписи во всю ширину плитки)
 #call-container :is(.wrapper, .localVideoContainer > .bottom-bar) { container-type: inline-size; }
