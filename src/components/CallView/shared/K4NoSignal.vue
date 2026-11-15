@@ -8,12 +8,16 @@
 <template>
 	<div class="k4-nosig" role="status" :aria-label="label">
 		<span class="k4-nosig__osd" aria-hidden="true">NO SIGNAL</span>
+		<!-- ket4tec (NAS_CLOUD#183): подпись под табло, если передана -->
+		<span v-if="caption" class="k4-nosig__cap" aria-hidden="true">{{ label }}</span>
 	</div>
 </template>
 
 <script setup>
 defineProps({
 	label: { type: String, default: 'Нет связи' },
+	/** показать label текстом под табло (плитка участника), а не только для экранного диктора */
+	caption: { type: Boolean, default: false },
 })
 </script>
 
@@ -61,6 +65,19 @@ defineProps({
 	color: #fff;
 	font: 700 clamp(9px, 9.5cqi, 26px)/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 	letter-spacing: .16em;
+	white-space: nowrap;
+}
+
+.k4-nosig__cap {
+	position: absolute;
+	z-index: 1;
+	inset: auto 8px 10%;
+	text-align: center;
+	color: #fff;
+	font: 600 clamp(10px, 5cqi, 15px)/1.2 var(--font-face, system-ui, sans-serif);
+	text-shadow: 0 1px 3px #000c;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 

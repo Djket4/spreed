@@ -28,7 +28,21 @@ export type OrderingModel = {
 		videoAvailable?: boolean
 		audioAvailable?: boolean
 		speaking?: boolean
+		/** ket4tec (NAS_CLOUD#183): плитка держится после обрыва; k4video — была ли с камерой */
+		k4ghost?: boolean
+		k4video?: boolean
+		/** ket4tec (NAS_CLOUD#183): ключ места от прежней сессии того же участника */
+		k4slot?: string | null
 	}
+}
+
+/**
+ * Ключ места плитки в порядке сетки: вернувшийся новой сессией участник сохраняет место прежней.
+ *
+ * @param model the participant model
+ */
+function keyOf(model: OrderingModel): string {
+	return model.attributes.k4slot || model.attributes.nextcloudSessionId
 }
 
 type UseTileOrderingOptions = {
@@ -85,6 +99,9 @@ export function useTileOrdering({
 	 * @param callParticipantModel the participant model
 	 */
 	function isModelWithVideo(callParticipantModel: OrderingModel): boolean {
+		if (callParticipantModel.attributes.k4ghost) {
+			return !!callParticipantModel.attributes.k4video
+		}
 		return !!callParticipantModel.attributes.videoAvailable
 			&& callParticipantModel.attributes.stream !== null
 			&& (typeof callParticipantModel.attributes.stream === 'object')
@@ -149,12 +166,12 @@ export function useTileOrdering({
 		callParticipantModels.value.forEach((model) => {
 			if (screensSet.has(model.attributes.peerId)) {
 				objectMap.modelsWithScreenshare.push(model)
-			} else if (tempPromotedSessionIds.value.has(model.attributes.nextcloudSessionId)) {
+			} else if (tempPromotedSessionIds.value.has(keyOf(model))) {
 				objectMap.modelsTempPromoted.push(model)
 			} else if (isModelWithVideo(model)) {
-				videoTilesMap.set(model.attributes.nextcloudSessionId, model)
+				videoTilesMap.set(keyOf(model), model)
 			} else if (participantsInitialised.value && isModelWithAudio(model)) {
-				audioTilesMap.set(model.attributes.nextcloudSessionId, model)
+				audioTilesMap.set(keyOf(model), model)
 			} else {
 				objectMap.modelsWithNoPermissions.push(model)
 			}
@@ -183,7 +200,7 @@ export function useTileOrdering({
 	 * @param model the speaker model to promote
 	 */
 	function promoteSpeaker(model: OrderingModel) {
-		const id = model.attributes.nextcloudSessionId
+		const id = keyOf(model)
 
 		if (slots.value <= 0) {
 			// Nothing to promote
@@ -191,7 +208,7 @@ export function useTileOrdering({
 		}
 
 		// if model is already in the first page, do nothing
-		if (orderedParticipantModels.value.slice(0, slots.value).find((video) => video.attributes.nextcloudSessionId === id)) {
+		if (orderedParticipantModels.value.slice(0, slots.value).find((video) => keyOf(video) === id)) {
 			return
 		}
 
@@ -220,7 +237,7 @@ export function useTileOrdering({
 	const promotedSessionIdsWithAudioOff = computed(() => {
 		const sessionIdsWithAudio = new Set(callParticipantModels.value
 			.filter(({ attributes }) => attributes.audioAvailable)
-			.map(({ attributes }) => attributes.nextcloudSessionId))
+			.map(keyOf))
 		// All that aren't in Set - muted or disconnected
 		return [...tempPromotedSessionIds.value].filter((id) => !sessionIdsWithAudio.has(id))
 	})
@@ -228,8 +245,8 @@ export function useTileOrdering({
 	watch(speakers, (models) => {
 		models.forEach((model) => {
 			promoteSpeaker(model)
-			clearTimeout(unpromoteSpeakerTimer[model.attributes.nextcloudSessionId])
-			delete unpromoteSpeakerTimer[model.attributes.nextcloudSessionId]
+			clearTimeout(unpromoteSpeakerTimer[keyOf(model)])
+			delete unpromoteSpeakerTimer[keyOf(model)]
 		})
 	})
 

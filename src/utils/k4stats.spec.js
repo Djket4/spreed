@@ -82,10 +82,20 @@ describe('classify', () => {
 		expect(r[4].changes).toEqual([{ w: 'rtt', lvl: 'red', on: 0 }])
 	})
 
-	it('обрыв, нет видео/звука, рывки, свой канал', () => {
+	it('обрыв, нет видео/звука, рывки, свой канал, поток встал', () => {
 		const flags = { conn: 'failed', videoAvailable: true, audioAvailable: true, own: 'red' }
 		const r = run([{ ...base, ab: 0, vb: 0, fps: 5 }, { ...base, ab: 0, vb: 0, fps: 5 }], flags)
-		expect(r[1].warn.map((x) => x.w).sort()).toEqual(['drop', 'fps', 'noaudio', 'novideo', 'own'])
+		expect(r[1].warn.map((x) => x.w).sort()).toEqual(['drop', 'fps', 'noaudio', 'novideo', 'own', 'stall'])
+	})
+
+	it('stall (NAS_CLOUD#183): встали все включённые потоки; заблокированное видео и выключенное не считаются; гаснет с первым байтом', () => {
+		const zero = { ...base, ab: 0, vb: 0 }
+		const r = run([zero, zero, base], { audioAvailable: true, videoAvailable: true })
+		expect(r[1].warn.map((x) => x.w)).toContain('stall')
+		expect(r[2].warn.map((x) => x.w)).not.toContain('stall')
+		const onlyAudio = { ...base, vb: 0 }
+		expect(run([onlyAudio, onlyAudio], { audioAvailable: true, videoAvailable: true, videoBlocked: true })[1].warn.map((x) => x.w)).not.toContain('stall')
+		expect(run([zero, zero], { audioAvailable: false, videoAvailable: false })[1].warn.map((x) => x.w)).not.toContain('stall')
 	})
 
 	it('Safari (null) не даёт предупреждений', () => {

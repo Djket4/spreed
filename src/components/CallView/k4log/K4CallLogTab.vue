@@ -32,8 +32,9 @@ import { useGetToken } from '../../../composables/useGetToken.ts'
 
 const MAX = 500
 const EVERY = 3000
-const BAD = ['rtc_warn', 'join_blocked', 'gum_err', 'js_error']
-const WARN = { drop: 'обрыв', loss: 'потери', rtt: 'задержка', jit: 'дрожание звука', novideo: 'нет видео', noaudio: 'нет звука', fps: 'видео рывками', own: 'свой канал' }
+const BAD = ['rtc_warn', 'join_blocked', 'gum_err', 'js_error', 'reconnect']
+const STEP = ['возобновление сессии и перезапуск ICE', 'новые соединения в той же сессии', 'вход новой сессией']
+const WARN = { drop: 'обрыв', loss: 'потери', rtt: 'задержка', jit: 'дрожание звука', novideo: 'нет видео', noaudio: 'нет звука', fps: 'видео рывками', own: 'свой канал', stall: 'поток встал' }
 const SIG = { open: 'соединение с сервером звонков установлено', close: 'соединение с сервером звонков закрыто', error: 'ОШИБКА соединения с сервером звонков', reconnect: 'переподключение к серверу звонков' }
 const mbit = (k) => (k / 1000).toFixed(1).replace('.', ',') + ' Мбит/с'
 const has = (v) => v !== undefined && v !== null
@@ -68,6 +69,8 @@ const TEXT = {
 		return `путь соединения с ${d.peer}: ${how}` + (d.proto ? ', ' + d.proto : '')
 	},
 	rtc_warn: (d) => `${d.lvl === 'red' ? 'ПРЕДУПРЕЖДЕНИЕ' : 'предупреждение'} связи с ${d.peer}: ${WARN[d.w] || d.w}` + (d.on ? '' : ' — прошло'),
+	reconnect: (d) => `связь вернулась после провала ${Math.round(d.ms / 100) / 10} с` + (d.same ? ' (та же сессия)' : ' (новая сессия)'),
+	reconnect_try: (d) => `переподключение, шаг ${d.step + 1}: ${STEP[d.step] || d.step}`,
 	board_open: (d) => 'открыта доска' + (d.own ? ' (своя)' : ''),
 	board_close: () => 'доска закрыта',
 	draw_mode: (d) => 'режим рисования ' + (d.on ? 'включён' : 'выключен'),
@@ -75,7 +78,11 @@ const TEXT = {
 	session: () => 'сессия получена, события до входа относятся к ней',
 }
 
-/** `d` из Redis может прийти как [] вместо {} */
+/**
+ * `d` из Redis может прийти как [] вместо {}
+ *
+ * @param e
+ */
 const dOf = (e) => (e.d && typeof e.d === 'object' && !Array.isArray(e.d) ? e.d : {})
 
 export default {

@@ -70,7 +70,7 @@ import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
-import { k4net, peerLost, phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
+import { k4net, peerGone, phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
 import { bgUrl, canDraw, humans, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
 
 const token = useGetToken()
@@ -89,7 +89,7 @@ const people = computed(() => {
 		const name = a.name || pp?.displayName || 'Участник'
 		const id = a.actorId || pp?.actorId
 		const type = a.actorType || pp?.actorType
-		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, audio: a.stream, on: a.audioAvailable !== false, seed: id && type ? type + '/' + id : name, speaking: a.speaking, lost: peerLost(a) })
+		out.push({ id: a.peerId, name, stream: a.videoAvailable && !a.videoBlocked && a.stream, audio: a.stream, on: a.audioAvailable !== false, seed: id && type ? type + '/' + id : name, speaking: a.speaking, lost: peerGone(a) })
 	})
 	return out.length > 1 ? out : []
 })
