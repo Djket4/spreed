@@ -441,6 +441,32 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 		expect(pcs[0].trs).toHaveLength(2)
 	})
 
+	it('смена камеры во время незавершённого resume: итог active=true, масштаб пересчитан', async () => {
+		const m = remote('p1')
+		H.models.push(m)
+		await tick()
+		await answer()
+		await mod.consoleRtc({ pause: 1 })
+		const sender = pcs[0].trs[1].sender
+		let applied = structuredClone(sender.pars)
+		const pend = []
+		sender.getParameters = () => structuredClone(applied)
+		sender.setParameters = vi.fn((p) => new Promise((r) => pend.push(() => { applied = p; r() })))
+		const b = mod.consoleRtc({ resume: 1 })
+		await flush()
+		const t2 = mkTrack()
+		t2.getSettings = () => ({ width: 1280, height: 720 })
+		m.set(t2)
+		await tick()
+		while (pend.length) {
+			pend.shift()()
+			await flush()
+		}
+		await b
+		expect(applied.encodings[0].active).toBe(true)
+		expect(applied.encodings[0].scaleResolutionDownBy).toBe(3)
+	})
+
 	it('replaceTrack отказал: transceiver пересоздаётся, новый offer', async () => {
 		const m = remote('p1')
 		H.models.push(m)

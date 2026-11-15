@@ -141,6 +141,10 @@ function onCmd(d) {
 	const s = show()
 	const x = num(d.x)
 	const y = num(d.y)
+	if (d.t === 'hi') {
+		// окно моста проверяет, что его открыл звонок с разрешённого адреса, и только потом подключается к приложению
+		return send({ t: 'hi' })
+	}
 	if (d.t === 'ready') {
 		clearTimeout(timer)
 		mac.st = 'on'

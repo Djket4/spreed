@@ -131,6 +131,7 @@ let cool = 0 // не предлагать видео до (после любог
 const COOL = 30000 // пауза после собственного bye (сбой, таймаут): приложение в это время и так на v2
 let down = 0 // таймер «disconnected дольше 3 с»
 let unLeave = null // отписка от leaveCall
+let actQ = Promise.resolve() // изменения параметров отправителей по очереди: getParameters до завершения setParameters отдаёт старое
 
 const rtcMid = (id) => trs.get(id)?.mid ?? null
 
@@ -298,11 +299,17 @@ function swapSrc(id, t) {
 	const clone = e.clone
 	const p = pc
 	e.tr.sender.replaceTrack(clone).then(() => {
-		const par = e.tr.sender.getParameters()
-		if (pc === p && par.encodings?.[0]) {
-			par.encodings[0].scaleResolutionDownBy = enc(clone).scaleResolutionDownBy
-			return e.tr.sender.setParameters(par)
-		}
+		// параметры отправителя — только через очередь actQ: иначе запись масштаба вернула бы старое active
+		const job = actQ.then(() => {
+			const par = e.tr.sender.getParameters()
+			if (pc === p && e.clone === clone && par.encodings?.[0]) {
+				par.encodings[0].scaleResolutionDownBy = enc(clone).scaleResolutionDownBy
+				par.encodings[0].active = !paused
+				return e.tr.sender.setParameters(par)
+			}
+		})
+		actQ = job.catch(() => {})
+		return job
 	}).catch(() => {
 		if (pc === p && trs.get(id) === e) {
 			dropTr(id)
@@ -359,8 +366,6 @@ function rtcSync(on) {
 		closeRtc(true) // answer не пришёл: приложение само вернётся на v2
 	}
 }
-
-let actQ = Promise.resolve() // pause / resume по очереди: getParameters до завершения setParameters отдаёт старое
 
 /**
  * Применить актуальное `paused` ко всем отправителям, после предыдущего применения.
