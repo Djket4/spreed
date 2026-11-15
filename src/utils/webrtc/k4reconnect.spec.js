@@ -3,7 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { K4_WAIT, k4Hold, k4Ladder, k4OfferKey, k4OwnAction, k4StopOnLeave, k4Up } from './k4reconnect.js'
+import { K4_AFTER_ONLINE_MS, K4_HOLD_CHECK_MS, K4_SESSION_HOLD_MS, K4_WAIT, k4CanRejoin, k4Hold, k4Ladder, k4OfferKey, k4OwnAction, k4StopOnLeave, k4Up } from './k4reconnect.js'
 
 describe('k4Ladder (NAS_CLOUD#183)', () => {
 	let isUp
@@ -143,5 +143,35 @@ describe('прогон 15.11, обрыв 8 с: живое не рвём', () => 
 		expect(k4OwnAction(1, 'failed')).toBe('recreate')
 		expect(k4OwnAction(0, 'failed')).toBe('restart')
 		expect(k4OwnAction(1, 'connected')).toBe('skip')
+	})
+})
+
+describe('прогон 15.11 №2, ice 15 с: вход новой сессией не раньше возврата сети', () => {
+	beforeEach(() => vi.useFakeTimers())
+	afterEach(() => vi.useRealTimers())
+
+	test('step 2 waits while hold() says so, runs once released; steps 0 and 1 are not held', () => {
+		let held = true
+		const run = vi.fn()
+		const hold = vi.fn((s) => s === 2 && held)
+		const l = k4Ladder({ up: () => false, run, hold })
+		l.go()
+		vi.advanceTimersByTime(K4_WAIT[0] + K4_WAIT[1] + 10 * K4_HOLD_CHECK_MS)
+		expect(run.mock.calls.map((c) => c[0])).toEqual([0, 1])
+		held = false
+		vi.advanceTimersByTime(K4_HOLD_CHECK_MS)
+		expect(run.mock.calls.map((c) => c[0])).toEqual([0, 1, 2])
+		// hold получает время от начала обрыва
+		expect(hold.mock.calls.at(-1)[1]).toBe(K4_WAIT[0] + K4_WAIT[1] + 11 * K4_HOLD_CHECK_MS)
+	})
+
+	test('k4CanRejoin: not offline, not right after online, not while the server still holds the session', () => {
+		const ok = { online: true, sinceOnline: Infinity, sinceDrop: 40000, sigUp: false }
+		expect(k4CanRejoin(ok)).toBe(true)
+		expect(k4CanRejoin({ ...ok, online: false })).toBe(false)
+		expect(k4CanRejoin({ ...ok, sinceOnline: K4_AFTER_ONLINE_MS - 1 })).toBe(false)
+		expect(k4CanRejoin({ ...ok, sinceDrop: 13000 })).toBe(false) // как в прогоне: +13 с, сокет ещё не вернулся
+		expect(k4CanRejoin({ ...ok, sinceDrop: 13000, sigUp: true })).toBe(true) // resume был, но медиа не вернулось
+		expect(k4CanRejoin({ ...ok, sinceDrop: K4_SESSION_HOLD_MS })).toBe(true)
 	})
 })

@@ -617,6 +617,27 @@ Signaling.Internal.prototype._joinCallSuccess = function(token) {
 // ket4tec (NAS_CLOUD#183): окно, пока сервер держит сессию для resume, и потолок задержки переподключения в нём
 export const K4_RESUME_WINDOW_MS = 30000
 export const K4_FAST_RECONNECT_MS = 2000
+// после окна, пока мы в звонке, — не реже раза в 5 с (прогон 15.11: на 31-й с прыжок до 15,8 с, возврат через 17,5 с)
+export const K4_CALL_RECONNECT_MS = 5000
+// сокет не открылся за это время — попытка зависла (потерянный SYN ждёт ретрансмита ядра до 15 с), начать заново
+export const K4_OPEN_TIMEOUT_MS = 4000
+
+/**
+ * ket4tec (NAS_CLOUD#183): потолок задержки переподключения сигнального сокета. Джиттер оставлен, чтобы при падении
+ * сигнального сервера клиенты не приходили разом.
+ *
+ * @param {number} interval задержка по штатному backoff
+ * @param {number} downFor сколько длится обрыв
+ * @param {boolean} inCall мы в звонке
+ * @param {number} [rnd] случайное 0..1
+ * @return {number}
+ */
+export function k4ReconnectCap(interval, downFor, inCall, rnd = Math.random()) {
+	if (downFor < K4_RESUME_WINDOW_MS) {
+		return Math.min(interval, K4_FAST_RECONNECT_MS * (0.5 + 0.5 * rnd)) // 1–2 с: успеть resume
+	}
+	return inCall ? Math.min(interval, K4_CALL_RECONNECT_MS * (0.6 + 0.4 * rnd)) : interval // 3–5 с
+}
 
 /**
  * @param {object} settings The signaling settings
@@ -671,9 +692,7 @@ Signaling.Standalone.prototype.reconnect = function() {
 	// ket4tec (NAS_CLOUD#183): сервер держит сессию ~30 с после обрыва — всё это время стучимся часто, чтобы успеть resume.
 	// ponytail: одинаковый потолок у всех клиентов; при массовом обрыве сервера они придут разом в первые 30 с
 	this._k4DownAt ??= Date.now()
-	if (Date.now() - this._k4DownAt < K4_RESUME_WINDOW_MS) {
-		interval = Math.min(interval, K4_FAST_RECONNECT_MS)
-	}
+	interval = k4ReconnectCap(interval, Date.now() - this._k4DownAt, !!this.currentCallToken)
 	console.info('Reconnect in', interval)
 	k4log('sig.reconnect', { in: Math.round(interval) })
 	calllog('signaling', { st: 'reconnect', ms: Math.round(interval) })
@@ -724,6 +743,24 @@ Signaling.Standalone.prototype.connect = function() {
 	this._isRejoiningConversationWithNewSession = false
 	this.socket = new WebSocket(this.url)
 	window.signalingSocket = this.socket
+	// ket4tec (NAS_CLOUD#183, прогон 15.11): попытка на 9,0 с повисла в CONNECTING до 24,3 с — у сокета нет своего таймаута
+	const sock = this.socket
+	clearTimeout(this._k4OpenTimer)
+	this._k4OpenTimer = setTimeout(() => {
+		if (this.socket !== sock || sock.readyState !== 0) { // 0 = CONNECTING
+			return
+		}
+		console.info('Signaling socket did not open in', K4_OPEN_TIMEOUT_MS, 'ms, retrying')
+		k4log('sig.open_timeout')
+		sock.onopen = sock.onclose = sock.onerror = sock.onmessage = null
+		try {
+			sock.close()
+		} catch (e) {
+			// ignore
+		}
+		this.socket = null
+		this.reconnect()
+	}, K4_OPEN_TIMEOUT_MS)
 	this.socket.onopen = function(event) {
 		console.debug('Connected', event)
 		k4log('sig.open')
