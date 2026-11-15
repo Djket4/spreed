@@ -10,18 +10,26 @@
  * После каждой ступени ждём K4_WAIT[ступень]: связь вернулась — лестница сброшена, нет — следующая ступень.
  */
 export const K4_WAIT = [5000, 6000, 20000]
+/** как часто перепроверять ступень, которую hold() пока не пускает */
+export const K4_HOLD_CHECK_MS = 1000
+/** вход новой сессией — не раньше, чем через столько после возврата сети: сначала даём шанс resume */
+export const K4_AFTER_ONLINE_MS = 6000
+/** сколько сигнальный сервер держит сессию после обрыва (~30 с): всё это время ждём resume, а не входим заново */
+export const K4_SESSION_HOLD_MS = 30000
 
 /**
  * @param {object} p
  * @param {Function} p.up связь есть (сигнальный сокет и свой поток)
  * @param {Function} [p.live] медиа уже идёт (свой поток соединён), даже если сокет ещё нет — ступени не нужны
+ * @param {Function} [p.hold] (ступень, мс с начала обрыва) → true: ступень пока не запускать, проверить позже
  * @param {Function} p.run выполнить ступень (номер 0..2, alive) — alive() ложно, если лестницу уже остановили
  * @return {{go: Function, ok: Function, stop: Function, step: Function}}
  */
-export function k4Ladder({ up, live = () => false, run }) {
+export function k4Ladder({ up, live = () => false, hold = () => false, run }) {
 	let step = 0
 	let timer = null
 	let epoch = 0
+	let t0 = 0
 	const go = () => {
 		if (timer) {
 			return false // ступень уже идёт, её проверка решит, нужна ли следующая
@@ -30,7 +38,18 @@ export function k4Ladder({ up, live = () => false, run }) {
 			step = 0 // связь вернулась сама — живое не рвём (сокет переподключится своим ходом)
 			return false
 		}
-		const s = Math.min(step++, 2)
+		if (step === 0) {
+			t0 = Date.now()
+		}
+		const s = Math.min(step, 2)
+		if (hold(s, Date.now() - t0)) {
+			timer = setTimeout(() => {
+				timer = null
+				up() ? (step = 0) : go()
+			}, K4_HOLD_CHECK_MS)
+			return true
+		}
+		step++
 		timer = setTimeout(() => {
 			timer = null
 			up() ? (step = 0) : go()
@@ -133,4 +152,23 @@ export function k4OwnAction(step, ice) {
 		return 'skip'
 	}
 	return step === 1 && (ice === 'failed' || ice === 'closed') ? 'recreate' : 'restart'
+}
+
+/**
+ * Можно ли уже входить новой сессией (ступень 2). Прогон 15.11: вход на +13 с от обрыва, пока сети ещё не было,
+ * дал новую сессию вместо resume.
+ *
+ * @param {object} p
+ * @param {boolean} p.online navigator.onLine
+ * @param {number} p.sinceOnline мс после последнего события online (без событий offline/online — Infinity)
+ * @param {number} p.sinceDrop мс с начала обрыва
+ * @param {boolean} p.sigUp сигнальный сокет снова на связи
+ * @return {boolean}
+ */
+export function k4CanRejoin({ online, sinceOnline, sinceDrop, sigUp }) {
+	if (!online || sinceOnline < K4_AFTER_ONLINE_MS) {
+		return false
+	}
+	// сервер ещё держит сессию, а сокет не вернулся — ждём resume (сокет стучится раз в 1–2 с)
+	return sigUp || sinceDrop >= K4_SESSION_HOLD_MS
 }

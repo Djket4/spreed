@@ -19,7 +19,7 @@ import { supportsRTCPeerConnection, supportsWebRTC } from '../browserCheck.ts'
 import { calllog } from '../calllog.js'
 import { k4log } from '../k4log.js'
 import { Sounds } from '../sounds.js'
-import { k4Hold, k4Ladder, k4OfferKey, k4OwnAction, k4StopOnLeave, k4Up } from './k4reconnect.js'
+import { k4CanRejoin, k4Hold, k4Ladder, k4OfferKey, k4OwnAction, k4StopOnLeave, k4Up } from './k4reconnect.js'
 import { LocalStateBroadcasterMcu } from './LocalStateBroadcasterMcu.ts'
 import { LocalStateBroadcasterNoMcu } from './LocalStateBroadcasterNoMcu.ts'
 import SimpleWebRTC from './simplewebrtc/simplewebrtc.js'
@@ -44,6 +44,12 @@ const actorStore = useActorStore(pinia)
 const tokenStore = useTokenStore(pinia)
 
 let localStateBroadcaster
+
+// ket4tec (NAS_CLOUD#183): когда браузер последний раз сообщил о возврате сети (один слушатель на страницу)
+let k4onlineAt = 0
+window.addEventListener('online', () => {
+	k4onlineAt = Date.now()
+})
 
 const K4_HOLD_MS = 30000 // ket4tec (NAS_CLOUD#183): сколько держится плитка ушедшего со связью
 
@@ -799,6 +805,13 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 		up: () => k4Up(k4state()),
 		// медиа вернулось само, сокет ещё нет: его переподключит signaling (resume), ступени не нужны
 		live: () => k4Up({ ...k4state(), connected: true, inCall: true }),
+		// вход новой сессией — только когда сеть вернулась и resume не удался
+		hold: (step, sinceDrop) => step === 2 && !k4CanRejoin({
+			online: navigator.onLine !== false,
+			sinceOnline: k4onlineAt ? Date.now() - k4onlineAt : Infinity,
+			sinceDrop,
+			sigUp: signaling.connected !== false,
+		}),
 		run(step, alive) {
 			k4log('ice.fast', { how: ['restart', 'republish', 'rejoin'][step] })
 			calllog('reconnect_try', { step })
