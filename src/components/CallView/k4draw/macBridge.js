@@ -6,7 +6,7 @@
  */
 import { showWarning } from '@nextcloud/dialogs'
 import { reactive } from 'vue'
-import { consoleCmd, consoleTick, inCall, stopConsole } from './macConsole.js'
+import { consoleCmd, consoleFrame, consoleRtc, consoleTick, inCall, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
 import { clearAll, eraseMarks, hash, identity, localScreen, moveMark, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
@@ -33,6 +33,8 @@ let watch = 0
 // уже просили запустить: следующий неответ = приложения нет. Раньше не узнать: в Safari окно после k4draw://
 // остаётся about:blank и когда приложение есть, и когда схемы нет (проверено 09.11)
 let launched = false
+const GRACE = 10000 // обрыв связи с приложением (не выход): столько ждём, пока окно моста переподключится, показ не трогаем
+let graceT = 0
 
 const show = myShow // по ключу показа: id сессии сигналинга мог смениться посреди показа
 const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
@@ -107,6 +109,7 @@ function onEv(ev) {
 
 /** Окно моста закрыто или приложение вышло: кнопка в доке предложит переподключить. */
 function lost() {
+	clearTimeout(graceT)
 	if (mac.st === 'on') {
 		mac.st = 'lost'
 		clearInterval(watch)
@@ -121,6 +124,7 @@ function lost() {
 
 /** Звонок окончен или вкладка уходит: окно моста закрываем молча, приложение спрячет слой и пульт. */
 function finish() {
+	clearTimeout(graceT)
 	clearInterval(watch)
 	clearTimeout(timer)
 	stopConsole()
@@ -141,7 +145,20 @@ function onCmd(d) {
 	const s = show()
 	const x = num(d.x)
 	const y = num(d.y)
+	if (d.t === 'hi') {
+		// окно моста проверяет, что его открыл звонок с разрешённого адреса, и только потом подключается к приложению
+		return send({ t: 'hi' })
+	}
+	if (d.t === 'drop') {
+		// транспортный сбой: окно моста переподключается само; приложение не вернулось за GRACE — как bye
+		if (mac.st === 'on') {
+			clearTimeout(graceT)
+			graceT = setTimeout(lost, GRACE)
+		}
+		return
+	}
 	if (d.t === 'ready') {
+		clearTimeout(graceT)
 		clearTimeout(timer)
 		mac.st = 'on'
 		try {
@@ -158,7 +175,13 @@ function onCmd(d) {
 			return finish()
 		}
 		pumpNow()
-		return consoleTick(send)
+		return consoleTick(send, d.v >= 2, d.v >= 3 ? (d.rtc ? 1 : 0) : null)
+	}
+	if (d.t === 'fr') {
+		return inCall() && consoleFrame(send)
+	}
+	if (d.t === 'rtc') {
+		return consoleRtc(d)
 	}
 	if (d.t === 'bye') {
 		lost()

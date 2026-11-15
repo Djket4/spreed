@@ -1,5 +1,5 @@
 /**
- * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер 160×90
+ * ket4tec: k4draw. Мини-пульт звонка в приложении для Мака: состояние звонка и кадры камер (v2: квадрат 128×128, старое приложение: 160×90)
  * (MediaStream между источниками не передать), команды микрофон / камера / остановить показ / покинуть.
  */
 import store from '../../../store/index.js'
@@ -7,6 +7,9 @@ import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 
 const MAX = 8
+const SQ = 128
+const RTC_MAX = 6 // приложение показывает первые 6 плиток: дорожек больше не кодируем
+const TILE = 240 // короткая сторона дорожки v3
 const vids = new Map() // id плитки -> <video> со своим потоком
 // Talk не принимает камеру участника, чья плитка не видна (при показе экрана полоса скрыта) — пока пульт
 // подключён, его плитки считаются видимыми: id -> RemoteVideoBlocker, которому добавлен счётчик
@@ -18,9 +21,18 @@ window.__k4mc = () => callParticipantCollection.callParticipantModels.map((m) =>
 	return { peer: String(a.peerId).slice(0, 6), video: a.videoAvailable, tracks: a.stream?.getVideoTracks().length ?? null, blocked: b?._blocked, counter: b?._visibleCounter, held: held.has(String(a.peerId)), vw: vids.get(String(a.peerId))?.videoWidth ?? null }
 })
 const cv = document.createElement('canvas')
-cv.width = 160
-cv.height = 90
+cv.width = cv.height = SQ
+// приложение 1.6/1.6.1 (tick без v) рисует плитку 180×101 растяжением: ему по-прежнему 160×90 cover
+const cvOld = document.createElement('canvas')
+cvOld.width = 160
+cvOld.height = 90
 let box = null
+const last = new Map() // id плитки -> прошлый jpg (ответ на tick v2 без перекодирования)
+let cost = 0 // скользящее среднее времени ответа на fr (кодирование всех плиток + отправка), мс
+let late = 0 // таймер отложенного ответа на fr
+let nextAt = 0 // не отвечать на fr раньше (держим ответы в ~12% главного потока)
+// счётчики для замера в живом звонке: window.__k4fr
+const stat = (window.__k4fr = { n: 0, ms: 0, skip: 0 })
 
 /**
  * Скрытый, но в DOM: Safari не отдаёт кадры <video> вне документа.
@@ -51,19 +63,37 @@ function video(id, stream) {
 }
 
 /**
- * Кадр 160×90 «по заполнению», base64 JPEG без префикса.
+ * Окно исходного кадра, которое идёт в квадрат. Сейчас — центр (cover, как плитка в звонке);
+ * когда ветка face-center сдвинет окно к лицу у получателя, подменить только эту функцию.
+ *
+ * @param w ширина кадра
+ * @param h высота кадра
+ * @return {[number, number, number, number]} sx, sy, sw, sh
+ */
+export function cropWindow(w, h) {
+	const m = Math.min(w, h)
+	return [(w - m) / 2, (h - m) / 2, m, m]
+}
+
+/**
+ * Квадрат 128×128 «по заполнению» (sq) или прежний 160×90 cover для старого приложения, base64 JPEG без префикса.
  *
  * @param v
+ * @param sq квадрат (приложение v2)
  */
-function jpg(v) {
+export function jpg(v, sq = true) {
 	const w = v.videoWidth
 	const h = v.videoHeight
 	if (!w || !h) {
 		return null
 	}
-	const k = Math.max(160 / w, 90 / h)
-	const g = cv.getContext('2d')
-	g.drawImage(v, (160 - w * k) / 2, (90 - h * k) / 2, w * k, h * k)
+	if (!sq) {
+		const k = Math.max(160 / w, 90 / h)
+		cvOld.getContext('2d').drawImage(v, (160 - w * k) / 2, (90 - h * k) / 2, w * k, h * k)
+		return cvOld.toDataURL('image/jpeg', 0.6).slice(23)
+	}
+	const [sx, sy, sw, sh] = cropWindow(w, h)
+	cv.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, SQ, SQ)
 	return cv.toDataURL('image/jpeg', 0.6).slice(23)
 }
 
@@ -71,22 +101,352 @@ function jpg(v) {
  * @param id
  * @param stream
  * @param on камера включена
+ * @param fresh
+ * @param sq
  */
-const frame = (id, stream, on) => (on && stream?.getVideoTracks().length ? jpg(video(id, stream)) : null)
+function frame(id, stream, on, fresh, sq) {
+	if (!(on && stream?.getVideoTracks().length)) {
+		last.delete(id)
+		return null
+	}
+	const v = video(id, stream)
+	if (!fresh && last.has(id)) {
+		return last.get(id)
+	}
+	const j = jpg(v, sq)
+	j ? last.set(id, j) : last.delete(id)
+	return j
+}
+
+// --- v3: настоящее видео по WebRTC (PROTOCOL.md, «Видео камер вместо кадров») ---
+let out = () => {} // последняя отправка в окно моста
+let pc = null
+const trs = new Map() // id плитки -> { tr, clone, src, mid }
+let paused = false // приложение спрятало плитки
+let dirty = false // набор дорожек изменился, пока шёл обмен offer/answer
+let offerAt = 0
+let busy = false // offer в работе (createOffer / setLocalDescription): изменения копятся в dirty
+let setupT = 0 // таймер «10 с без connected после offer»
+let cool = 0 // не предлагать видео до (после любого bye)
+const COOL = 30000 // пауза после собственного bye (сбой, таймаут): приложение в это время и так на v2
+let down = 0 // таймер «disconnected дольше 3 с»
+let unLeave = null // отписка от leaveCall
+let actQ = Promise.resolve() // изменения параметров отправителей по очереди: getParameters до завершения setParameters отдаёт старое
+
+const rtcMid = (id) => trs.get(id)?.mid ?? null
+
+/**
+ * Параметры отправки: короткая сторона 240, до 30 к/с, ~300 кбит/с, низкий приоритет (звонок важнее плиток).
+ *
+ * @param clone дорожка-клон
+ */
+function enc(clone) {
+	const { width: w, height: h } = clone.getSettings()
+	return { active: !paused, scaleResolutionDownBy: Math.max(1, Math.min(w || TILE, h || TILE) / TILE), maxFramerate: 30, maxBitrate: 300000, priority: 'low', networkPriority: 'low' }
+}
+
+/** Дорожки, которые нужны приложению: первые RTC_MAX плиток с включённой камерой. */
+function wanted() {
+	const L = localMediaModel.attributes
+	const list = [['me', L.videoEnabled, L.localStream]]
+	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
+		const a = m.attributes
+		list.push([String(a.peerId), a.videoAvailable, a.stream])
+	})
+	const w = new Map()
+	list.slice(0, RTC_MAX).forEach(([id, on, st]) => {
+		const t = on && st?.getVideoTracks()[0]
+		t && t.readyState !== 'ended' && t.enabled !== false && !t.muted && w.set(id, t)
+	})
+	return w
+}
+
+/**
+ * Камеру выключили, дорожка кончилась или замолчала: клон останавливаем сразу, не дожидаясь tick
+ * (выключенная камера Talk — `enabled = false` у исходной дорожки, клон бы продолжал слать видео).
+ *
+ * @param id плитка
+ * @param t исходная дорожка
+ * @return {Function} снять подписки
+ */
+function hook(id, t) {
+	const m = id === 'me' ? localMediaModel : callParticipantCollection.callParticipantModels.find((x) => String(x.attributes.peerId) === id)
+	const ev = id === 'me' ? 'change:videoEnabled' : 'change:videoAvailable'
+	const h = () => pc && rtcSync(1)
+	t.addEventListener?.('ended', h)
+	t.addEventListener?.('mute', h)
+	m?.on?.(ev, h)
+	return () => {
+		t.removeEventListener?.('ended', h)
+		t.removeEventListener?.('mute', h)
+		m?.off?.(ev, h)
+	}
+}
+
+/**
+ * Новый клон исходной дорожки с подписками на её выключение.
+ *
+ * @param id плитка
+ * @param t исходная дорожка
+ */
+function mkClone(id, t) {
+	const clone = t.clone()
+	clone.contentHint = 'motion'
+	return { clone, src: t, unhook: hook(id, t) }
+}
+
+/**
+ *
+ * @param id
+ */
+function dropTr(id) {
+	const e = trs.get(id)
+	e.unhook()
+	try {
+		e.tr.stop()
+	} catch (_) { /* transceiver уже остановлен */ }
+	e.clone.stop()
+	trs.delete(id)
+}
+
+/**
+ * Закрыть соединение, остановить клоны дорожек.
+ *
+ * @param bye сообщить приложению (оно вернётся на v2)
+ * @param wait сколько мс не предлагать видео заново (сбой — COOL; «камер не осталось» — 0)
+ */
+function closeRtc(bye, wait = COOL) {
+	clearTimeout(down)
+	clearTimeout(setupT)
+	setupT = 0
+	if (!pc) {
+		return
+	}
+	const p = pc
+	pc = null
+	p.onconnectionstatechange = p.onicecandidate = null
+	p.close()
+	;[...trs.keys()].forEach(dropTr)
+	paused = false
+	dirty = false
+	busy = false
+	if (bye) {
+		cool = Date.now() + wait
+		out({ t: 'rtc', bye: 1 })
+	}
+}
+
+/**
+ *
+ */
+function newPc() {
+	const p = (pc = new RTCPeerConnection({}))
+	p.onicecandidate = (e) => e.candidate?.candidate && pc === p && out({ t: 'rtc', ice: e.candidate.toJSON() })
+	p.onconnectionstatechange = () => {
+		clearTimeout(down)
+		const s = p.connectionState
+		if (s === 'connected') {
+			clearTimeout(setupT)
+			setupT = 0
+		} else if (s === 'failed') {
+			closeRtc(true)
+		} else if (s === 'disconnected') {
+			down = setTimeout(() => pc === p && closeRtc(true), 3000)
+		}
+	}
+}
+
+/**
+ *
+ */
+async function offer() {
+	if (busy) {
+		return // изменения уже в dirty: уйдут следующим offer
+	}
+	busy = true
+	dirty = false
+	offerAt = Date.now()
+	const p = pc
+	try {
+		await p.setLocalDescription(await p.createOffer())
+		if (pc !== p) {
+			return
+		}
+		trs.forEach((e) => {
+			e.mid = e.tr.mid
+		})
+		out({ t: 'rtc', sdp: p.localDescription.toJSON() })
+		if (!setupT && p.connectionState !== 'connected') {
+			setupT = setTimeout(() => pc === p && p.connectionState !== 'connected' && closeRtc(true), 10000)
+		}
+	} finally {
+		pc === p && (busy = false)
+	}
+}
+
+/**
+ * Источник дорожки сменился (другая камера): тот же отправитель, новый клон, масштаб пересчитан.
+ * Отказ replaceTrack — убираем transceiver, на следующем tick он создаётся заново.
+ *
+ * @param id плитка
+ * @param t новая исходная дорожка
+ */
+function swapSrc(id, t) {
+	const e = trs.get(id)
+	const old = e.clone
+	e.unhook()
+	Object.assign(e, mkClone(id, t))
+	const clone = e.clone
+	const p = pc
+	e.tr.sender.replaceTrack(clone).then(() => {
+		// параметры отправителя — только через очередь actQ: иначе запись масштаба вернула бы старое active
+		const job = actQ.then(() => {
+			const par = e.tr.sender.getParameters()
+			if (pc === p && e.clone === clone && par.encodings?.[0]) {
+				par.encodings[0].scaleResolutionDownBy = enc(clone).scaleResolutionDownBy
+				par.encodings[0].active = !paused
+				return e.tr.sender.setParameters(par)
+			}
+		})
+		actQ = job.catch(() => {})
+		return job
+	}).catch(() => {
+		if (pc === p && trs.get(id) === e) {
+			dropTr(id)
+			dirty = true
+		}
+	})
+	old.stop()
+}
+
+/**
+ * Привести дорожки к набору плиток; при изменении — новый offer (или bye, если камер не осталось).
+ *
+ * @param on
+ */
+function rtcSync(on) {
+	if (!on) {
+		return closeRtc(false) // rtc:0 — видео сейчас не предлагать
+	}
+	const w = wanted()
+	if (!pc) {
+		if (!w.size || Date.now() < cool) {
+			return
+		}
+		newPc()
+	}
+	let changed = false
+	;[...trs.keys()].forEach((id) => {
+		const e = trs.get(id)
+		if (!w.has(id)) {
+			dropTr(id)
+			changed = true
+		} else if (e.src !== w.get(id)) { // камера переключена: та же дорожка-отправитель, новый источник
+			swapSrc(id, w.get(id))
+		}
+	})
+	w.forEach((t, id) => {
+		if (!trs.has(id)) {
+			const c = mkClone(id, t)
+			trs.set(id, { ...c, tr: pc.addTransceiver(c.clone, { direction: 'sendonly', sendEncodings: [enc(c.clone)] }), mid: null })
+			changed = true
+		}
+	})
+	if (!trs.size) {
+		return closeRtc(true, 0) // камеры кончились: новая камера — сразу новый offer
+	}
+	if (changed) {
+		dirty = true
+	}
+	if (busy) {
+		// offer в работе: ждём
+	} else if (pc.signalingState === 'stable') {
+		dirty && offer().catch(() => closeRtc(true))
+	} else if (Date.now() - offerAt > 5000) {
+		closeRtc(true) // answer не пришёл: приложение само вернётся на v2
+	}
+}
+
+/**
+ * Применить актуальное `paused` ко всем отправителям, после предыдущего применения.
+ */
+function setActive() {
+	const p = pc
+	actQ = actQ.then(async () => {
+		for (const e of [...trs.values()]) {
+			if (pc !== p) {
+				return
+			}
+			const sender = e.tr.sender
+			const par = sender.getParameters()
+			if (par.encodings?.[0] && par.encodings[0].active !== !paused) {
+				par.encodings[0].active = !paused
+				await sender.setParameters(par).catch(() => {})
+			}
+		}
+	})
+	return actQ
+}
+
+/**
+ * Сообщение `rtc` от приложения: answer, ice, pause / resume, bye.
+ *
+ * @param d сообщение
+ */
+export async function consoleRtc(d) {
+	if (d.bye) {
+		cool = Date.now() + 2000 // защита от петли bye -> offer -> bye
+		return closeRtc(false)
+	}
+	if (!pc) {
+		return
+	}
+	const p = pc
+	try {
+		if (d.pause || d.resume) {
+			paused = !!d.pause
+			await setActive()
+		} else if (d.sdp?.type === 'answer' && p.signalingState === 'have-local-offer') {
+			await p.setRemoteDescription(d.sdp)
+			pc === p && (await setActive())
+			pc === p && dirty && trs.size && (await offer())
+		} else if (d.ice?.candidate) {
+			await p.addIceCandidate(d.ice)
+		}
+	} catch (_) {
+		pc === p && closeRtc(true)
+	}
+}
+
+/** Для живой проверки: window.__k4rtc() */
+window.__k4rtc = () => ({ state: pc?.connectionState ?? null, signaling: pc?.signalingState ?? null, paused, mids: [...trs].map(([id, e]) => [id.slice(0, 6), e.mid]) })
 
 /**
  * Состояние звонка и плитки; свои первыми.
+ *
+ * @param fresh
+ * @param sq
  */
-function snapshot() {
+function snapshot(fresh = true, sq = true) {
 	const L = localMediaModel.attributes
-	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, jpg: frame('me', L.localStream, L.videoEnabled) }]
+	const live = new Set() // плитки, которые уже идут видео: jpg не кодируем
+	const fr = (id, stream, on) => {
+		const mid = rtcMid(id)
+		if (mid === null) {
+			return { jpg: frame(id, stream, on, fresh, sq) }
+		}
+		const ok = pc?.connectionState === 'connected'
+		ok && live.add(id)
+		return { vid: mid, jpg: ok ? null : frame(id, stream, on, fresh, sq) }
+	}
+	const tiles = [{ id: 'me', name: 'Вы', me: true, speaking: !!(L.speaking && L.audioEnabled), mic: !!L.audioEnabled, cam: !!L.videoEnabled, ...fr('me', L.localStream, L.videoEnabled) }]
 	callParticipantCollection.callParticipantModels.slice(0, MAX - 1).forEach((m) => {
 		const a = m.attributes
 		if (m.k4VideoBlocker && !held.has(String(a.peerId))) {
 			m.k4VideoBlocker.increaseVisibleCounter()
 			held.set(String(a.peerId), m.k4VideoBlocker)
 		}
-		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, jpg: frame(String(a.peerId), a.stream, a.videoAvailable) })
+		tiles.push({ id: String(a.peerId), name: a.name || 'Гость', me: false, speaking: !!a.speaking, mic: a.audioAvailable !== false, cam: !!a.videoAvailable, ...fr(String(a.peerId), a.stream, a.videoAvailable) })
 	})
 	const ids = new Set(tiles.map((t) => t.id))
 	held.forEach((b, id) => {
@@ -96,7 +456,8 @@ function snapshot() {
 		}
 	})
 	vids.forEach((v, id) => {
-		if (!ids.has(id)) {
+		if (!ids.has(id) || live.has(id)) {
+			last.delete(id)
 			v.srcObject = null
 			v.remove()
 			vids.delete(id)
@@ -106,22 +467,72 @@ function snapshot() {
 }
 
 /**
- * Кадр пульта: по `tick` приложения (5 раз в секунду), а не по своему таймеру — в фоновой вкладке Safari он спит.
+ * Кадр пульта по `tick` приложения (часы приложения: свой таймер в фоновой вкладке Safari спит).
+ * Приложение 1.6.1 и старее (tick без v): свежие кадры на каждый tick. v2: прошлые jpg без перекодирования,
+ * свежие приходят на `fr`.
+ *
+ * @param send отправка в окно моста
+ * @param v2 tick с `v:2` или `v:3`
+ * @param rtc null — приложение без v3; иначе `tick.rtc` (1 — видео можно предлагать, 0 — нельзя)
+ */
+export function consoleTick(send, v2 = false, rtc = null) {
+	out = send
+	// выход из звонка (кнопка Talk или пульт): видео останавливаем сразу, а не через секунду по watch / tick
+	unLeave ||= store.subscribeAction?.({
+		before: (a) => {
+			if (a.type === 'leaveCall' && a.payload?.token === localMediaModel.attributes.token) {
+				closeRtc(false)
+				cool = Infinity // до stopConsole: пока звонок уходит, isInCall ещё true и tick создал бы pc заново
+			}
+		},
+	})
+	rtc === null ? closeRtc(true) : rtcSync(rtc)
+	send(snapshot(!v2, v2))
+}
+
+/**
+ * `fr` приложения (до 25/с): свежие кадры камер на каждый fr, пока ответы укладываются в ~12% главного потока:
+ * следующий ответ не раньше чем через 7 × среднее время предыдущего. Дорого (много камер, слабая машина) —
+ * ответ откладываем (приложение ждёт до 200 мс); частота падает, вкладка не тормозит.
  *
  * @param send отправка в окно моста
  */
-export function consoleTick(send) {
-	send(snapshot())
+export function consoleFrame(send) {
+	const now = performance.now()
+	if (now < nextAt) {
+		// слишком рано: отвечаем, когда уложимся в бюджет (приложение ждёт ответ до 200 мс, потом шлёт fr снова)
+		stat.skip++
+		late ||= setTimeout(() => {
+			late = 0
+			inCall() && consoleFrame(send)
+		}, nextAt - now)
+		return
+	}
+	send(snapshot(true))
+	const d = performance.now() - now
+	cost = cost ? cost * 0.8 + d * 0.2 : d
+	stat.n++
+	stat.ms += d
+	nextAt = now + cost * 7
 }
 
 /** */
 export function stopConsole() {
+	closeRtc(false)
+	unLeave?.()
+	unLeave = null
+	cool = 0
 	held.forEach((b) => b.decreaseVisibleCounter())
 	held.clear()
 	vids.forEach((v) => {
 		v.srcObject = null
 	})
 	vids.clear()
+	last.clear()
+	clearTimeout(late)
+	late = 0
+	cost = 0
+	nextAt = 0
 	box?.remove()
 	box = null
 }
