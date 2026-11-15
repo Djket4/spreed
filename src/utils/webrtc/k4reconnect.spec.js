@@ -3,7 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { K4_WAIT, k4Hold, k4Ladder, k4OfferKey, k4StopOnLeave, k4Up } from './k4reconnect.js'
+import { K4_WAIT, k4Hold, k4Ladder, k4OfferKey, k4OwnAction, k4StopOnLeave, k4Up } from './k4reconnect.js'
 
 describe('k4Ladder (NAS_CLOUD#183)', () => {
 	let isUp
@@ -118,5 +118,30 @@ describe('k4OfferKey (review P2-1)', () => {
 	test('camera and screen of one session use different retry timers', () => {
 		expect(k4OfferKey('s1', 'video')).toBe('s1')
 		expect(k4OfferKey('s1', 'screen')).not.toBe(k4OfferKey('s1', 'video'))
+	})
+})
+
+describe('прогон 15.11, обрыв 8 с: живое не рвём', () => {
+	beforeEach(() => vi.useFakeTimers())
+	afterEach(() => vi.useRealTimers())
+
+	test('media came back by itself while the socket is still down: no further step (no rejoin)', () => {
+		let isLive = false
+		const run = vi.fn()
+		const l = k4Ladder({ up: () => false, live: () => isLive, run })
+		l.go()
+		vi.advanceTimersByTime(K4_WAIT[0])
+		isLive = true // видео у остальных уже идёт, сокет ещё ждёт
+		vi.advanceTimersByTime(K4_WAIT[1] + K4_WAIT[2] * 3)
+		expect(run.mock.calls.map((c) => c[0])).toEqual([0, 1])
+		expect(l.step()).toBe(0)
+	})
+
+	test('own stream in disconnected/checking is restarted, not recreated; only failed is recreated', () => {
+		expect(k4OwnAction(1, 'disconnected')).toBe('restart')
+		expect(k4OwnAction(1, 'checking')).toBe('restart')
+		expect(k4OwnAction(1, 'failed')).toBe('recreate')
+		expect(k4OwnAction(0, 'failed')).toBe('restart')
+		expect(k4OwnAction(1, 'connected')).toBe('skip')
 	})
 })
