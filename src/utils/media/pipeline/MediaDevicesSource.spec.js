@@ -226,15 +226,42 @@ describe('MediaDevicesSource', () => {
 				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
 					throw new Error('Audio could not be got')
 				})
+				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
+					throw new Error('Video could not be got')
+				})
 
 				expect.hasAssertions()
 
-				return mediaDevicesSource.start(retryNoVideoCallback).catch(() => {
+				return mediaDevicesSource.start(retryNoVideoCallback).catch((error) => {
 					assertStateAfterStart()
 
-					expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(2)
+					expect(error).toEqual(new Error('Audio could not be got'))
+					expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(3)
 					expect(retryNoVideoCallback).toHaveBeenCalledTimes(1)
 					expect(retryNoVideoCallback).toHaveBeenCalledWith(new Error('Audio and video could not be got'))
+				})
+			})
+
+			// ket4tec NAS_CLOUD#98
+			test('when there are audio and video devices but the microphone could not be got', () => {
+				getUserMediaAudioTrack = newMediaStreamTrackMock('audio', 'audio')
+				getUserMediaVideoTrack = newMediaStreamTrackMock('video', 'video')
+
+				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
+					throw new Error('Permission denied by system')
+				})
+				mediaDevicesManager.getUserMedia.mockImplementationOnce(async (constraints) => {
+					throw new Error('Permission denied by system')
+				})
+
+				expectedVideoTrack = getUserMediaVideoTrack
+
+				return mediaDevicesSource.start(retryNoVideoCallback).then(() => {
+					assertStateAfterStart()
+
+					expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(3)
+					expect(mediaDevicesManager.getUserMedia).toHaveBeenLastCalledWith(expect.objectContaining({ audio: false }))
+					expect(retryNoVideoCallback).not.toHaveBeenCalled()
 				})
 			})
 

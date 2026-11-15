@@ -127,9 +127,26 @@ export default class MediaDevicesSource extends TrackSource {
 		// Fallback for users without a camera or with a camera that can not be
 		// accessed, but only if audio is meant to be used.
 		if (error && constraints.audio !== false && constraints.video !== false) {
-			retryNoVideoCallback(error);
+			const audioAndVideoError = error;
 
 			[stream, error] = await this._startAudioOnly(constraints)
+
+			// ket4tec NAS_CLOUD#98: a microphone that can not be opened
+			// (denied, broken or a virtual device without source) must not
+			// drop the camera too, so try video only before giving up.
+			if (error) {
+				const audioOnlyError = error;
+
+				[stream, error] = await this._startAudioAndVideo({ audio: false, video: this._videoAllowed })
+				if (error) {
+					error = audioOnlyError
+				}
+			}
+
+			// The camera is reported as failed only if it is not sent.
+			if (!stream || stream.getVideoTracks().length === 0) {
+				retryNoVideoCallback(audioAndVideoError)
+			}
 		}
 
 		if (error) {
