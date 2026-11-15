@@ -70,7 +70,7 @@ function video(id, stream) {
  * @param h высота кадра
  * @return {[number, number, number, number]} sx, sy, sw, sh
  */
-export const cropWindow = (w, h) => {
+export function cropWindow(w, h) {
 	const m = Math.min(w, h)
 	return [(w - m) / 2, (h - m) / 2, m, m]
 }
@@ -101,8 +101,10 @@ export function jpg(v, sq = true) {
  * @param id
  * @param stream
  * @param on камера включена
+ * @param fresh
+ * @param sq
  */
-const frame = (id, stream, on, fresh, sq) => {
+function frame(id, stream, on, fresh, sq) {
 	if (!(on && stream?.getVideoTracks().length)) {
 		last.delete(id)
 		return null
@@ -136,7 +138,7 @@ const rtcMid = (id) => trs.get(id)?.mid ?? null
  *
  * @param clone дорожка-клон
  */
-const enc = (clone) => {
+function enc(clone) {
 	const { width: w, height: h } = clone.getSettings()
 	return { active: !paused, scaleResolutionDownBy: Math.max(1, Math.min(w || TILE, h || TILE) / TILE), maxFramerate: 30, maxBitrate: 300000, priority: 'low', networkPriority: 'low' }
 }
@@ -157,6 +159,10 @@ function wanted() {
 	return w
 }
 
+/**
+ *
+ * @param id
+ */
 function dropTr(id) {
 	const e = trs.get(id)
 	try {
@@ -193,6 +199,9 @@ function closeRtc(bye, wait = COOL) {
 	}
 }
 
+/**
+ *
+ */
 function newPc() {
 	const p = (pc = new RTCPeerConnection({}))
 	p.onicecandidate = (e) => e.candidate?.candidate && pc === p && out({ t: 'rtc', ice: e.candidate.toJSON() })
@@ -210,6 +219,9 @@ function newPc() {
 	}
 }
 
+/**
+ *
+ */
 async function offer() {
 	if (busy) {
 		return // изменения уже в dirty: уйдут следующим offer
@@ -265,7 +277,11 @@ function swapSrc(id, t) {
 	old.stop()
 }
 
-/** Привести дорожки к набору плиток; при изменении — новый offer (или bye, если камер не осталось). */
+/**
+ * Привести дорожки к набору плиток; при изменении — новый offer (или bye, если камер не осталось).
+ *
+ * @param on
+ */
 function rtcSync(on) {
 	if (!on) {
 		return closeRtc(false) // rtc:0 — видео сейчас не предлагать
@@ -310,6 +326,9 @@ function rtcSync(on) {
 	}
 }
 
+/**
+ *
+ */
 async function setActive() {
 	const p = pc
 	for (const e of [...trs.values()]) {
@@ -360,6 +379,9 @@ window.__k4rtc = () => ({ state: pc?.connectionState ?? null, signaling: pc?.sig
 
 /**
  * Состояние звонка и плитки; свои первыми.
+ *
+ * @param fresh
+ * @param sq
  */
 function snapshot(fresh = true, sq = true) {
 	const L = localMediaModel.attributes

@@ -1,7 +1,8 @@
+/* eslint-disable @stylistic/max-statements-per-line -- компактные заглушки WebRTC в тесте */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const H = vi.hoisted(() => ({ models: [], L: null }))
-const mkTrack = () => {
+function mkTrack() {
 	const t = { readyState: 'live', stopped: false, getSettings: () => ({ width: 640, height: 480 }), stop: () => { t.stopped = true }, clone: () => Object.assign(mkTrack(), { getSettings: t.getSettings }) }
 	return t
 }
@@ -104,11 +105,13 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 				this.closed = false
 				pcs.push(this)
 			}
+
 			addTransceiver(t, o) {
-				const tr = { mid: null, track: t, o, stopped: false, stop() { tr.stopped = true }, sender: { pars: { encodings: [{ ...o.sendEncodings[0] }] }, getParameters() { return this.pars }, setParameters: vi.fn(async function (p) { this.pars = p }), replaceTrack: vi.fn(async () => { if (swapFail) { throw new Error('x') } }) } }
+				const tr = { mid: null, track: t, o, stopped: false, stop() { tr.stopped = true }, sender: { pars: { encodings: [{ ...o.sendEncodings[0] }] }, getParameters() { return this.pars }, setParameters: vi.fn(async function(p) { this.pars = p }), replaceTrack: vi.fn(async () => { if (swapFail) { throw new Error('x') } }) } }
 				this.trs.push(tr)
 				return tr
 			}
+
 			async createOffer() { return { type: 'offer', sdp: 'o' } }
 			async setLocalDescription(d) {
 				if (gate) {
@@ -118,6 +121,7 @@ describe('macConsole: видео v3 (WebRTC)', () => {
 				this.trs.forEach((t, i) => { t.mid ??= String(i) })
 				this.localDescription = { toJSON: () => ({ type: 'offer', sdp: 'o' + this.trs.length }) }
 			}
+
 			async setRemoteDescription() { this.signalingState = 'stable' }
 			async addIceCandidate() {}
 			close() { this.closed = true }
