@@ -19,7 +19,7 @@ import { supportsRTCPeerConnection, supportsWebRTC } from '../browserCheck.ts'
 import { calllog } from '../calllog.js'
 import { k4log } from '../k4log.js'
 import { Sounds } from '../sounds.js'
-import { k4Ladder } from './k4reconnect.js'
+import { k4Hold, k4Ladder, k4OfferKey, k4StopOnLeave, k4Up } from './k4reconnect.js'
 import { LocalStateBroadcasterMcu } from './LocalStateBroadcasterMcu.ts'
 import { LocalStateBroadcasterNoMcu } from './LocalStateBroadcasterNoMcu.ts'
 import SimpleWebRTC from './simplewebrtc/simplewebrtc.js'
@@ -233,8 +233,9 @@ function userHasStreams(user) {
  * @param {object} signaling The signaling object
  * @param {Array} newUsers Newly added participants
  * @param {Array} disconnectedSessionIds Remove participants
+ * @param {Array} [explicitIds] ket4tec (NAS_CLOUD#183): из них вышли из звонка сами (inCall: 0), плитку не держать
  */
-function usersChanged(signaling, newUsers, disconnectedSessionIds) {
+function usersChanged(signaling, newUsers, disconnectedSessionIds, explicitIds) {
 	'use strict'
 	const currentSessionId = signaling.getSessionId()
 
@@ -276,12 +277,17 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 
 		let callParticipantModel = callParticipantCollection.get(sessionId)
 		// ket4tec (NAS_CLOUD#183): вернулся тот, чья плитка держится, — та же модель или новая сессия в тот же слот, без звука входа
-		const k4back = callParticipantModel?.get('k4ghost') || k4GhostOf(user)
+		const k4ghost = callParticipantModel ? null : k4GhostOf(user)
+		const k4back = callParticipantModel?.get('k4ghost') || !!k4ghost
 		if (!callParticipantModel) {
 			callParticipantModel = callParticipantCollection.add({
 				peerId: sessionId,
 				webRtc: webrtc,
-			}, k4GhostOf(user))
+			}, k4ghost)
+			if (k4ghost) {
+				// место в порядке плиток (useTileOrdering) переходит к новой сессии
+				callParticipantModel.set('k4slot', k4ghost.get('k4slot') || k4ghost.get('nextcloudSessionId'))
+			}
 		}
 		if (callParticipantModel.get('k4ghost')) {
 			clearTimeout(callParticipantModel.k4hold)
@@ -378,8 +384,21 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 		console.debug('Remove disconnected peer', sessionId)
 		const model = callParticipantCollection.get(sessionId)
 		// ket4tec (NAS_CLOUD#183): ушёл со связью (поток уже стоял), а не по кнопке — плитка держится K4_HOLD_MS
-		const hold = model && !model.get('k4ghost') && selfInCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED && peerGone(model.attributes)
+		const hold = k4Hold({
+			gone: model && peerGone(model.attributes),
+			ghost: model?.get('k4ghost'),
+			inCall: selfInCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED,
+			explicit: !!explicitIds?.includes(sessionId),
+		})
+		if (hold) {
+			// до removePeers: он очищает поток, а по нему плитка выбирает группу (камера/звук) в сетке
+			const st = model.get('stream')
+			model.set('k4video', !!model.get('videoAvailable') && st !== null && typeof st === 'object')
+			model.set('k4ghost', true)
+		}
 		webrtc.removePeers(sessionId)
+		clearInterval(delayedConnectionToPeer[k4OfferKey(sessionId, 'screen')])
+		delete delayedConnectionToPeer[k4OfferKey(sessionId, 'screen')]
 
 		if (delayedConnectionToPeer[sessionId]) {
 			clearInterval(delayedConnectionToPeer[sessionId])
@@ -389,7 +408,6 @@ function usersChanged(signaling, newUsers, disconnectedSessionIds) {
 
 		if (hold) {
 			k4log('peer.hold', { id: sessionId })
-			model.set('k4ghost', true)
 			model.k4hold = setTimeout(() => callParticipantCollection.remove(sessionId), K4_HOLD_MS)
 		} else if (!model?.get('k4ghost') && callParticipantCollection.remove(sessionId)) {
 			playLeaveSound = true
@@ -485,7 +503,9 @@ function usersInCallChanged(signaling, users) {
 		newUsers.push(userMapping[sessionId])
 	})
 	if (newUsers.length || disconnectedSessionIds.length) {
-		usersChanged(signaling, newUsers, disconnectedSessionIds)
+		// ket4tec (NAS_CLOUD#183): ещё в комнате, но inCall: 0 — вышел из звонка сам, плитку не держим
+		const explicitIds = disconnectedSessionIds.filter((id) => users[id] && !users[id].inCall)
+		usersChanged(signaling, newUsers, disconnectedSessionIds, explicitIds)
 	}
 }
 
@@ -661,9 +681,10 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			stalePeer.end()
 		}
 
-		if (message.roomType === 'video' && delayedConnectionToPeer[message.from]) {
-			clearInterval(delayedConnectionToPeer[message.from])
-			delete delayedConnectionToPeer[message.from]
+		const offerKey = k4OfferKey(message.from, message.roomType) // ket4tec (NAS_CLOUD#183): и экранный подписчик
+		if (delayedConnectionToPeer[offerKey]) {
+			clearInterval(delayedConnectionToPeer[offerKey])
+			delete delayedConnectionToPeer[offerKey]
 		}
 
 		// MCU screen offers do not include the "broadcaster" property,
@@ -753,9 +774,10 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	 * @param {object} peer входящее соединение
 	 */
 	function k4Resubscribe(peer) {
+		const key = k4OfferKey(peer.id, peer.type)
 		signaling.requestOffer(peer.id, peer.type)
-		clearInterval(delayedConnectionToPeer[peer.id])
-		delayedConnectionToPeer[peer.id] = setInterval(function() {
+		clearInterval(delayedConnectionToPeer[key])
+		delayedConnectionToPeer[key] = setInterval(function() {
 			console.debug('No offer received, request offer again', peer.id, peer)
 			signaling.requestOffer(peer.id, peer.type)
 		}, 10000)
@@ -767,17 +789,16 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	 */
 	const k4ladder = k4Ladder({
 		up() {
-			if (signaling.connected === false) {
-				return false
-			}
-			if (ownPeer) {
-				return k4PeerUp(ownPeer)
-			}
-			// только смотрю: сеть моя жива, если жив хоть один входящий поток
-			const subs = webrtc.webrtc.peers.filter((p) => p !== ownScreenPeer)
-			return !subs.length || subs.some(k4PeerUp)
+			return k4Up({
+				connected: signaling.connected !== false,
+				inCall: selfInCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED,
+				need: !!localCallParticipantModel.get('peerNeeded'),
+				own: ownPeer ? k4PeerUp(ownPeer) : undefined,
+				screen: ownScreenPeer ? k4PeerUp(ownScreenPeer) : undefined,
+				subs: webrtc.webrtc.peers.filter((p) => p !== ownPeer && p !== ownScreenPeer).map(k4PeerUp),
+			})
 		},
-		run(step) {
+		run(step, alive) {
 			k4log('ice.fast', { how: ['restart', 'republish', 'rejoin'][step] })
 			calllog('reconnect_try', { step })
 			if (step === 2) {
@@ -785,14 +806,18 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 				return
 			}
 			const fix = function() {
+				if (!alive()) {
+					return // пока шёл resume, пользователь вышел из звонка
+				}
 				for (const p of [ownPeer, ownScreenPeer]) {
 					if (!p || k4PeerUp(p)) {
 						continue
 					}
-					if (p === ownPeer && step === 1) {
+					if (step === 1) {
 						// новое соединение в той же сессии (так же штатно переотправляется offer без ответа)
+						const screen = p === ownScreenPeer
 						p.end()
-						checkStartPublishOwnPeer(signaling)
+						screen ? createScreensharingPeer(signaling, signaling.getSessionId()) : checkStartPublishOwnPeer(signaling)
 					} else if (p.pc.signalingState === 'stable') {
 						p.icerestart()
 					}
@@ -802,6 +827,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			signaling.k4Resume ? signaling.k4Resume(fix) : fix()
 		},
 	})
+	k4StopOnLeave(signaling, k4ladder) // явный выход: лестница стоп сразу, до DELETE
 
 	/**
 	 * ket4tec (слово владельца 11.11, NAS_CLOUD#183): быстрый возврат после обрыва. Браузер объявляет «failed» через

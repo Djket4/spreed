@@ -161,6 +161,37 @@ describe('useTileOrdering', () => {
 	})
 
 	describe('participant churn', () => {
+		test('NAS_CLOUD#183: held tile keeps its camera-group place after its stream is cleared', () => {
+			const a = makeModel({ videoAvailable: true, stream: {} })
+			const b = makeModel({ videoAvailable: true, stream: {} })
+			const c = makeModel({ videoAvailable: true, stream: {} })
+			const models = [a, b, c]
+			allModels = models
+			const { orderedParticipantModels } = createOrdering({ models })
+
+			// removePeers() clears the stream, the tile is held as a ghost
+			Object.assign(a.attributes, { k4ghost: true, k4video: true, stream: null, videoAvailable: false })
+			expect(orderedParticipantModels.value).toEqual([a, b, c])
+		})
+
+		test('NAS_CLOUD#183: participant returning with a new session takes the place of the held tile', async () => {
+			const a = makeModel({ audioPublisher: true, audioAvailable: true })
+			const b = makeModel({ audioPublisher: true, audioAvailable: true })
+			allModels = [a, b]
+			const { orderedParticipantModels, callParticipantModels } = createOrdering({ models: [a, b], slots: 1 })
+
+			b.attributes.speaking = true
+			await nextTick()
+			expect(orderedParticipantModels.value).toEqual([b, a])
+
+			// b drops and comes back with another session in the same slot
+			const b2 = makeModel({ audioPublisher: true, audioAvailable: true, k4slot: b.attributes.nextcloudSessionId })
+			allModels = [a, b2]
+			callParticipantModels.value = [a, b2]
+			await nextTick()
+			expect(orderedParticipantModels.value).toEqual([b2, a])
+		})
+
 		test('drops a departed participant and keeps ordering the rest', async () => {
 			const a = makeModel({ audioPublisher: true, audioAvailable: true })
 			const b = makeModel({ audioPublisher: true, audioAvailable: true })
