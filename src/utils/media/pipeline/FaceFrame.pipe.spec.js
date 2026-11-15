@@ -4,7 +4,7 @@
  */
 
 import { beforeAll, describe, expect, test, vi } from 'vitest'
-import FaceFrame, { getFaceFrameLevel, setFaceFrameLevel } from './FaceFrame.js'
+import FaceFrame, { FALLBACK_TEXT, getFaceFrameLevel, setFaceFrameLevel } from './FaceFrame.js'
 import TrackToStream from './TrackToStream.js'
 
 const showWarning = vi.hoisted(() => vi.fn())
@@ -64,6 +64,8 @@ describe('FaceFrame в цепочке превью', () => {
 			expect(ff.path).toBe('fallback')
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(getFaceFrameLevel()).toBe('off')
+			expect(localStorage.getItem('k4FaceFrameLevel')).toBe('auto') // откат не сохраняется (NAS_CLOUD#160)
+			expect(showWarning).toHaveBeenLastCalledWith(FALLBACK_TEXT.input)
 			expect(warn).toHaveBeenCalled()
 			expect(document.querySelector('video')).toBeNull()
 			vi.useRealTimers()
@@ -84,6 +86,7 @@ describe('FaceFrame в цепочке превью', () => {
 			expect(getFaceFrameLevel()).toBe('off')
 			expect(err).toHaveBeenCalled()
 			expect(showWarning).toHaveBeenCalledTimes(1)
+			expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.error)
 		})
 	})
 	test('защита: канвас рисует, а выходной трек пуст (проба без кадров) -> откат за 3 с', () => {
@@ -179,6 +182,7 @@ describe('FaceFrame в цепочке превью', () => {
 			await vi.advanceTimersByTimeAsync(2500)
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(console.error.mock.calls.some((c) => String(c[1]).includes('выходной трек не отдаёт кадры'))).toBe(true)
+			expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.output)
 			expect(document.body.contains(probe)).toBe(false)
 		} finally {
 			restore()

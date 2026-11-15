@@ -45,17 +45,32 @@ export function getFaceFrameLevel() {
 }
 
 /**
- * @param {string} newLevel новый уровень (сохраняется в localStorage)
+ * @param {string} newLevel новый уровень
+ * @param {object} [options] параметры
+ * @param {boolean} [options.persist] сохранить в localStorage (выбор человека); false — только до перезагрузки страницы (откат)
  */
-export function setFaceFrameLevel(newLevel) {
+export function setFaceFrameLevel(newLevel, { persist = true } = {}) {
 	if (!LEVELS.includes(newLevel) || newLevel === level) {
 		return
 	}
 	level = newLevel
-	try {
-		localStorage.setItem(STORAGE_KEY, level)
-	} catch (e) { /* localStorage недоступен */ }
+	if (persist) {
+		try {
+			localStorage.setItem(STORAGE_KEY, level)
+		} catch (e) { /* localStorage недоступен */ }
+	}
 	levelEvents.dispatchEvent(new Event('change'))
+}
+
+// ket4tec (NAS_CLOUD#160): текст всплывашки отката — по причине
+const FALLBACK_TAIL = ' Камера работает без него; включить снова можно в настройках камеры.'
+export const FALLBACK_TEXT = {
+	detector: 'Кадр по лицу выключен: распознаватель лиц не загрузился (браузер без WebGL/WebAssembly или нет связи).' + FALLBACK_TAIL,
+	capture: 'Кадр по лицу выключен: этот браузер не умеет передавать обработанное видео.' + FALLBACK_TAIL,
+	input: 'Кадр по лицу выключен: камера не отдала кадры для кадрирования.' + FALLBACK_TAIL,
+	output: 'Кадр по лицу выключен: сбой обработанного видео в этом браузере.' + FALLBACK_TAIL,
+	lowFps: 'Кадр по лицу выключен: устройству не хватает мощности, кадров в секунду слишком мало.' + FALLBACK_TAIL,
+	error: 'Кадр по лицу выключен из-за ошибки.' + FALLBACK_TAIL,
 }
 
 /**
@@ -249,7 +264,7 @@ export default class FaceFrame extends TrackSinkSource {
 		try {
 			this._startDigital(input)
 		} catch (e) {
-			this._fallback({ input, stopped: false }, 'запуск конвейера: ' + e.message)
+			this._fallback({ input, stopped: false }, 'error', 'запуск конвейера: ' + e.message)
 		}
 	}
 
@@ -329,7 +344,7 @@ export default class FaceFrame extends TrackSinkSource {
 		video.play().catch(() => {})
 		getDetector().then((detector) => {
 			d.detector = detector
-		}).catch((e) => console.error('FaceFrame: детектор не загрузился', e))
+		}).catch((e) => this._fallback(d, 'detector', 'детектор не загрузился: ' + e?.message))
 
 		const schedule = () => {
 			const id = ++d.sid // устаревшие колбэки (rVFC после перехода на rAF) игнорируются
@@ -338,7 +353,13 @@ export default class FaceFrame extends TrackSinkSource {
 					return
 				}
 				d.rvfcFired = d.rvfcFired || !d.useRaf
-				this._renderFrame(d, performance.now())
+				try {
+					this._renderFrame(d, performance.now())
+				} catch (e) {
+					// отрисовка упала — сразу на исходную камеру, не ждём сторожка
+					this._fallback(d, 'error', 'отрисовка: ' + e.message)
+					return
+				}
 				schedule()
 			}
 			if (d.useRaf) {
@@ -395,30 +416,33 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		if (!d.published) {
 			if (now - d.startedAt > NO_FRAMES_MS) {
-				this._fallback(d, d.frames >= MIN_FRAMES
-					? `выходной трек не отдаёт кадры за ${NO_FRAMES_MS} мс`
-					: `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
+				if (d.frames >= MIN_FRAMES) {
+					this._fallback(d, 'output', `выходной трек не отдаёт кадры за ${NO_FRAMES_MS} мс`)
+				} else {
+					this._fallback(d, 'input', `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
+				}
 			}
 			return
 		}
 		if (d.fps < MIN_FPS) {
 			d.lowSince = d.lowSince || now
 			if (now - d.lowSince >= LOW_FPS_MS) {
-				this._fallback(d, `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс`)
+				this._fallback(d, 'lowFps', `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс`)
 			}
 		} else {
 			d.lowSince = 0
 		}
 	}
 
-	// откат на исходный трек: уровень «Выкл» (селектор покажет), путь 'fallback'
-	_fallback(d, reason) {
+	// откат на исходный трек: уровень «Выкл» до перезагрузки страницы (селектор покажет), путь 'fallback'.
+	// Выбор человека в localStorage не трогаем: один сбой не выключает кадр по лицу навсегда (NAS_CLOUD#160).
+	_fallback(d, kind, reason) {
 		if (d.stopped) {
 			return
 		}
 		const input = d.input
 		this._stopDigital()
-		setFaceFrameLevel('off')
+		setFaceFrameLevel('off', { persist: false })
 		this._setOutput(input)
 		this.path = 'fallback'
 		if (window.__k4ffStats) {
@@ -426,7 +450,7 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		calllog('framing_error', { reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100) })
 		console.error('FaceFrame: кадр по лицу отключён —', reason)
-		showWarning('Кадр по лицу недоступен в этом браузере, камера работает без него')
+		showWarning(FALLBACK_TEXT[kind] ?? FALLBACK_TEXT.error)
 	}
 
 	_detectBoxes(d, source, W, H, now) {
@@ -524,6 +548,8 @@ export default class FaceFrame extends TrackSinkSource {
 				if (!d.output) {
 					throw new Error('captureStream без видеотрека')
 				}
+				// выходной трек кончился сам (не нашей остановкой) — получатели видели бы чёрное
+				d.output.addEventListener('ended', () => this._fallback(d, 'output', 'выходной трек завершился'))
 				// проба: <video> на выходном треке, должен отдать кадр до подмены камеры
 				const probe = document.createElement('video')
 				probe.muted = true
@@ -535,7 +561,7 @@ export default class FaceFrame extends TrackSinkSource {
 				d.probe = probe
 				probe.play?.()?.catch?.(() => {})
 			} catch (e) {
-				this._fallback(d, 'canvas.captureStream недоступен: ' + e.message)
+				this._fallback(d, 'capture', 'canvas.captureStream недоступен: ' + e.message)
 				return
 			}
 		}

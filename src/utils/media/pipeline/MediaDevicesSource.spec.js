@@ -5,7 +5,7 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mediaDevicesManager } from '../../webrtc/index.js'
-import MediaDevicesSource from './MediaDevicesSource.js'
+import MediaDevicesSource, { START_VIDEO_CONSTRAINTS } from './MediaDevicesSource.js'
 
 /**
  * Helper function to create MediaStreamTrack mocks with just the attributes and
@@ -968,5 +968,16 @@ describe('MediaDevicesSource', () => {
 			expect(mediaDevicesManager.off).toHaveBeenNthCalledWith(1, 'change:audioInputId', mediaDevicesSource._handleAudioInputIdChangedBound)
 			expect(mediaDevicesManager.off).toHaveBeenNthCalledWith(2, 'change:videoInputId', mediaDevicesSource._handleVideoInputIdChangedBound)
 		})
+	})
+
+	// NAS_CLOUD#239: вне Chromium камера сразу открывается в размере качества HIGH, без второго скачка
+	test('стартовые ограничения видео вне Chromium = HIGH без нижних границ', () => {
+		const constraints = { audio: true, video: true }
+		new MediaDevicesSource()._adjustVideoConstraintsForChromium(constraints)
+		expect(constraints.video).toEqual(START_VIDEO_CONSTRAINTS)
+		expect(constraints.video.width.min).toBeUndefined()
+		const off = { video: false }
+		new MediaDevicesSource()._adjustVideoConstraintsForChromium(off)
+		expect(off.video).toBe(false)
 	})
 })
