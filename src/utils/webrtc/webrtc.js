@@ -19,7 +19,7 @@ import { supportsRTCPeerConnection, supportsWebRTC } from '../browserCheck.ts'
 import { calllog } from '../calllog.js'
 import { k4log } from '../k4log.js'
 import { Sounds } from '../sounds.js'
-import { k4Hold, k4Ladder, k4OfferKey, k4StopOnLeave, k4Up } from './k4reconnect.js'
+import { k4Hold, k4Ladder, k4OfferKey, k4OwnAction, k4StopOnLeave, k4Up } from './k4reconnect.js'
 import { LocalStateBroadcasterMcu } from './LocalStateBroadcasterMcu.ts'
 import { LocalStateBroadcasterNoMcu } from './LocalStateBroadcasterNoMcu.ts'
 import SimpleWebRTC from './simplewebrtc/simplewebrtc.js'
@@ -787,17 +787,18 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	 * ket4tec (NAS_CLOUD#183): лестница возврата своего канала с HPB. Раньше (11.11) каждый обрыв сразу вёл к входу
 	 * новой сессией: у остальных участник выходил и входил, а при смене адреса раз в 20–40 с — раз за разом.
 	 */
+	const k4state = () => ({
+		connected: signaling.connected !== false,
+		inCall: selfInCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED,
+		need: !!localCallParticipantModel.get('peerNeeded'),
+		own: ownPeer ? k4PeerUp(ownPeer) : undefined,
+		screen: ownScreenPeer ? k4PeerUp(ownScreenPeer) : undefined,
+		subs: webrtc.webrtc.peers.filter((p) => p !== ownPeer && p !== ownScreenPeer).map(k4PeerUp),
+	})
 	const k4ladder = k4Ladder({
-		up() {
-			return k4Up({
-				connected: signaling.connected !== false,
-				inCall: selfInCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED,
-				need: !!localCallParticipantModel.get('peerNeeded'),
-				own: ownPeer ? k4PeerUp(ownPeer) : undefined,
-				screen: ownScreenPeer ? k4PeerUp(ownScreenPeer) : undefined,
-				subs: webrtc.webrtc.peers.filter((p) => p !== ownPeer && p !== ownScreenPeer).map(k4PeerUp),
-			})
-		},
+		up: () => k4Up(k4state()),
+		// медиа вернулось само, сокет ещё нет: его переподключит signaling (resume), ступени не нужны
+		live: () => k4Up({ ...k4state(), connected: true, inCall: true }),
 		run(step, alive) {
 			k4log('ice.fast', { how: ['restart', 'republish', 'rejoin'][step] })
 			calllog('reconnect_try', { step })
@@ -810,10 +811,11 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 					return // пока шёл resume, пользователь вышел из звонка
 				}
 				for (const p of [ownPeer, ownScreenPeer]) {
-					if (!p || k4PeerUp(p)) {
+					const act = p ? k4OwnAction(step, p.pc.iceConnectionState) : 'skip'
+					if (act === 'skip') {
 						continue
 					}
-					if (step === 1) {
+					if (act === 'recreate') {
 						// новое соединение в той же сессии (так же штатно переотправляется offer без ответа)
 						const screen = p === ownScreenPeer
 						p.end()

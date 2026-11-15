@@ -14,16 +14,21 @@ export const K4_WAIT = [5000, 6000, 20000]
 /**
  * @param {object} p
  * @param {Function} p.up связь есть (сигнальный сокет и свой поток)
+ * @param {Function} [p.live] медиа уже идёт (свой поток соединён), даже если сокет ещё нет — ступени не нужны
  * @param {Function} p.run выполнить ступень (номер 0..2, alive) — alive() ложно, если лестницу уже остановили
  * @return {{go: Function, ok: Function, stop: Function, step: Function}}
  */
-export function k4Ladder({ up, run }) {
+export function k4Ladder({ up, live = () => false, run }) {
 	let step = 0
 	let timer = null
 	let epoch = 0
 	const go = () => {
 		if (timer) {
 			return false // ступень уже идёт, её проверка решит, нужна ли следующая
+		}
+		if (live()) {
+			step = 0 // связь вернулась сама — живое не рвём (сокет переподключится своим ходом)
+			return false
 		}
 		const s = Math.min(step++, 2)
 		timer = setTimeout(() => {
@@ -112,4 +117,20 @@ export function k4Hold({ gone, ghost, inCall, explicit }) {
  */
 export function k4OfferKey(id, type) {
 	return type === 'screen' ? id + ':screen' : id
+}
+
+/**
+ * Что делать ступени со своим потоком (камера или экран).
+ * «disconnected»/«checking» браузер может вернуть сам, как только вернулась сеть, — такой поток не пересоздаём,
+ * иначе второй провал на живом (прогон 15.11: видео вернулось через 0,2 с, пересоздание дало ещё 4–8 с).
+ *
+ * @param {number} step ступень
+ * @param {string} [ice] iceConnectionState
+ * @return {'skip'|'restart'|'recreate'}
+ */
+export function k4OwnAction(step, ice) {
+	if (ice === 'connected' || ice === 'completed') {
+		return 'skip'
+	}
+	return step === 1 && (ice === 'failed' || ice === 'closed') ? 'recreate' : 'restart'
 }
