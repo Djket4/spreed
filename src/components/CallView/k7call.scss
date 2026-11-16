@@ -321,7 +321,7 @@ $glass: blur(24px) saturate(180%);
 	// высота шторки задана — дети делят её столбиком: заголовок и настройки по размеру, превью — остаток.
 	// Прокрутка только на совсем низком экране (ниже ~520 px), когда превью уже сжато до 96 px
 	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: none !important; }
-	:root:root body .modal-container:has(.media-settings) .media-settings { flex: 1 0 auto; display: flex; flex-direction: column; }
+	:root:root body .modal-container:has(.media-settings) .media-settings { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 	:root body .media-settings__content--mobile { flex: 1 1 auto; min-height: 0; display: flex !important; flex-direction: column; }
 	:root body .media-settings__content--mobile > .media-settings__settings { flex: 0 0 auto; }
 	// превью камеры — квадрат, как плитка в звонке (NAS_CLOUD#172; 148 px сплющивало лицо, Андрей 10.11): высота — остаток столбика, ширина по ней
@@ -330,16 +330,17 @@ $glass: blur(24px) saturate(180%);
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
 	:root body .media-settings__toggles { bottom: 10px; }
-	:root:root body .media-settings__toggles .button-vue { width: 48px; min-width: 48px; height: 48px; }
-	:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 48px !important; min-height: 48px !important; }
-	:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { top: 6px; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
-	:root body .media-settings { padding: 16px 16px max(16px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
-	:root body .media-settings__title { font-size: 22px; margin-bottom: 10px; }
-	:root body .media-settings__content--mobile { gap: 10px !important; }
+	:root:root body .media-settings__toggles .button-vue { width: 44px; min-width: 44px; height: 44px; }
+	:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 44px !important; min-height: 44px !important; }
+	:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { top: 4px; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
+	:root body .media-settings { padding: 14px 16px max(12px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
+	:root body .media-settings__title { font-size: 20px; margin-bottom: 8px; }
+	:root body .media-settings__content--mobile { gap: 8px !important; }
 	:root body .media-settings__preview { margin-inline: auto !important; }
 	:root body .media-settings .media-settings__settings { max-width: none; }
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
-	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 4px 0; }
+	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 3px 0; }
+	:root body .media-settings :is(.media-devices-selector__icon, .face-frame__icon) { top: 22px; }
 	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: sticky !important; inset: auto 0 12px 0 !important; z-index: 2; width: 100% !important; min-width: 0 !important; margin: 8px 0 0 !important; box-shadow: 0 0 0 10px var(--k7-bg2), 0 14px 0 10px var(--k7-bg2) !important; }
 }
 
