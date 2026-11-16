@@ -26,7 +26,12 @@ const enabled = computed({
 	set: (value: boolean) => setFaceFrameLevel(value ? 'auto' : 'off'),
 })
 
-const range = ref<number>(getFaceFrameRange())
+// ket4tec (NAS_CLOUD#232, Андрей 16.11): 5 положений вместо плавного хода; старое плавное значение — к ближайшему
+const STEP = 0.25
+const range = ref<number>(Math.round(getFaceFrameRange() / STEP) * STEP)
+if (range.value !== getFaceFrameRange()) {
+	setFaceFrameRange(range.value)
+}
 /**
  * @param event input ползунка
  */
@@ -48,10 +53,14 @@ function onRange(event: Event) {
 				type="range"
 				min="0"
 				max="1"
-				step="0.05"
+				:step="STEP"
 				:value="range"
+				list="k4-face-range-ticks"
 				aria-label="Дальность автокадрирования"
 				@input="onRange">
+			<datalist id="k4-face-range-ticks">
+				<option v-for="i in 5" :key="i" :value="(i - 1) * STEP" />
+			</datalist>
 			<span class="face-frame__end">ближе</span>
 		</label>
 	</div>
