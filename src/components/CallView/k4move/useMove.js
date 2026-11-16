@@ -11,6 +11,7 @@ import { useActorStore } from '../../../stores/actor.ts'
 import { useSessionStore } from '../../../stores/session.ts'
 import { useTokenStore } from '../../../stores/token.ts'
 import { k4drawSignaling } from '../../../utils/webrtc/index.js'
+import { appPost } from '../k4draw/macBridge.js'
 
 /**
  * Другие сессии этого же участника (attendeeId), которые сейчас в звонке. Чистая функция.
@@ -133,6 +134,7 @@ export function watchMove() {
 		}
 		const from = data.from
 		store.dispatch('leaveCall', { token, participantIdentifier: actor.participantIdentifier, all: false }).then(() => {
+			appPost('moved') // окно приложения K4Draw (NAS_CLOUD#177): перенос подтверждён, окно можно закрыть
 			ask('Звонок перенесён', 'Звонок продолжается в другой вкладке или на другом устройстве.', [
 				{ label: 'Закрыть', callback: () => {} },
 				{ label: 'Вернуть сюда', type: 'primary', callback: () => {

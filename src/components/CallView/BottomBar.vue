@@ -49,7 +49,7 @@ import { useSettingsStore } from '../../stores/settings.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts' // ket4tec: k4stk
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
-import { appPost, inApp, openMac } from './k4draw/macBridge.js' // ket4tec: k4draw, звонок в приложении (NAS_CLOUD#177)
+import { appPost, inApp, openMacReady } from './k4draw/macBridge.js' // ket4tec: k4draw, звонок в приложении (NAS_CLOUD#177)
 import { boardBtn, canDraw, state as k4draw, toggleBoard } from './k4draw/useDrawing.js' // ket4tec: k4draw
 import { state as k4stk, canUse as k4stkCan } from './k4stk/useStickers.js' // ket4tec: k4stk
 
@@ -484,11 +484,14 @@ if (inApp && !isSidebar) {
 	onUnmounted(() => appPost('left'))
 }
 /**
- * «Мини»: приложение прячет окно звонка, мост поднимает камеры и панель.
+ * «Мини»: сначала мост (камеры и панель), и только когда он ответил — приложение прячет окно звонка.
  */
-function k4MiniTap() {
-	appPost('mini')
-	openMac()
+async function k4MiniTap() {
+	if (await openMacReady()) {
+		appPost('mini')
+	} else {
+		showError('Приложение не ответило, окно звонка оставлено. Попробуйте ещё раз.')
+	}
 }
 
 // ket4tec: k4draw. Меню «Вид» — только сетка и докладчик: доска общая и локально не прячется (правило 11.11)

@@ -1,9 +1,13 @@
+/**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@nextcloud/dialogs', () => ({ showWarning: vi.fn() }))
 vi.mock('./macConsole.js', () => ({ consoleCmd: vi.fn(), consoleFrame: vi.fn(), consoleRtc: vi.fn(), consoleTick: vi.fn(), inCall: () => true, stopConsole: vi.fn() }))
 vi.mock('./snapshot.js', () => ({ downloadSnapshot: vi.fn(), screenSnapshot: vi.fn() }))
-vi.mock('./useDrawing.js', () => ({ onDraw: () => () => {}, myShow: () => null, PALETTE: [] }))
+vi.mock('./useDrawing.js', () => ({ onDraw: () => () => {}, myShow: () => null, localScreen: () => null, myId: () => 'me', PALETTE: [] }))
 
 /**
  * @param ua User-Agent
@@ -45,6 +49,35 @@ describe('macBridge: звонок в приложении K4Draw', () => {
 		expect(m.mac.st).toBe('wait')
 		expect(fetchSpy).not.toHaveBeenCalled()
 		vi.unstubAllGlobals()
+	})
+
+	it('в приложении окно моста молчит 8 с: ожидание прекращается, окно закрыто, «Мини» не прячет звонок', async () => {
+		vi.useFakeTimers()
+		const pop = { closed: false, close: vi.fn(), focus: vi.fn() }
+		vi.spyOn(window, 'open').mockReturnValue(pop)
+		const m = await load('Safari K4Draw/1.8.0')
+		const r = m.openMacReady()
+		vi.advanceTimersByTime(8000)
+		expect(await r).toBe(false)
+		expect(m.mac.st).toBe('idle')
+		expect(pop.close).toHaveBeenCalled()
+		vi.useRealTimers()
+	})
+
+	it('«Мини» ждёт ready от окна моста', async () => {
+		const pop = { closed: false, close: vi.fn(), focus: vi.fn(), postMessage: vi.fn() }
+		vi.spyOn(window, 'open').mockReturnValue(pop)
+		const m = await load('Safari K4Draw/1.8.0')
+		const r = m.openMacReady()
+		window.dispatchEvent(new MessageEvent('message', { origin: 'http://127.0.0.1:47811', source: pop, data: { t: 'ready' } }))
+		expect(await r).toBe(true)
+		expect(m.mac.st).toBe('on')
+	})
+
+	it('окно моста заблокировано: «Мини» сразу false', async () => {
+		vi.spyOn(window, 'open').mockReturnValue(null)
+		const m = await load('Safari K4Draw/1.8.0')
+		expect(await m.openMacReady()).toBe(false)
 	})
 
 	it('ссылка «Открыть в приложении» и скрытый iframe', async () => {

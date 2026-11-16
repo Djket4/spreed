@@ -4,6 +4,7 @@
 // ket4tec (NAS_CLOUD#113): другая сессия того же пользователя и фильтр ссылок шапки
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('../k4draw/macBridge.js', () => ({ appPost: vi.fn() }))
 vi.mock('@nextcloud/dialogs', () => ({ getDialogBuilder: vi.fn(), showInfo: vi.fn() }))
 vi.mock('@nextcloud/router', () => ({ generateUrl: (u) => '/index.php' + u }))
 vi.mock('../../../store/index.js', () => ({ default: { getters: {} } }))

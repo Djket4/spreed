@@ -5,13 +5,14 @@
  * Safari не пускает (mixed content), CSP Talk — тоже.
  */
 import { showWarning } from '@nextcloud/dialogs'
-import { reactive } from 'vue'
+import { reactive, watch as vueWatch } from 'vue'
 import { consoleCmd, consoleFrame, consoleRtc, consoleTick, inCall, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
 import { clearAll, eraseMarks, hash, identity, localScreen, moveMark, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
 const ORIGIN = 'http://127.0.0.1:47811'
 const URL = ORIGIN + '/'
+const APP_WAIT = 8000 // в приложении K4Draw: столько ждём ready от окна моста
 /** Страница скачивания приложения с инструкцией (статика облака, без входа) */
 export const MAC_DL = 'https://cloud.ket4tec.online/k4draw/'
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
@@ -326,7 +327,38 @@ export function openMac() {
 		return
 	}
 	mac.st = 'wait'
-	!inApp && retry() // в приложении ответ приходит сам; ping и запуск по схеме не нужны
+	if (!inApp) {
+		return retry()
+	}
+	// в приложении ping и запуск по схеме не нужны, но ждём ограниченно: окно моста не ответило — сброс
+	clearTimeout(timer)
+	timer = setTimeout(() => {
+		if (mac.st === 'wait') {
+			pop?.close()
+			pop = null
+			mac.st = 'idle'
+		}
+	}, APP_WAIT)
+}
+
+/**
+ * «Мини» в приложении: поднять мост и дождаться ready (из клика — окно требует жеста).
+ *
+ * @return {Promise<boolean>} true — мост на связи, окно звонка можно прятать
+ */
+export function openMacReady() {
+	openMac()
+	return new Promise((resolve) => {
+		let stop = null
+		const check = () => {
+			if (mac.st !== 'wait') {
+				stop?.()
+				resolve(mac.st === 'on')
+			}
+		}
+		stop = vueWatch(() => mac.st, check, { flush: 'sync' })
+		check()
+	})
 }
 
 /**
