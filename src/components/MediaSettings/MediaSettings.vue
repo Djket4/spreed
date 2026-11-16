@@ -71,15 +71,12 @@
 					<div
 						v-show="!showVideo"
 						class="preview__novideo">
-						<VideoBackground class="background-preview" />
-						<AvatarWrapper
-							:id="userId"
-							:token="token"
-							:name="displayName"
-							:source="actorStore.actorType"
-							:size="AVATAR.SIZE.EXTRA_LARGE"
-							disableMenu
-							disableTooltip />
+						<!-- ket4tec (NAS_CLOUD#172, Андрей 16.11): без камеры — то же облако, что на плитке в звонке -->
+						<K4Face
+							:stream="audioStream"
+							:on="!!audioOn"
+							:seed="actorStore.actorId ? actorStore.actorType + '/' + actorStore.actorId : (displayName || '?')"
+							:token="token" />
 					</div>
 
 					<p v-if="cameraNoticeText" class="preview__notice" role="status">
@@ -266,8 +263,7 @@ import IconReflectHorizontal from 'vue-material-design-icons/ReflectHorizontal.v
 import IconTune from 'vue-material-design-icons/Tune.vue'
 import IconVideo from 'vue-material-design-icons/Video.vue' // Filled for better indication
 import IconVideoOffOutline from 'vue-material-design-icons/VideoOffOutline.vue'
-import AvatarWrapper from '../AvatarWrapper/AvatarWrapper.vue'
-import VideoBackground from '../CallView/shared/VideoBackground.vue'
+import K4Face from '../CallView/shared/k4face/K4Face.vue' // ket4tec
 import SetGuestUsername from '../SetGuestUsername.vue'
 import CallButton from '../TopBar/CallButton.vue'
 import VolumeIndicator from '../UIShared/VolumeIndicator.vue'
@@ -300,7 +296,6 @@ export default {
 	name: 'MediaSettings',
 
 	components: {
-		AvatarWrapper,
 		CallButton,
 		MediaDevicesSelector,
 		MediaDevicesSpeakerTest,
@@ -313,7 +308,7 @@ export default {
 		NcModal,
 		NcPopover,
 		NcNoteCard,
-		VideoBackground,
+		K4Face,
 		FaceFrameSelector,
 		VideoBackgroundEditor,
 		VolumeIndicator,
@@ -366,6 +361,7 @@ export default {
 			cameraNotice,
 			virtualBackground,
 			registerVideoElement,
+			audioStream,
 		} = useDevices()
 
 		const isVirtualBackgroundAvailable = computed(() => virtualBackground.value?.isAvailable())
@@ -408,6 +404,7 @@ export default {
 			videoStreamError,
 			cameraNotice,
 			virtualBackground,
+			audioStream,
 			tabs,
 			dialogHeaderId,
 			supportStartWithoutMedia,
