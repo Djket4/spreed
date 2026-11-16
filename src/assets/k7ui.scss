@@ -741,6 +741,11 @@ html.k7f body #k7-toasts.k7-toasts {
 html.k7f.k7-lane body #k7-toasts.k7-toasts > :nth-last-child(n+3) {
 	display: none !important;
 }
+// плашки в полосе лежат на фоне страницы — тень не нужна (под плашкой давала розоватое свечение, между двумя — цветную полосу)
+html.k7f.k7-lane body #k7-toasts.k7-toasts > * { box-shadow: none !important; }
+html.k7f.k7-lane body #k7-toasts.k7-toasts > :is(.k7-toast-err, .toast-error) { box-shadow: inset 4px 0 0 #ff6b6b !important; }
+// крестик плашки: у @nextcloud/dialogs свой тёмный крест картинкой в ::before, облако рисует там же светлый «×» — оставляем один
+html body .toastify.k7-toast-native .toast-close::before { background-image: none !important; }
 
 // ket4tec (NAS_CLOUD#162 п.2): телефон — верх окна не выше низа полосы уведомлений (128 + 52 + 8), плашка не ложится на заголовок и крестик
 @media (max-width: 700px) {

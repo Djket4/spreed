@@ -1198,12 +1198,19 @@ export default {
 <style lang="scss" scoped>
 @use '../../assets/variables.scss' as *;
 
-.k4-ask-unmute { // ket4tec (NAS_CLOUD#162 п.2): текст и кнопки в ряд, на узком экране кнопки строкой ниже
+.k4-ask-unmute { // ket4tec (NAS_CLOUD#162 п.2): вид кнопок — от плашек облака; тут только раскладка
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: center;
 	gap: 8px 12px;
+	@media (max-width: 700px) { // телефон: текст строкой, под ним обе кнопки поровну
+		> span { flex: 1 0 100%; text-align: center; }
+		> button { flex: 1 1 0; }
+	}
+}
+
+.k4-ask-unmute--solo { // ket4tec (NAS_CLOUD#154, #162 п.2): запасной вид, когда стопки нет
 	button {
 		padding: 8px 16px;
 		border: 0;
@@ -1213,9 +1220,6 @@ export default {
 		font-weight: bold;
 		cursor: pointer;
 	}
-}
-
-.k4-ask-unmute--solo { // ket4tec (NAS_CLOUD#154, #162 п.2): запасной вид, когда стопки нет
 	position: fixed;
 	top: var(--k7-toast-top, 70px);
 	left: 50%;
