@@ -408,7 +408,8 @@ $glass: blur(24px) saturate(180%);
 // один в звонке: своя камера крупно по центру, «Ждём остальных» и ссылка над ней (Андрей 10.11); полоска со стрелкой не нужна
 #call-container.k7-alone {
 	--k7-alone-top: 170px;
-	.empty-call-view:not(.empty-call-view--small) { justify-content: flex-start !important; padding-top: 96px !important; z-index: 2; pointer-events: none; }
+	// ket4tec (NAS_CLOUD#161): заставка начинается под полосой уведомлений (--k7-call-top от main.js, как у плиток), плашка её не закрывает
+	.empty-call-view:not(.empty-call-view--small) { justify-content: flex-start !important; padding-top: var(--k7-call-top, 96px) !important; z-index: 2; pointer-events: none; }
 	.empty-call-view .empty-call-view__link { pointer-events: auto; }
 	#videos .video__promoted { display: none !important; }
 	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px 96px !important; box-sizing: border-box; background: none !important; }
