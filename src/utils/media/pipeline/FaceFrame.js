@@ -8,11 +8,13 @@ import { showWarning } from '@nextcloud/dialogs'
 import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
+import { centerZoom, clampTarget, squareRect } from './FaceSquare.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
 const STORAGE_KEY = 'k4FaceFrameLevel'
-export const LEVELS = ['off', 'auto', '1', '1.5', '2']
-export const LEVEL_LABELS = { off: 'Выкл', auto: 'Авто', 1: '1×', 1.5: '1,5×', 2: '2×' }
+// ket4tec (NAS_CLOUD#232): автокадрирование вкл/выкл + «Дальность»; старые x1/x2 из localStorage читаются как «вкл»
+export const LEVELS = ['off', 'auto']
+const RANGE_KEY = 'k4FaceFrameRange'
 
 const DETECT_INTERVAL_MS = 125 // не чаще 8 раз/с
 const TILE_INTERVAL_MS = 500 // плитки (лица нет) не чаще 2 раз/с
@@ -27,19 +29,45 @@ const LOW_FPS_MS = 2000
 const STATS_LOG_MS = 5000
 const LOST_AFTER_MS = 2000
 // Подстройка «Авто» (рамка детектора — лоб..подбородок, без макушки и шеи):
-const AUTO_MAX_ZOOM = 2.2 // потолок приближения (было 2.5)
-const AUTO_FACE_SPAN_W = 3 // окно по ширине = ширина рамки * это (было 2.6)
-const AUTO_FACE_SPAN_H = 3.4 // окно по высоте = высота рамки * это: запас на макушку и подбородок (было 2.6)
+const AUTO_MAX_ZOOM = 3 // потолок приближения (#232: было 2.2, «Ближе» упиралось в него)
+const AUTO_FACE_TIGHT_W = 1.8 // «ближе» до упора: окно по ширине = ширина рамки * это
+const AUTO_FACE_TIGHT_H = 1.9 // «ближе» до упора: окно по высоте = высота рамки * это — макушка и подбородок ещё в кадре
 const AUTO_HEAD_SHIFT = 0.12 // центр окна выше центра рамки на долю высоты рамки (макушка)
 
 let level = 'auto' // ket4tec v7: кадр по лицу включён по умолчанию (Андрей 10.11)
 try {
 	const stored = localStorage.getItem(STORAGE_KEY)
-	if (LEVELS.includes(stored)) {
+	if (stored === 'off') {
 		level = stored
 	}
 } catch (e) { /* localStorage недоступен */ }
 const levelEvents = new EventTarget()
+
+// «Дальность»: 0 — дальше (окно шире), 1 — ближе; 0.5 — прежнее «Авто»
+let range = 0.5
+try {
+	const stored = parseFloat(localStorage.getItem(RANGE_KEY))
+	if (stored >= 0 && stored <= 1) {
+		range = stored
+	}
+} catch (e) { /* localStorage недоступен */ }
+
+/** @return {number} дальность 0..1 */
+export function getFaceFrameRange() {
+	return range
+}
+
+/**
+ * Читается покадрово при каждой детекции — превью и звонок подхватывают сразу.
+ *
+ * @param {number} value дальность 0..1
+ */
+export function setFaceFrameRange(value) {
+	range = Math.min(1, Math.max(0, value))
+	try {
+		localStorage.setItem(RANGE_KEY, String(range))
+	} catch (e) { /* localStorage недоступен */ }
+}
 
 /** @return {string} текущий уровень */
 export function getFaceFrameLevel() {
@@ -88,9 +116,9 @@ export function onFaceFrameLevelChange(handler) {
  * Целевое окно (центр в долях кадра и приближение) по рамкам лиц.
  *
  * @param {Array<{x: number, y: number, w: number, h: number}>} faces рамки в долях кадра (0..1)
- * @param {string} lvl уровень
+ * @param {number} [r] дальность 0..1
  */
-export function computeTarget(faces, lvl) {
+export function computeTarget(faces, r = range) {
 	if (!faces.length) {
 		return null
 	}
@@ -98,16 +126,11 @@ export function computeTarget(faces, lvl) {
 	const y1 = Math.min(...faces.map((f) => f.y))
 	const x2 = Math.max(...faces.map((f) => f.x + f.w))
 	const y2 = Math.max(...faces.map((f) => f.y + f.h))
-	let zoom
-	if (lvl === 'auto') {
-		// окно должно вместить рамку по ширине и по высоте (с запасом)
-		const needW = (x2 - x1) * AUTO_FACE_SPAN_W
-		const needH = (y2 - y1) * AUTO_FACE_SPAN_H
-		zoom = 1 / Math.max(needW, needH, 1 / AUTO_MAX_ZOOM)
-	} else {
-		zoom = parseFloat(lvl)
-	}
-	const shift = lvl === 'auto' ? (y2 - y1) * AUTO_HEAD_SHIFT : 0
+	// ket4tec (NAS_CLOUD#232): «Дальность» 0 — весь кадр (1×), 1 — голова во весь квадрат (до потолка); между — равные шаги в разах.
+	// Было: запас ×1.5..×0.6 от «обычного» окна — на крупном лице 0, 0.25 и 0.5 упирались в 1× и почти не различались
+	const zMax = Math.min(AUTO_MAX_ZOOM, 1 / Math.max((x2 - x1) * AUTO_FACE_TIGHT_W, (y2 - y1) * AUTO_FACE_TIGHT_H, 1e-3))
+	const zoom = Math.max(1, zMax) ** r
+	const shift = (y2 - y1) * AUTO_HEAD_SHIFT
 	return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2 - shift, zoom: Math.max(1, zoom) }
 }
 
@@ -168,10 +191,8 @@ function getDetector() {
 /**
  * Узел: «кадр по лицу». Уровень берётся из общей настройки (getFaceFrameLevel).
  *
- * Путь 2 (аппаратный zoom) для 1,5×/2×, если камера поддерживает и значение
- * применилось; иначе путь 1 (цифровое окно с ведением за лицом). "Авто" и 1×
- * всегда идут цифровым путём/в обход. Какой путь сработал: свойство "path"
- * ('off' | 'hardware' | 'digital').
+ * Цифровое окно с ведением за лицом, крупность — «Дальность» (getFaceFrameRange).
+ * Какой путь сработал: свойство "path" ('off' | 'digital').
  *
  *        -----------
  *  ---> | FaceFrame | --->
@@ -187,7 +208,6 @@ export default class FaceFrame extends TrackSinkSource {
 		// для проверки в живом звонке: window.__k4ff[i].path / .window
 		;(window.__k4ff ||= []).push(this)
 		this.path = 'off'
-		this._hwZoomed = false
 		this._applyToken = 0
 		this._outputTrack = null
 		this._frozen = null // причина остановки слежения (детектор, мощность) — до смены уровня человеком
@@ -243,67 +263,20 @@ export default class FaceFrame extends TrackSinkSource {
 		if (!input || !input.enabled || lvl === 'off') {
 			this._stopDigital()
 			this.path = 'off'
-			if (input && this._hwZoomed) {
-				this._hwZoomed = false
-				await this._setHardwareZoom(input, 1)
-			}
-			if (token === this._applyToken) {
-				this._setOutput(input)
-			}
+			this._setOutput(input)
 			return
 		}
 
-		// ket4tec (NAS_CLOUD#271): канвас на выход — синхронно, до ожидания аппаратного зума: пока камера
-		// не приблизила, исходный трек не уходит (иначе _handleInputTrackEnabled включил бы его получателям)
 		this.path = 'digital'
+		// ket4tec (NAS_CLOUD#271): исходную камеру на выход не ставим — её некадрированный кадр и был «скачком».
+		// Выход — канвас с первой отрисовки; плитки (свои и чужие) проявляются по первому настоящему кадру.
 		try {
 			this._startDigital(input)
 		} catch (e) {
 			this._fallback({ input, stopped: false }, 'error', 'запуск конвейера: ' + e.message)
 			return
 		}
-		if (lvl !== 'auto' && await this._tryHardware(input, parseFloat(lvl))) {
-			if (token !== this._applyToken) {
-				return
-			}
-			this._stopDigital()
-			this.path = 'hardware'
-			this._setOutput(input)
-			return
-		}
-		if (token !== this._applyToken) {
-			return
-		}
-
-		if (this._hwZoomed) {
-			this._hwZoomed = false
-			await this._setHardwareZoom(input, 1)
-			if (token !== this._applyToken) {
-				return // пока ждали, кадрирование выключили или сменили камеру
-			}
-		}
 		this.path = this._frozen ? 'frozen' : 'digital'
-	}
-
-	async _setHardwareZoom(track, zoom) {
-		try {
-			const caps = track.getCapabilities?.()
-			if (!caps?.zoom) {
-				return false
-			}
-			const value = Math.min(caps.zoom.max, Math.max(caps.zoom.min, zoom))
-			await track.applyConstraints({ advanced: [{ zoom: value }] })
-			const applied = track.getSettings().zoom
-			return applied !== undefined && Math.abs(applied - value) < 0.05
-		} catch (e) {
-			return false
-		}
-	}
-
-	async _tryHardware(track, zoom) {
-		const ok = await this._setHardwareZoom(track, zoom)
-		this._hwZoomed = ok || this._hwZoomed
-		return ok
 	}
 
 	_startDigital(input) {
@@ -519,8 +492,8 @@ export default class FaceFrame extends TrackSinkSource {
 	}
 
 	// не больше одной детекции за кадр: полный кадр (до 8 раз/с), а когда лица нет — плитка (до 2 раз/с)
-	_maybeDetect(d, now, lvl) {
-		const { video, canvas } = d
+	_maybeDetect(d, now) {
+		const { video } = d
 		const full = now >= d.nextDetectAt
 		// до первой отрисовки плитки — каждый кадр: лицо у края полный кадр не видит, по 2 плитки/с искали бы до 2 с
 		const tileDue = !full && d.noFace && (!d.placed || now >= d.nextTileAt)
@@ -532,14 +505,16 @@ export default class FaceFrame extends TrackSinkSource {
 			let faces
 			let tile = null
 			if (full) {
-				faces = this._detectBoxes(d, video, canvas.width, canvas.height, now)
+				faces = this._detectBoxes(d, video, video.videoWidth, video.videoHeight, now)
 			} else {
 				// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
 				tile = TILES[d.tileIdx % TILES.length]
 				const tc = d.tileCanvas ||= document.createElement('canvas')
-				tc.width = canvas.width
-				tc.height = canvas.height
-				tc.getContext('2d').drawImage(video, tile.x * canvas.width, tile.y * canvas.height, tile.w * canvas.width, tile.h * canvas.height, 0, 0, tc.width, tc.height)
+				const vw = video.videoWidth
+				const vh = video.videoHeight
+				tc.width = vw
+				tc.height = vh
+				tc.getContext('2d').drawImage(video, tile.x * vw, tile.y * vh, tile.w * vw, tile.h * vh, 0, 0, vw, vh)
 				faces = this._detectBoxes(d, tc, tc.width, tc.height, now).map((b) => tileToFrame(b, tile))
 			}
 			if (full) {
@@ -548,8 +523,12 @@ export default class FaceFrame extends TrackSinkSource {
 			if (tile && !faces.length) {
 				d.tileIdx++
 			}
-			const target = computeTarget(faces, lvl)
+			const target = computeTarget(faces)
 			if (target) {
+				if (faces.length === 1 && range > 0) { // «Дальность» 0 — весь кадр, без доводки к центру
+					// ket4tec (NAS_CLOUD#172): лицо у края — квадрат сужается (до 1.5×), чтобы оно встало в центр плитки
+					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
+				}
 				d.target = target
 				d.lastFace = now
 			}
@@ -573,17 +552,20 @@ export default class FaceFrame extends TrackSinkSource {
 		if (!video.videoWidth) {
 			return
 		}
-		if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-			canvas.width = video.videoWidth
-			canvas.height = video.videoHeight
+		// ket4tec (NAS_CLOUD#172): выход — квадрат (сторона = короткая сторона кадра), вырезается у отправителя:
+		// сдвиг к лицу видят все — собеседники, своя плитка и превью проверки устройств
+		const W = video.videoWidth
+		const H = video.videoHeight
+		const side = Math.min(W, H)
+		if (canvas.width !== side || canvas.height !== side) {
+			canvas.width = side
+			canvas.height = side
 		}
-		const lvl = getFaceFrameLevel()
-
 		// ket4tec (NAS_CLOUD#271): до первой детекции не рисуем; нашли лицо — окно сразу на месте, без пружины
 		if (!d.placed) {
-			this._maybeDetect(d, now, lvl)
+			this._maybeDetect(d, now)
 			if (d.lastFace) {
-				d.win = { ...d.target }
+				d.win = clampTarget(d.target, W, H)
 			} else if (!d.frozen && now - d.startedAt < HOLD_MS) {
 				return
 			}
@@ -592,18 +574,15 @@ export default class FaceFrame extends TrackSinkSource {
 
 		if (!d.frozen && now - d.lastFace > LOST_AFTER_MS) {
 			d.target = { cx: 0.5, cy: 0.5, zoom: 1 }
-		} else if (lvl !== 'auto') {
-			d.target.zoom = parseFloat(lvl)
 		}
 
 		const dt = d.lastTick ? Math.min(now - d.lastTick, 100) : 0
 		d.lastTick = now
-		d.win = stepWindow(d.win, d.target, dt)
+		d.win = stepWindow(d.win, clampTarget(d.target, W, H), dt, { W, H })
 		this.window = d.win
 
-		const sw = canvas.width / d.win.zoom
-		const sh = canvas.height / d.win.zoom
-		ctx.drawImage(video, d.win.cx * canvas.width - sw / 2, d.win.cy * canvas.height - sh / 2, sw, sh, 0, 0, canvas.width, canvas.height)
+		const { sx, sy, side: ss } = squareRect(d.win, W, H)
+		ctx.drawImage(video, sx, sy, ss, ss, 0, 0, side, side)
 		d.frames++
 		d.fpsFrames++
 
@@ -612,7 +591,7 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 
 		// детекция после отрисовки: кадр от неё не зависит
-		this._maybeDetect(d, now, lvl)
+		this._maybeDetect(d, now)
 	}
 
 	// выходной трек реально отдаёт кадры, и они не чёрные при нечёрном источнике
@@ -665,8 +644,5 @@ export default class FaceFrame extends TrackSinkSource {
 		this._unsubscribe()
 		this._stopDigital()
 		this._applyToken++
-		if (this._hwZoomed && this.getInputTrack()) {
-			this._setHardwareZoom(this.getInputTrack(), 1)
-		}
 	}
 }

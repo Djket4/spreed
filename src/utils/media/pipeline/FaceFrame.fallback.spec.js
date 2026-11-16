@@ -24,10 +24,11 @@ beforeEach(() => {
 		this.getTracks = () => tracks
 	}
 	window.HTMLMediaElement.prototype.play = () => Promise.resolve()
-	for (const k of ['videoWidth', 'readyState']) {
+	for (const k of ['videoWidth', 'videoHeight', 'readyState']) {
 		saved[k] = Object.getOwnPropertyDescriptor(vproto, k)
 	}
 	Object.defineProperty(vproto, 'videoWidth', { configurable: true, get: () => 640 })
+	Object.defineProperty(vproto, 'videoHeight', { configurable: true, get: () => 360 })
 	Object.defineProperty(vproto, 'readyState', { configurable: true, get: () => 4 })
 	vi.spyOn(console, 'error').mockImplementation(() => {})
 	showWarning.mockClear()
@@ -80,6 +81,7 @@ describe('FaceFrame: откат', () => {
 		expect(ff.path).toBe('frozen')
 		expect(ff.getOutputTrack()).toBe(out)
 		expect(ff.window).toMatchObject({ cx: 0.5, cy: 0.5 })
+		expect([ff._digital.canvas.width, ff._digital.canvas.height]).toEqual([360, 360]) // NAS_CLOUD#172: выход — квадрат по короткой стороне
 		expect(getFaceFrameLevel()).toBe('auto')
 		expect(showWarning).toHaveBeenCalledTimes(1)
 		expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.detector)
@@ -113,8 +115,9 @@ describe('FaceFrame: откат', () => {
 		})
 		await vi.advanceTimersByTimeAsync(1600)
 		expect(ff.getOutputTrack()).toBe(track)
-		setFaceFrameLevel('1.5')
-		expect(localStorage.getItem(KEY)).toBe('1.5')
+		localStorage.removeItem(KEY)
+		setFaceFrameLevel('auto')
+		expect(localStorage.getItem(KEY)).toBe('auto')
 	})
 
 	test('тексты разные для каждой причины', () => {

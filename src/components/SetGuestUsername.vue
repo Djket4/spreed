@@ -160,7 +160,7 @@ function toggleEdit() {
 			<template #icon>
 				<IconDice :size="20" />
 			</template>
-			{{ t('spreed', 'Придумать имя') }}
+			{{ t('spreed', 'Придумать') }}<span class="username-form__dice-tail">&nbsp;{{ t('spreed', 'имя') }}</span>
 		</NcButton>
 
 		<p class="login-info">

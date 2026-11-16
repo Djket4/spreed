@@ -54,9 +54,13 @@
 						v-show="showVideo"
 						ref="video"
 						class="preview__video"
-						:class="{ 'preview__video--mirrored': isMirrored }"
+						:class="{ 'preview__video--mirrored': isMirrored, 'preview__video--in': pvIn }"
 						disablePictureInPicture
-						tabindex="-1" />
+						tabindex="-1"
+						@playing="pvIn = showVideo"
+						@loadeddata="pvIn = showVideo" />
+					<!-- ket4tec (NAS_CLOUD#172): копия последнего кадра гаснет при выключении камеры, под ней уже живое облако -->
+					<canvas ref="pvSnap" class="preview__video preview__snap" aria-hidden="true" />
 					<NcButton
 						v-if="showVideo"
 						variant="secondary"
@@ -68,18 +72,14 @@
 							<IconReflectHorizontal :size="20" />
 						</template>
 					</NcButton>
-					<div
-						v-show="!showVideo"
-						class="preview__novideo">
-						<VideoBackground class="background-preview" />
-						<AvatarWrapper
-							:id="userId"
-							:token="token"
-							:name="displayName"
-							:source="actorStore.actorType"
-							:size="AVATAR.SIZE.EXTRA_LARGE"
-							disableMenu
-							disableTooltip />
+					<div class="preview__novideo">
+						<!-- ket4tec (NAS_CLOUD#172, Андрей 16.11): без камеры — то же облако, что на плитке в звонке.
+							Всегда под видео (не v-show): при выключении камеры облако уже собрано и крутится, без пустого кадра -->
+						<K4Face
+							:stream="audioStream"
+							:on="!!audioOn"
+							:seed="actorStore.actorId ? actorStore.actorType + '/' + actorStore.actorId : (displayName || '?')"
+							:token="token" />
 					</div>
 
 					<p v-if="cameraNoticeText" class="preview__notice" role="status">
@@ -175,7 +175,8 @@
 								:deviceId="videoInputId"
 								@refresh="updateDevices"
 								@update:deviceId="handleVideoInputIdChange" />
-							<FaceFrameSelector />
+							<!-- ket4tec NAS_CLOUD#172: без доступной камеры кадрировать нечего -->
+							<FaceFrameSelector v-if="!videoStreamError && devices.some((d) => d.kind === 'videoinput')" />
 							<MediaDevicesSelector
 								v-if="audioOutputSupported"
 								kind="audiooutput"
@@ -209,7 +210,8 @@
 
 					<!-- Guest display name setting-->
 					<!-- ket4tec (NAS_CLOUD#161): до звонка имя — поле на странице; здесь только в звонке или если имя было пусто при открытии -->
-					<SetGuestUsername v-if="isGuest && (isInCall || k4NameEmpty)" compact />
+					<!-- #172: в звонке имени, «Придумать» и «Войти» нет — это проверка устройств, не вход -->
+					<SetGuestUsername v-if="isGuest && !isInCall && k4NameEmpty" compact />
 
 					<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
 					<!-- Notify call option-->
@@ -222,13 +224,21 @@
 						{{ t('spreed', 'Notify all participants about this call') }}
 					</NcCheckboxRadioSwitch>
 
-					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна -->
-					<p v-if="isBeforeJoinCall && isGuest && !guestNameStore.guestUserName.length" class="k4-join-hint">
+					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна; имя ввели — подсказка прячется, но место держит (#172: превью не прыгает) -->
+					<p
+						v-if="isBeforeJoinCall && isGuest"
+						class="k4-join-hint"
+						:style="guestNameStore.guestUserName.length ? { visibility: 'hidden' } : null"
+						:aria-hidden="guestNameStore.guestUserName.length ? 'true' : null">
 						Введите имя, чтобы войти
 					</p>
+					<!-- #172: в звонке место кнопки занято всегда — превью не меняет размер, когда она появляется; вид как у «Начать звонок» -->
 					<NcButton
-						v-if="showUpdateChangesButton"
-						class="action-button"
+						v-if="showUpdateChangesButton || isInCall"
+						class="action-button k4-apply"
+						:disabled="!showUpdateChangesButton"
+						:style="showUpdateChangesButton ? null : { visibility: 'hidden' }"
+						:aria-hidden="showUpdateChangesButton ? null : 'true'"
 						@click="closeModalAndApplySettings">
 						{{ isDeviceCheck ? t('spreed', 'Save') : t('spreed', 'Apply settings') }}
 					</NcButton>
@@ -266,8 +276,7 @@ import IconReflectHorizontal from 'vue-material-design-icons/ReflectHorizontal.v
 import IconTune from 'vue-material-design-icons/Tune.vue'
 import IconVideo from 'vue-material-design-icons/Video.vue' // Filled for better indication
 import IconVideoOffOutline from 'vue-material-design-icons/VideoOffOutline.vue'
-import AvatarWrapper from '../AvatarWrapper/AvatarWrapper.vue'
-import VideoBackground from '../CallView/shared/VideoBackground.vue'
+import K4Face from '../CallView/shared/k4face/K4Face.vue' // ket4tec
 import SetGuestUsername from '../SetGuestUsername.vue'
 import CallButton from '../TopBar/CallButton.vue'
 import VolumeIndicator from '../UIShared/VolumeIndicator.vue'
@@ -300,7 +309,6 @@ export default {
 	name: 'MediaSettings',
 
 	components: {
-		AvatarWrapper,
 		CallButton,
 		MediaDevicesSelector,
 		MediaDevicesSpeakerTest,
@@ -313,7 +321,7 @@ export default {
 		NcModal,
 		NcPopover,
 		NcNoteCard,
-		VideoBackground,
+		K4Face,
 		FaceFrameSelector,
 		VideoBackgroundEditor,
 		VolumeIndicator,
@@ -366,6 +374,7 @@ export default {
 			cameraNotice,
 			virtualBackground,
 			registerVideoElement,
+			audioStream,
 		} = useDevices()
 
 		const isVirtualBackgroundAvailable = computed(() => virtualBackground.value?.isAvailable())
@@ -408,6 +417,7 @@ export default {
 			videoStreamError,
 			cameraNotice,
 			virtualBackground,
+			audioStream,
 			tabs,
 			dialogHeaderId,
 			supportStartWithoutMedia,
@@ -435,6 +445,8 @@ export default {
 			skipBlurVirtualBackground: false,
 			mediaLoading: false,
 			isDeviceCheck: false,
+			pvIn: false, // ket4tec: видео превью проявлено (по первому кадру)
+			k4CloseOnJoin: false, // ket4tec #172: закрыть шторку, когда звонок откроется
 		}
 	},
 
@@ -527,6 +539,10 @@ export default {
 
 		isInLobby() {
 			return this.$store.getters.isInLobby
+		},
+
+		isJoiningCall() {
+			return this.$store.getters.isJoiningCall(this.token)
 		},
 
 		recordingConsent() {
@@ -650,6 +666,24 @@ export default {
 	},
 
 	watch: {
+		// ket4tec (NAS_CLOUD#172): sync — снимок кадра до того, как useDevices отцепит поток
+		showVideo: {
+			flush: 'sync',
+			handler(v) {
+				if (!v) {
+					this.pvIn = false
+					this.snapOut()
+					return
+				}
+				// поток в превью живёт и при выключенной кнопке — «playing» второй раз не придёт, проявляем по уже идущему кадру
+				requestAnimationFrame(() => {
+					if (this.$refs.video?.readyState >= 2) {
+						this.pvIn = this.showVideo
+					}
+				})
+			},
+		},
+
 		show(newValue) {
 			if (newValue) {
 				this.k4NameEmpty = !this.guestNameStore.guestUserName.length
@@ -703,6 +737,10 @@ export default {
 		},
 
 		isInCall(value) {
+			if (value && this.k4CloseOnJoin) {
+				this.k4CloseOnJoin = false
+				this.close()
+			}
 			if (value) {
 				const virtualBackgroundEnabled = BrowserStorage.getItem('virtualBackgroundEnabled') === 'true'
 				// Apply global blur background setting
@@ -712,6 +750,14 @@ export default {
 			} else {
 				// Reset the flag for the next call
 				this.skipBlurVirtualBackground = false
+			}
+		},
+
+		isJoiningCall(value) {
+			// вход не удался — шторку не держим
+			if (!value && this.k4CloseOnJoin && !this.isInCall) {
+				this.k4CloseOnJoin = false
+				this.close()
 			}
 		},
 
@@ -763,6 +809,26 @@ export default {
 
 	methods: {
 		t,
+		snapOut() {
+			const v = this.$refs.video
+			const c = this.$refs.pvSnap
+			if (!v || !c || !v.videoWidth) {
+				return
+			}
+			c.width = v.videoWidth
+			c.height = v.videoHeight
+			try {
+				c.getContext('2d').drawImage(v, 0, 0)
+			} catch (e) {
+				return
+			}
+			c.style.transition = 'none'
+			c.style.opacity = '1'
+			c.getBoundingClientRect()
+			c.style.transition = 'opacity 1s cubic-bezier(.4, 0, .6, 1)' // как плитка (k7call.scss .k4-vf)
+			c.style.opacity = '0'
+		},
+
 		handleDialogClose() {
 			if (this.isBeforeJoinCall && this.isVoiceRoom && !this.isGuest) {
 				this.$router?.push({ name: 'root' })
@@ -815,6 +881,8 @@ export default {
 		},
 
 		close() {
+			this.k4CloseOnJoin = false
+			clearTimeout(this.k4CloseTimer)
 			// ket4tec v7: сначала убрать шторку, поток и фон гасить уже без неё (iOS: пустая страница после закрытия)
 			const wasShown = this.show
 			this.show = false
@@ -880,6 +948,15 @@ export default {
 		},
 
 		closeModalAndApplySettings() {
+			// ket4tec NAS_CLOUD#172: вход из проверки — шторка держится, пока звонок не откроется под ней
+			// (иначе ~0,4 с мелькает гостевая страница с «Соединение…»). Настройки до входа не применяются, как и раньше.
+			if (this.show && this.isBeforeJoinCall) {
+				this.k4CloseOnJoin = true
+				clearTimeout(this.k4CloseTimer)
+				this.k4CloseTimer = setTimeout(() => this.k4CloseOnJoin && this.close(), 20000) // ponytail: страховка, если вход повис
+				return
+			}
+
 			if (this.updatedBackground) {
 				this.handleUpdateBackground(this.updatedBackground)
 			}
@@ -1058,8 +1135,9 @@ export default {
 		justify-content: center;
 		border-radius: var(--border-radius-element, var(--border-radius-large));
 		background-color: var(--color-loading-dark);
-		aspect-ratio: 4/3;
+		aspect-ratio: 1/1; // ket4tec (NAS_CLOUD#172): превью — квадрат, как плитка в звонке
 		margin-inline-end: var(--default-grid-baseline);
+		isolation: isolate; // ket4tec: облако (z-index -1) под видео, но над фоном превью
 	}
 
 	&__preview > &__preview-mirror {
@@ -1130,8 +1208,21 @@ export default {
 		}
 	}
 
+	// ket4tec: видео проявляется по первому кадру, копия кадра гаснет (snapOut); облако под ними (z-index -1 в изолированном превью)
+	&__video {
+		opacity: 0;
+		transition: opacity 1s cubic-bezier(.4, 0, .6, 1); // как плитка в звонке (.k4-vf)
+		&--in { opacity: 1; }
+	}
+	&__snap {
+		pointer-events: none;
+		transition: none;
+	}
+
 	&__novideo {
-		position: relative;
+		position: absolute;
+		inset: 0;
+		z-index: -1;
 		display: flex;
 		align-items: center;
 		justify-content: center;

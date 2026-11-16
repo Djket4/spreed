@@ -762,8 +762,4 @@ html body .toastify.k7-toast-native .toast-close::before { background-image: non
 		inset-block-start: var(--k7-stack-bottom, 188px) !important;
 	}
 }
-@media (max-width: 500px) {
-	html.k7f:root:root body .modal-container:has(.media-settings) .modal-container__content {
-		max-height: calc(var(--k7-vh, 100dvh) - var(--k7-stack-bottom, 188px) - var(--k7-sheet-bottom, 0px)) !important;
-	}
-}
+// проверка устройств на телефоне — во всю высоту экрана, без этого предела (NAS_CLOUD#172, Андрей 16.11; k7call.scss)

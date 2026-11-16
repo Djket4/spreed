@@ -225,6 +225,30 @@ export default class MediaDevicesSource extends TrackSource {
 		return [stream, null]
 	}
 
+	/**
+	 * ket4tec NAS_CLOUD#172: iOS Safari сам завершает дорожку звонка (ended) — второй захват на странице,
+	 * прерывание аудиосессии. Раньше слот пустел до перезахода: кнопка серая «Нет аудио», «Применить параметры»
+	 * не помогало. Берём то же устройство заново; включена ли дорожка, решает TrackEnabler (вход — тихий).
+	 *
+	 * @param {MediaStreamTrack} track завершившаяся дорожка
+	 */
+	_removeTrackWhenEnded(track) {
+		const kind = ['audio', 'video'].find((id) => this.getOutputTrack(id) === track)
+		super._removeTrackWhenEnded(track)
+		if (!kind || !this._active) {
+			return
+		}
+		// ponytail: не больше 3 перезахватов за 10 с, чтобы два захвата не отнимали устройство друг у друга без конца
+		const now = Date.now()
+		this._reacquiredAt = (this._reacquiredAt || []).filter((at) => now - at < 10000)
+		if (this._reacquiredAt.length >= 3) {
+			return
+		}
+		this._reacquiredAt.push(now)
+		const handler = kind === 'audio' ? this._handleAudioInputIdChangedBound : this._handleVideoInputIdChangedBound
+		handler(mediaDevicesManager, mediaDevicesManager.get(kind + 'InputId'))
+	}
+
 	stop() {
 		if (this.getOutputTrack('audio')) {
 			this.getOutputTrack('audio').stop()
