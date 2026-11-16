@@ -111,8 +111,17 @@ describe('одно лицо у края: квадрат сужается, лиц
 	test('лицо по центру: приближения нет', () => {
 		expect(place(0.5).z).toBe(1)
 	})
-	test('лицо у верхнего края: то же по вертикали', () => {
-		expect(centerZoom({ cx: 0.5, cy: 0.4 }, W, H)).toBeCloseTo(1 / 0.8, 2)
-		expect(centerZoom({ cx: 0.5, cy: 0.05 }, W, H)).toBe(1.5)
+	test('широкий кадр: высота лица не приближает — квадрат и так во всю высоту', () => {
+		expect(centerZoom({ cx: 0.5, cy: 0.4 }, W, H)).toBe(1)
+		expect(centerZoom({ cx: 0.5, cy: 0.05 }, W, H)).toBe(1)
+	})
+	test('вертикальный кадр (телефон): то же по высоте', () => {
+		expect(centerZoom({ cx: 0.5, cy: 0.4 }, H, W)).toBe(1) // квадрат 720 помещается: 2 × 0.4 × 1280 > 720
+		expect(centerZoom({ cx: 0.5, cy: 0.2 }, H, W)).toBeCloseTo(H / (0.4 * W), 2)
+		expect(centerZoom({ cx: 0.1, cy: 0.05 }, H, W)).toBe(1.5)
+	})
+	test('computeTarget + centerZoom: широкий кадр, лицо на 0.4 высоты, «дальше» — приближения нет', () => {
+		const t = computeTarget([face(0.5, 0.4, 0.25)], 0)
+		expect(Math.max(t.zoom, centerZoom(t, W, H))).toBeCloseTo(1, 2)
 	})
 })
