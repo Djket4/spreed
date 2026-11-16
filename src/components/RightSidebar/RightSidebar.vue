@@ -685,8 +685,8 @@ export default {
  * NcAppSidebar toggle it rendered on the page outside the sidebar element, so we need global styles here.
  * It is _quite_ safe, as chat-button-sidebar-toggle class is defined here manually, not an internal class.
  */
-/* ket4tec #55: у гостя в звонке кнопки чата нет */
-.chat-button-sidebar-toggle.k7-guest-nochat {
+/* ket4tec #55, NAS_CLOUD#161: у гостя кнопки боковой панели нет — ни в звонке, ни до звонка */
+.k7-guest-nochat {
 	display: none !important;
 }
 
