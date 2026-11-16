@@ -18,8 +18,9 @@
 			:src="screenshotModeUrl">
 
 		<div
-			v-show="!screenshotModeUrl && localMediaModel.attributes.videoEnabled"
+			v-show="!screenshotModeUrl && fade.state.shown"
 			class="videoWrapper"
+			:class="{ 'k4-vfade': !fade.state.full, 'k4-vfade--on': fade.state.opaque }"
 			:style="videoWrapperStyle">
 			<video
 				id="localVideo"
@@ -40,7 +41,7 @@
 				:size="avatarSize / 2"
 				class="video-loading" />
 		</div>
-		<div v-if="!screenshotModeUrl && !localMediaModel.attributes.videoEnabled && !isSidebar" class="avatar-container">
+		<div v-if="!screenshotModeUrl && !fade.state.full && !isSidebar" class="avatar-container">
 			<VideoBackground v-if="isGrid || isStripe" />
 			<!-- ket4tec: облако во всех видах (сетка, полоса, докладчик, крупно), не только в сетке -->
 			<K4Face
@@ -105,6 +106,7 @@ import attachMediaStream from '../../../utils/attachmediastream.js'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
 import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
+import { useK4VideoFade } from './k4fade.js' // ket4tec (NAS_CLOUD#271)
 import { useTapReveal } from './k4peer.js' // ket4tec (NAS_CLOUD#195)
 
 export default {
@@ -192,6 +194,7 @@ export default {
 			callViewStore: useCallViewStore(),
 			actorStore: useActorStore(),
 			tap: useTapReveal(),
+			fade: useK4VideoFade(),
 			IconMicrophoneOffOutline,
 		}
 	},
@@ -297,6 +300,15 @@ export default {
 	},
 
 	watch: {
+		// ket4tec (NAS_CLOUD#271): sync — кадр замирает до того, как выключенный трек даст чёрное
+		'localMediaModel.attributes.videoEnabled': {
+			immediate: true,
+			flush: 'sync',
+			handler(on) {
+				this.fade.set(!!on, () => this.$refs.video)
+			},
+		},
+
 		localCallParticipantModel: {
 			immediate: true,
 

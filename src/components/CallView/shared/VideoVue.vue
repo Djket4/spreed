@@ -14,8 +14,8 @@
 		@mouseleave="mouseover = false"
 		@click="onTileClick">
 		<div
-			v-show="showVideo"
-			:class="videoWrapperClass"
+			v-show="fade.state.shown"
+			:class="[videoWrapperClass, { 'k4-vfade': !fade.state.full, 'k4-vfade--on': fade.state.opaque }]"
 			class="videoWrapper"
 			:style="videoWrapperStyle">
 			<video
@@ -49,7 +49,7 @@
 			:callParticipantModel="model"
 			:sharedData="sharedData" />
 		<div
-			v-if="showBackgroundAndAvatar"
+			v-if="showBackgroundAndAvatar || (fade.state.shown && !fade.state.full && !showSharedScreen && !isPresenterOverlay)"
 			class="avatar-container">
 			<VideoBackground />
 			<!-- ket4tec: без камеры — облако синапсов, живое от голоса, вместо круга с буквой -->
@@ -139,6 +139,7 @@ import { getDisplayNameWithFallback } from '../../../utils/getDisplayName.ts'
 import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel.js'
 import { placeholderImage } from '../Grid/gridPlaceholders.ts'
 import { state as k4stk } from '../k4stk/useStickers.js' // ket4tec: k4stk
+import { useK4VideoFade } from './k4fade.js' // ket4tec (NAS_CLOUD#271)
 import { k4net, peerGone, useTapReveal } from './k4peer.js' // ket4tec (NAS_CLOUD#195)
 
 export default {
@@ -261,6 +262,7 @@ export default {
 			screenshotMode,
 			k4net,
 			tap: useTapReveal(),
+			fade: useK4VideoFade(),
 			IconMicrophoneOffOutline,
 		}
 	},
@@ -620,6 +622,15 @@ export default {
 	},
 
 	watch: {
+		// ket4tec (NAS_CLOUD#271): плавно 1 с; sync — кадр замирает раньше чёрных кадров выключенной камеры
+		showVideo: {
+			immediate: true,
+			flush: 'sync',
+			handler(on) {
+				this.fade.set(!!on, () => this.$refs.video)
+			},
+		},
+
 		'model.attributes.stream': function(stream) {
 			this._setStream(stream)
 		},
