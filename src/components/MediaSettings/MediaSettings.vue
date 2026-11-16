@@ -798,7 +798,7 @@ export default {
 			c.style.transition = 'none'
 			c.style.opacity = '1'
 			c.getBoundingClientRect()
-			c.style.transition = 'opacity .7s ease'
+			c.style.transition = 'opacity 1s cubic-bezier(.4, 0, .6, 1)' // как плитка (k7call.scss .k4-vf)
 			c.style.opacity = '0'
 		},
 
@@ -1173,7 +1173,7 @@ export default {
 	// ket4tec: видео проявляется по первому кадру, копия кадра гаснет (snapOut); облако под ними (z-index -1 в изолированном превью)
 	&__video {
 		opacity: 0;
-		transition: opacity .7s ease;
+		transition: opacity 1s cubic-bezier(.4, 0, .6, 1); // как плитка в звонке (.k4-vf)
 		&--in { opacity: 1; }
 	}
 	&__snap {
