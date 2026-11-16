@@ -335,6 +335,55 @@ describe('macBridge: «Мини» в приложении K4Draw (NAS_CLOUD#177)
 		expect(m.mac.st).toBe('on')
 	})
 
+	describe('мост отказал после «Мини»: окну приложения restore', () => {
+		let post
+		const msg = (t) => window.dispatchEvent(new MessageEvent('message', { origin: 'http://127.0.0.1:47811', source: pop, data: { t } }))
+		const restored = () => post.mock.calls.some(([a]) => a.t === 'restore')
+		const ready = async () => {
+			post = vi.fn()
+			window.webkit = { messageHandlers: { k4draw: { postMessage: post } } }
+			const m = await load()
+			const r = m.openMacReady()
+			await Promise.resolve()
+			msg('ready')
+			expect(await r).toBe(true)
+			return m
+		}
+		afterEach(() => delete window.webkit)
+		it('bye', async () => {
+			const m = await ready()
+			expect(restored()).toBe(false)
+			msg('bye')
+			expect(restored()).toBe(true)
+			expect(m.mac.st).toBe('lost')
+		})
+		it('обрыв без переподключения за 10 с', async () => {
+			vi.useFakeTimers()
+			await ready()
+			msg('drop')
+			await vi.advanceTimersByTimeAsync(9000)
+			expect(restored()).toBe(false)
+			await vi.advanceTimersByTimeAsync(1500)
+			expect(restored()).toBe(true)
+		})
+		it('обрыв с переподключением — окно не трогаем', async () => {
+			vi.useFakeTimers()
+			await ready()
+			msg('drop')
+			await vi.advanceTimersByTimeAsync(5000)
+			msg('ready')
+			await vi.advanceTimersByTimeAsync(10000)
+			expect(restored()).toBe(false)
+		})
+		it('окно моста закрыто', async () => {
+			vi.useFakeTimers()
+			await ready()
+			pop.closed = true
+			await vi.advanceTimersByTimeAsync(1100)
+			expect(restored()).toBe(true)
+		})
+	})
+
 	it('окно моста заблокировано: сразу false', async () => {
 		window.open = vi.fn(() => null)
 		const m = await load()
