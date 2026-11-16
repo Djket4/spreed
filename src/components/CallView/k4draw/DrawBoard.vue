@@ -214,7 +214,7 @@ onBeforeUnmount(() => {
 .k4-board {
 	--k4-board-bg: #ffffff;
 	position: absolute;
-	inset: var(--k7-call-top, 0px) 0 0 0; // ket4tec (NAS_CLOUD#162 п.2): доска начинается под полосой уведомлений
+	inset: 0;
 	z-index: 5;
 	background: var(--k7-bg, var(--color-main-background));
 	touch-action: none;
