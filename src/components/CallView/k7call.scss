@@ -341,8 +341,14 @@ $glass: blur(24px) saturate(180%);
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
 	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 2px 0; }
 	// гость: «Придумать имя» — кнопкой-кубиком в строке с полем, «Есть учётная запись? Войти» и «Введите имя» — по одной мелкой строке: высота уходит превью
-	:root body .media-settings .username-form { --default-clickable-area: 44px; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 4px; }
+	:root body .media-settings .username-form { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 4px; }
 	:root body .media-settings .username-form__display-name { margin: 0; }
+	// поле имени — капсула 44, как списки (общая капсула облака 56, k7ui.scss блок 4): подпись с текстом — вверху мельче
+	html.k7f body .media-settings .username-form .input-field__main-wrapper:has(> .input-field__label) {
+		.input-field__input { height: 44px !important; padding-block: 17px 1px !important; }
+		.input-field__input:placeholder-shown { padding-block: 10px !important; }
+		.input-field__input:not(:placeholder-shown) + .input-field__label { inset-block-start: 4px !important; font-size: 11px !important; line-height: 13px !important; }
+	}
 	:root:root body .media-settings .username-form__dice { margin: 0 !important; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; }
 	:root body .media-settings .username-form__dice .button-vue__text { display: none; }
 	:root body .media-settings .login-info { grid-column: 1 / -1; margin: 0; padding: 2px 0 0; font-size: 12px; line-height: 16px; text-align: center; white-space: nowrap; }
