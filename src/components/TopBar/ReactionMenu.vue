@@ -247,6 +247,7 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 		position: static !important; width: 100% !important; height: 100% !important; min-width: 0 !important; display: flex !important;
 		align-items: center; justify-content: center; margin: 0 !important; padding: 0 !important; font-size: 26px; line-height: 1 !important; background: none;
 	}
+	.reaction__button :is(.action-button__icon, .action-button__icon *) { font-size: 26px !important; line-height: 1 !important; }   // эмодзи во вложенном span со своим размером
 	.reaction__button :is(.action-button__longtext-wrapper, .action-button__text, .action-button__name) { display: none !important; }
 	.reaction__button :is(.action-button, button):active { transform: scale(.82); }
 	@media (hover: hover) { .reaction__button :is(.action-button, button):hover { transform: scale(1.12); background: color-mix(in srgb, var(--k7-acc) 22%, var(--k7-pill)) !important; } }
@@ -270,7 +271,7 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 		.v-popper__inner::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--k7-line2); margin: 8px auto 0; }
 		.reaction__group .nc-button-group-content { width: 100%; }
 		.reaction__button .action-button, .reaction__button button { font-size: 30px; }
-		.reaction__button .action-button__icon { font-size: 30px; }
+		.reaction__button :is(.action-button__icon, .action-button__icon *) { font-size: 30px !important; }
 	}
 }
 </style>

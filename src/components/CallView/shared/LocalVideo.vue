@@ -452,9 +452,13 @@ export default {
 // ket4tec (NAS_CLOUD#264): значок руки в левом верхнем углу (микрофон справа)
 .k4-hand-slot {
 	position: absolute; top: 10px; inset-inline-start: 10px; z-index: 5; width: 56px; height: 56px; border-radius: 18px;
-	display: grid; place-items: center; background: var(--k7-grad, var(--color-primary-element)); box-shadow: 0 6px 18px #0006;
+	display: grid; place-items: center; color: #fff; background: var(--k7-grad, var(--color-primary-element)); box-shadow: 0 6px 18px #0006;
 	pointer-events: none; animation: k4-hand-in .28s cubic-bezier(.2,.9,.3,1.3);
 }
+// строка замеров плитки (K4TileStats) тоже слева сверху — слот ниже неё; значок крупно (тема облака рисует иконки маской 16px)
+.localVideoContainer:has(.k4ts) .k4-hand-slot { top: 30px; }
+.k4-hand-slot .material-design-icon, .k4-hand-slot .material-design-icon svg { width: 32px !important; height: 32px !important; }
+.k4-hand-slot .material-design-icon::before { width: 32px !important; height: 32px !important; mask-size: 32px !important; -webkit-mask-size: 32px !important; }
 @keyframes k4-hand-in { from { transform: scale(.4); opacity: 0 } }
 @media (prefers-reduced-motion: reduce) { .k4-hand-slot { animation: none } }
 
