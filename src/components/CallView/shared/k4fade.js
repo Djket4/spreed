@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * ket4tec (NAS_CLOUD#271): камера на плитке включается и выключается плавно, за 1 с.
- * Вкл: видео проявляется поверх облака по первому настоящему (не чёрному) кадру — без скачка и пустого поля.
+ * Вкл: видео проявляется поверх облака по первому целому (не чёрному и не обрезанному) кадру — без скачка и пустого поля.
  * Выкл: гаснет копия последнего настоящего кадра, под ней облако.
+ * iOS Safari (запись владельца 16.11): любая перестройка слоя в момент перехода — смена position у обёртки, новый канвас
+ * в DOM — давала 1–2 пустых кадра (белый/чёрный). Поэтому обёртка всё время в одном слое (k7call.scss, .k4-vf),
+ * копия кадра — постоянный канвас поверх видео: на переходах меняется только opacity.
  */
 import { onBeforeUnmount, reactive } from 'vue'
 
@@ -14,38 +17,25 @@ export const FADE_MS = 1000
 const WAIT_MS = 5000
 
 /**
+ * Целый кадр: не чёрный в середине и у каждого края. Первые кадры iOS бывают картинкой поменьше
+ * посередине прозрачного поля (запись владельца 16.11) — такой кадр не проявляем и не храним.
+ *
  * @param {HTMLVideoElement} v видео
- * @return {boolean} хоть один пиксель 8×8 не чёрный
+ * @return {boolean}
  */
-function hasPicture(v) {
+export function hasPicture(v) {
 	try {
 		const c = document.createElement('canvas')
 		c.width = c.height = 8
 		const x = c.getContext('2d')
 		x.drawImage(v, 0, 0, 8, 8)
-		return x.getImageData(0, 0, 8, 8).data.some((b, i) => i % 4 !== 3 && b > 16)
+		const p = x.getImageData(0, 0, 8, 8).data
+		const lit = (cx, cy) => p[(cy * 8 + cx) * 4] > 16 || p[(cy * 8 + cx) * 4 + 1] > 16 || p[(cy * 8 + cx) * 4 + 2] > 16
+		const any = (f) => [0, 1, 2, 3, 4, 5, 6, 7].some(f)
+		return (lit(3, 3) || lit(4, 4) || lit(3, 4) || lit(4, 3))
+			&& any((i) => lit(i, 0)) && any((i) => lit(i, 7)) && any((i) => lit(0, i)) && any((i) => lit(7, i))
 	} catch (e) {
 		return true
-	}
-}
-
-/**
- * @param {HTMLVideoElement} v видео
- * @return {HTMLCanvasElement|null} копия текущего кадра (до 480 px по ширине); null — кадра нет или он чёрный
- */
-function grab(v) {
-	if (v.videoWidth < 16 || v.readyState < 2 || !hasPicture(v)) {
-		return null
-	}
-	try {
-		const k = Math.min(1, 480 / v.videoWidth)
-		const c = document.createElement('canvas')
-		c.width = Math.round(v.videoWidth * k)
-		c.height = Math.round(v.videoHeight * k)
-		c.getContext('2d').drawImage(v, 0, 0, c.width, c.height)
-		return c
-	} catch (e) {
-		return null
 	}
 }
 
@@ -57,19 +47,50 @@ export function useK4VideoFade() {
 	const state = reactive({ shown: false, opaque: false, full: false })
 	let tok = 0
 	let timer = 0
-	// пока камера показана, раз в 300 мс держим копию кадра: к сигналу «выкл» трек уже подменён
+	// пока камера показана, раз в 300 мс копия кадра в постоянный канвас: к сигналу «выкл» трек уже подменён
 	// и видео отдаёт чёрное 2×2 (замер на test2), снимать в этот момент поздно
 	let keeper = 0
-	let last = null
-	// снимок, который сейчас гаснет поверх видео; прерванный переход его убирает
-	let snap = null
-	const dropSnap = () => {
-		snap?.remove()
-		snap = null
-	}
+	const snap = document.createElement('canvas')
+	snap.style.opacity = '0'
+	let hasSnap = false
 	const stopKeep = () => {
 		clearInterval(keeper)
 		keeper = 0
+	}
+
+	/**
+	 * Копия текущего кадра в snap (до 480 px по ширине), канвас — сразу за видео. Так он уже на экране
+	 * (прозрачный), когда понадобится: вставка в момент «выкл» и была пустым кадром в Safari.
+	 *
+	 * @param {HTMLVideoElement} v видео
+	 * @return {boolean} кадр снят
+	 */
+	const keep = (v) => {
+		if (!v) {
+			return false
+		}
+		if (snap.previousElementSibling !== v) {
+			v.after(snap)
+		}
+		snap.className = v.className + ' k4-vsnap'
+		snap.style.transform = v.style.transform
+		if (v.videoWidth < 16 || v.readyState < 2 || !hasPicture(v)) {
+			return false
+		}
+		try {
+			const k = Math.min(1, 480 / v.videoWidth)
+			const w = Math.round(v.videoWidth * k)
+			const h = Math.round(v.videoHeight * k)
+			if (snap.width !== w || snap.height !== h) {
+				snap.width = w
+				snap.height = h
+			}
+			snap.getContext('2d').drawImage(v, 0, 0, w, h)
+			hasSnap = true
+			return true
+		} catch (e) {
+			return false
+		}
 	}
 
 	const later = (t, fn) => {
@@ -84,7 +105,6 @@ export function useK4VideoFade() {
 	function set(on, getVideo) {
 		const t = ++tok
 		clearTimeout(timer)
-		dropSnap()
 		if (!on) {
 			if (!state.shown) {
 				return
@@ -93,22 +113,19 @@ export function useK4VideoFade() {
 			const v = getVideo()
 			v?.pause()
 			// гаснет последний настоящий кадр, а не чёрное
-			snap = (v && grab(v)) || last
-			last = null
-			if (snap && v) {
-				snap.className = v.className + ' k4-vsnap'
-				snap.style.transform = v.style.transform
-				v.after(snap)
-			}
+			keep(v)
+			snap.style.opacity = hasSnap ? '1' : '0'
 			state.opaque = false
 			state.full = false
 			later(t, () => {
-				dropSnap()
+				snap.style.opacity = '0'
 				state.shown = false
 				getVideo()?.play()?.catch(() => {})
 			})
 			return
 		}
+		snap.style.opacity = '0'
+		hasSnap = false
 		state.shown = true
 		state.full = false
 		state.opaque = false
@@ -133,12 +150,8 @@ export function useK4VideoFade() {
 					state.full = true
 				})
 				stopKeep()
-				keeper = setInterval(() => {
-					const g = getVideo() && grab(getVideo())
-					if (g) {
-						last = g
-					}
-				}, 300)
+				keep(v)
+				keeper = setInterval(() => keep(getVideo()), 300)
 				return
 			}
 			timer = setTimeout(poll, 50)
@@ -150,7 +163,7 @@ export function useK4VideoFade() {
 		tok++
 		clearTimeout(timer)
 		stopKeep()
-		dropSnap()
+		snap.remove()
 	})
 
 	return { state, set }

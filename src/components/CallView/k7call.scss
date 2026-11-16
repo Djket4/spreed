@@ -624,8 +624,12 @@ body:has(#call-container.k4-selflost) :is(.top-bar--in-call, .app-sidebar__toggl
 }
 
 /* ket4tec (NAS_CLOUD#271): камера вкл/выкл — проявление и угасание за 1 с поверх облака (k4fade.js) */
-#call-container .videoWrapper.k4-vfade { position: absolute !important; inset: 0; z-index: 2; opacity: 0; transition: opacity 1s ease; background: transparent !important; }
-#call-container .videoWrapper.k4-vfade.k4-vfade--on { opacity: 1; }
-#call-container .videoWrapper.k4-vfade video { background: transparent !important; }
+// обёртка всё время в одном слое (iOS: смена position в момент перехода давала пустой кадр); облако под ней — z-index -1 внутри плитки,
+// подписи и значки плитки идут в DOM после обёртки и остаются над ней. Кривая ровная: ease проявлял за ~0,3 с
+#call-container :is(.localVideoContainer, .video-container) { isolation: isolate; }
+#call-container :is(.localVideoContainer, .video-container) > .avatar-container { z-index: -1; }
+#call-container .videoWrapper.k4-vf:not(.presenter-overlay) { position: absolute !important; inset: 0; opacity: 0; transition: opacity 1s cubic-bezier(.4, 0, .6, 1); background: transparent !important; }
+#call-container .videoWrapper.k4-vf.k4-vf--on { opacity: 1; }
+#call-container .videoWrapper.k4-vf video { background: transparent !important; }
 #call-container .videoWrapper .k4-vsnap { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 #call-container .videoWrapper .k4-vsnap.video--fit { object-fit: contain; }

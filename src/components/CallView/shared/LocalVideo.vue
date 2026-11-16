@@ -19,8 +19,8 @@
 
 		<div
 			v-show="!screenshotModeUrl && fade.state.shown"
-			class="videoWrapper"
-			:class="{ 'k4-vfade': !fade.state.full, 'k4-vfade--on': fade.state.opaque }"
+			class="videoWrapper k4-vf"
+			:class="{ 'k4-vf--on': fade.state.opaque }"
 			:style="videoWrapperStyle">
 			<video
 				id="localVideo"
