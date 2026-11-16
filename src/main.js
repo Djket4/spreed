@@ -51,7 +51,9 @@ document.documentElement.classList.add('k7f')
 			return
 		}
 		const bottom = bar.getBoundingClientRect().bottom
-		const stackH = Math.max(52, stack ? stack.getBoundingClientRect().height : 0)
+		// пока видна хоть одна плашка — полоса сразу под две (52 + 8 + 52), чтобы плитки не меняли размер на второй; выше — по факту
+		const shown = stack ? [...stack.children].some((e) => e.offsetHeight) : false
+		const stackH = Math.max(shown ? 112 : 52, stack ? stack.getBoundingClientRect().height : 0)
 		root.style.setProperty('--k7-toast-top', Math.round(bottom + 8) + 'px')
 		root.style.setProperty('--k7-call-top', Math.round(bottom - box.getBoundingClientRect().top + 8 + stackH + 8) + 'px')
 	}
