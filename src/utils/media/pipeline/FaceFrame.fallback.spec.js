@@ -72,11 +72,17 @@ function expectFallback(track, kind) {
 
 describe('FaceFrame: откат', () => {
 	// первым: общий детектор кешируется в модуле, отказ сбрасывает кеш
-	test('детектор не загрузился -> исходная камера, текст про распознаватель', async () => {
+	// NAS_CLOUD#271: без детектора кадр не отдаёт сырую камеру — остаётся канвас с центральным кропом, без слежения
+	test('детектор не загрузился -> канвас с кадром на месте, текст про распознаватель, выбор не тронут', async () => {
 		wasm.fileset = () => Promise.reject(new Error('no WebGL'))
-		const { track } = start()
-		await vi.advanceTimersByTimeAsync(100)
-		expectFallback(track, 'detector')
+		const { out } = start()
+		await vi.advanceTimersByTimeAsync(600)
+		expect(ff.path).toBe('frozen')
+		expect(ff.getOutputTrack()).toBe(out)
+		expect(ff.window).toMatchObject({ cx: 0.5, cy: 0.5 })
+		expect(getFaceFrameLevel()).toBe('auto')
+		expect(showWarning).toHaveBeenCalledTimes(1)
+		expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.detector)
 		wasm.fileset = () => new Promise(() => {})
 	})
 

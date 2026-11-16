@@ -5,6 +5,7 @@
 
 import { beforeAll, describe, expect, test, vi } from 'vitest'
 import FaceFrame, { FALLBACK_TEXT, getFaceFrameLevel, setFaceFrameLevel } from './FaceFrame.js'
+import TrackEnabler from './TrackEnabler.js'
 import TrackToStream from './TrackToStream.js'
 
 const showWarning = vi.hoisted(() => vi.fn())
@@ -190,6 +191,42 @@ describe('FaceFrame в цепочке превью', () => {
 			restore()
 		}
 	})
+	// NAS_CLOUD#271 (ревью #44): кнопка камеры через TrackEnabler; включённая исходная камера получателям не уходит,
+	// в том числе пока ждём аппаратный зум сохранённого фиксированного уровня
+	for (const lvl of ['auto', '1.5']) {
+		test(`NAS_CLOUD#271: выкл/вкл ×2 через TrackEnabler (${lvl}) — включённый исходный трек не отправляется`, async () => {
+			const out = { id: 'out', enabled: true, stop() {}, addEventListener() {}, removeEventListener() {} }
+			const sent = []
+			let te
+			const { ff, track, restore } = setup(out, true, (f) => {
+				setFaceFrameLevel(lvl)
+				f.on('outputTrackSet', (s, id, t) => sent.push(['set', t?.id, t?.enabled]))
+				f.on('outputTrackEnabled', (s, id, en) => sent.push(['enabled', f.getOutputTrack()?.id, en]))
+			})
+			try {
+				Object.assign(track, { getCapabilities: () => ({ zoom: { min: 1, max: 4 } }), applyConstraints: () => new Promise(() => {}) })
+				ff._setInputTrack('default', null)
+				sent.length = 0 // дальше — только цепочка через кнопку камеры
+				te = new TrackEnabler()
+				te.connectTrackSink('default', ff)
+				te._setInputTrack('default', track)
+				await vi.advanceTimersByTimeAsync(1600)
+				for (let i = 0; i < 2; i++) {
+					te.setEnabled(false)
+					await vi.advanceTimersByTimeAsync(300)
+					te.setEnabled(true)
+					await vi.advanceTimersByTimeAsync(1600)
+				}
+				expect(ff.getOutputTrack()).toBe(out)
+				expect(sent.filter(([, id, en]) => id === 'vp' && en)).toEqual([])
+				expect(sent.filter(([k]) => k === 'set').map(([, id]) => id)).toEqual(['out', 'vp', 'out', 'vp', 'out'])
+				ff.destroy()
+			} finally {
+				setFaceFrameLevel('auto')
+				restore()
+			}
+		})
+	}
 	test('проба не готова -> откат по таймауту, сообщение про выходной трек, пробы в DOM нет', async () => {
 		const out = { stop() {}, addEventListener() {}, removeEventListener() {} }
 		const { ff, track, restore } = setup(out, false)

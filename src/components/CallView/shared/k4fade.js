@@ -1,4 +1,7 @@
 /**
+ * SPDX-FileCopyrightText: 2026 Ket4tec
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
  * ket4tec (NAS_CLOUD#271): камера на плитке включается и выключается плавно, за 1 с.
  * Вкл: видео проявляется поверх облака по первому настоящему (не чёрному) кадру — без скачка и пустого поля.
  * Выкл: гаснет копия последнего настоящего кадра, под ней облако.
@@ -6,9 +9,14 @@
 import { onBeforeUnmount, reactive } from 'vue'
 
 export const FADE_MS = 1000
-const WAIT_MS = 3000 // кадр так и не пришёл (или камера правда чёрная) — проявляем как есть
+// кадр так и не пришёл (или камера правда чёрная) — проявляем как есть. Больше, чем ожидание детекции
+// плюс сторожок FaceFrame (1,5 + 2 с): при откате на исходную камеру плитка проявляется уже по её кадру
+const WAIT_MS = 5000
 
-// хоть один пиксель 8×8 не чёрный
+/**
+ * @param {HTMLVideoElement} v видео
+ * @return {boolean} хоть один пиксель 8×8 не чёрный
+ */
 function hasPicture(v) {
 	try {
 		const c = document.createElement('canvas')
@@ -21,7 +29,10 @@ function hasPicture(v) {
 	}
 }
 
-// копия текущего кадра (до 480 px по ширине); null — кадра нет или он чёрный
+/**
+ * @param {HTMLVideoElement} v видео
+ * @return {HTMLCanvasElement|null} копия текущего кадра (до 480 px по ширине); null — кадра нет или он чёрный
+ */
 function grab(v) {
 	if (v.videoWidth < 16 || v.readyState < 2 || !hasPicture(v)) {
 		return null
@@ -38,6 +49,9 @@ function grab(v) {
 	}
 }
 
+/**
+ * @return {{state: {shown: boolean, opaque: boolean, full: boolean}, set: Function}} состояние плитки и переключатель
+ */
 export function useK4VideoFade() {
 	// shown — обёртка видео на экране; opaque — непрозрачна; full — проявилась, облако под ней не нужно
 	const state = reactive({ shown: false, opaque: false, full: false })
@@ -47,6 +61,12 @@ export function useK4VideoFade() {
 	// и видео отдаёт чёрное 2×2 (замер на test2), снимать в этот момент поздно
 	let keeper = 0
 	let last = null
+	// снимок, который сейчас гаснет поверх видео; прерванный переход его убирает
+	let snap = null
+	const dropSnap = () => {
+		snap?.remove()
+		snap = null
+	}
 	const stopKeep = () => {
 		clearInterval(keeper)
 		keeper = 0
@@ -64,6 +84,7 @@ export function useK4VideoFade() {
 	function set(on, getVideo) {
 		const t = ++tok
 		clearTimeout(timer)
+		dropSnap()
 		if (!on) {
 			if (!state.shown) {
 				return
@@ -72,7 +93,7 @@ export function useK4VideoFade() {
 			const v = getVideo()
 			v?.pause()
 			// гаснет последний настоящий кадр, а не чёрное
-			const snap = (v && grab(v)) || last
+			snap = (v && grab(v)) || last
 			last = null
 			if (snap && v) {
 				snap.className = v.className + ' k4-vsnap'
@@ -82,7 +103,7 @@ export function useK4VideoFade() {
 			state.opaque = false
 			state.full = false
 			later(t, () => {
-				snap?.remove()
+				dropSnap()
 				state.shown = false
 				getVideo()?.play()?.catch(() => {})
 			})
@@ -129,6 +150,7 @@ export function useK4VideoFade() {
 		tok++
 		clearTimeout(timer)
 		stopKeep()
+		dropSnap()
 	})
 
 	return { state, set }

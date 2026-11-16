@@ -67,11 +67,11 @@ export function setFaceFrameLevel(newLevel, { persist = true } = {}) {
 // ket4tec (NAS_CLOUD#160): текст всплывашки отката — по причине
 const FALLBACK_TAIL = ' Камера работает без него; включить снова можно в настройках камеры.'
 export const FALLBACK_TEXT = {
-	detector: 'Кадр по лицу выключен: распознаватель лиц не загрузился (браузер без WebGL/WebAssembly или нет связи).' + FALLBACK_TAIL,
+	detector: 'Слежение за лицом остановлено: распознаватель лиц не загрузился (браузер без WebGL/WebAssembly или нет связи). Кадр остаётся на месте.',
 	capture: 'Кадр по лицу выключен: этот браузер не умеет передавать обработанное видео.' + FALLBACK_TAIL,
 	input: 'Кадр по лицу выключен: камера не отдала кадры для кадрирования.' + FALLBACK_TAIL,
 	output: 'Кадр по лицу выключен: сбой обработанного видео в этом браузере.' + FALLBACK_TAIL,
-	lowFps: 'Кадр по лицу выключен: устройству не хватает мощности, кадров в секунду слишком мало.' + FALLBACK_TAIL,
+	lowFps: 'Слежение за лицом остановлено: устройству не хватает мощности. Кадр остаётся на месте.',
 	error: 'Кадр по лицу выключен из-за ошибки.' + FALLBACK_TAIL,
 }
 
@@ -190,7 +190,11 @@ export default class FaceFrame extends TrackSinkSource {
 		this._hwZoomed = false
 		this._applyToken = 0
 		this._outputTrack = null
-		this._unsubscribe = onFaceFrameLevelChange(() => this._apply())
+		this._frozen = null // причина остановки слежения (детектор, мощность) — до смены уровня человеком
+		this._unsubscribe = onFaceFrameLevelChange(() => {
+			this._frozen = null
+			this._apply()
+		})
 	}
 
 	_handleInputTrack(trackId, newTrack) {
@@ -249,6 +253,15 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 
+		// ket4tec (NAS_CLOUD#271): канвас на выход — синхронно, до ожидания аппаратного зума: пока камера
+		// не приблизила, исходный трек не уходит (иначе _handleInputTrackEnabled включил бы его получателям)
+		this.path = 'digital'
+		try {
+			this._startDigital(input)
+		} catch (e) {
+			this._fallback({ input, stopped: false }, 'error', 'запуск конвейера: ' + e.message)
+			return
+		}
 		if (lvl !== 'auto' && await this._tryHardware(input, parseFloat(lvl))) {
 			if (token !== this._applyToken) {
 				return
@@ -269,14 +282,7 @@ export default class FaceFrame extends TrackSinkSource {
 				return // пока ждали, кадрирование выключили или сменили камеру
 			}
 		}
-		this.path = 'digital'
-		// ket4tec (NAS_CLOUD#271): исходную камеру на выход не ставим — её некадрированный кадр и был «скачком».
-		// Выход — канвас с первой отрисовки; плитки (свои и чужие) проявляются по первому настоящему кадру.
-		try {
-			this._startDigital(input)
-		} catch (e) {
-			this._fallback({ input, stopped: false }, 'error', 'запуск конвейера: ' + e.message)
-		}
+		this.path = this._frozen ? 'frozen' : 'digital'
 	}
 
 	async _setHardwareZoom(track, zoom) {
@@ -353,6 +359,7 @@ export default class FaceFrame extends TrackSinkSource {
 			fps: 0,
 			lowSince: 0,
 			lastLog: t0,
+			frozen: !!this._frozen, // слежение остановлено: окно стоит, детекций нет
 		}
 		this._digital = d
 		// выход — сразу канвас: до первой отрисовки кадров нет, на плитках держится облако
@@ -374,9 +381,11 @@ export default class FaceFrame extends TrackSinkSource {
 		probe.play?.()?.catch?.(() => {})
 		this._setOutput(d.output)
 		video.play().catch(() => {})
-		getDetector().then((detector) => {
-			d.detector = detector
-		}).catch((e) => this._fallback(d, 'detector', 'детектор не загрузился: ' + e?.message))
+		if (!d.frozen) {
+			getDetector().then((detector) => {
+				d.detector = detector
+			}).catch((e) => this._fallback(d, 'detector', 'детектор не загрузился: ' + e?.message))
+		}
 
 		const schedule = () => {
 			const id = ++d.sid // устаревшие колбэки (rVFC после перехода на rAF) игнорируются
@@ -456,7 +465,7 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			return
 		}
-		if (d.fps < MIN_FPS) {
+		if (d.fps < MIN_FPS && !d.frozen) {
 			d.lowSince = d.lowSince || now
 			if (now - d.lowSince >= LOW_FPS_MS) {
 				this._fallback(d, 'lowFps', `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс`)
@@ -472,6 +481,20 @@ export default class FaceFrame extends TrackSinkSource {
 		if (d.stopped) {
 			return
 		}
+		calllog('framing_error', { reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100) })
+		console.error('FaceFrame: кадр по лицу —', reason)
+		// ket4tec (NAS_CLOUD#271): нет детектора или мощности — остаёмся на канвасе с текущим кадром, без слежения.
+		// Исходная камера — только если сам канвас-выход не даёт кадров (плитки проявят её по первому кадру).
+		if (kind === 'detector' || kind === 'lowFps') {
+			if (!d.frozen) {
+				d.frozen = true
+				d.target = { ...d.win }
+				this._frozen = kind
+				this.path = 'frozen'
+				showWarning(FALLBACK_TEXT[kind])
+			}
+			return
+		}
 		const input = d.input
 		this._stopDigital()
 		setFaceFrameLevel('off', { persist: false })
@@ -480,8 +503,6 @@ export default class FaceFrame extends TrackSinkSource {
 		if (window.__k4ffStats) {
 			window.__k4ffStats.path = 'fallback'
 		}
-		calllog('framing_error', { reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100) })
-		console.error('FaceFrame: кадр по лицу отключён —', reason)
 		showWarning(FALLBACK_TEXT[kind] ?? FALLBACK_TEXT.error)
 	}
 
@@ -503,7 +524,7 @@ export default class FaceFrame extends TrackSinkSource {
 		const full = now >= d.nextDetectAt
 		// до первой отрисовки плитки — каждый кадр: лицо у края полный кадр не видит, по 2 плитки/с искали бы до 2 с
 		const tileDue = !full && d.noFace && (!d.placed || now >= d.nextTileAt)
-		if (!d.detector || !(full || tileDue)) {
+		if (d.frozen || !d.detector || !(full || tileDue)) {
 			return
 		}
 		const t = performance.now()
@@ -563,13 +584,13 @@ export default class FaceFrame extends TrackSinkSource {
 			this._maybeDetect(d, now, lvl)
 			if (d.lastFace) {
 				d.win = { ...d.target }
-			} else if (now - d.startedAt < HOLD_MS) {
+			} else if (!d.frozen && now - d.startedAt < HOLD_MS) {
 				return
 			}
 			d.placed = true
 		}
 
-		if (now - d.lastFace > LOST_AFTER_MS) {
+		if (!d.frozen && now - d.lastFace > LOST_AFTER_MS) {
 			d.target = { cx: 0.5, cy: 0.5, zoom: 1 }
 		} else if (lvl !== 'auto') {
 			d.target.zoom = parseFloat(lvl)
