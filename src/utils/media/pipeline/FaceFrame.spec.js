@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { computeTarget, stepWindow, TILES, tileToFrame } from './FaceFrame.js'
 
 describe('FaceFrame logic', () => {
@@ -52,5 +52,16 @@ describe('FaceFrame logic', () => {
 		expect(f.w).toBeCloseTo(0.06)
 		expect(f.h).toBeCloseTo(0.12)
 		TILES.forEach((t) => expect(t.x + t.w).toBeLessThanOrEqual(1.0001))
+	})
+})
+
+// NAS_CLOUD#232 (ревью #45): старые сохранённые значения — «off» остаётся выключенным, остальные читаются как «вкл»
+describe('FaceFrame: перенос сохранённого уровня', () => {
+	test.each([['off', 'off'], ['auto', 'auto'], ['1', 'auto'], ['1.5', 'auto'], ['2', 'auto'], ['x1', 'auto'], ['x2', 'auto']])('%s -> %s', async (stored, expected) => {
+		localStorage.setItem('k4FaceFrameLevel', stored)
+		vi.resetModules()
+		const { getFaceFrameLevel } = await import('./FaceFrame.js')
+		expect(getFaceFrameLevel()).toBe(expected)
+		localStorage.removeItem('k4FaceFrameLevel')
 	})
 })
