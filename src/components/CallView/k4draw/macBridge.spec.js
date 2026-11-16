@@ -129,13 +129,20 @@ describe('macBridge: звонок в приложении K4Draw', () => {
 		expect(await m.openMacReady()).toBe(false)
 	})
 
-	it('ссылка «Открыть в приложении» и скрытый iframe', async () => {
+	it('«Открыть в приложении»: окно с k4draw://call, не iframe (CSP режет iframe), окно закрывается через 20 с', async () => {
+		vi.useFakeTimers()
+		const w = { close: vi.fn() }
+		const open = vi.spyOn(window, 'open').mockReturnValue(w)
 		const m = await load('Safari')
 		const url = 'k4draw://call?u=' + encodeURIComponent(location.origin + '/call/abc123')
 		expect(m.appCallUrl('abc123')).toBe(url)
 		m.openInApp('abc123')
-		const f = document.body.querySelector('iframe')
-		expect(f.getAttribute('src')).toBe(url)
-		expect(f.style.display).toBe('none')
+		expect(open).toHaveBeenCalledWith(url, 'k4draw-call', expect.stringContaining('popup'))
+		expect(document.body.querySelector('iframe')).toBe(null)
+		vi.advanceTimersByTime(19000)
+		expect(w.close).not.toHaveBeenCalled()
+		vi.advanceTimersByTime(1000)
+		expect(w.close).toHaveBeenCalledOnce()
+		vi.useRealTimers()
 	})
 })
