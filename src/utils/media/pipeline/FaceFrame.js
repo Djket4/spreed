@@ -8,6 +8,7 @@ import { showWarning } from '@nextcloud/dialogs'
 import { calllog } from '../../calllog.js'
 import { getWasmFileset } from '../effects/virtual-background/VideoStreamBackgroundEffect.js'
 import { stepWindow } from './FaceSmooth.js'
+import { centerZoom, clampTarget, squareRect } from './FaceSquare.js'
 import TrackSinkSource from './TrackSinkSource.js'
 
 const STORAGE_KEY = 'k4FaceFrameLevel'
@@ -493,7 +494,7 @@ export default class FaceFrame extends TrackSinkSource {
 
 	// не больше одной детекции за кадр: полный кадр (до 8 раз/с), а когда лица нет — плитка (до 2 раз/с)
 	_maybeDetect(d, now) {
-		const { video, canvas } = d
+		const { video } = d
 		const full = now >= d.nextDetectAt
 		// до первой отрисовки плитки — каждый кадр: лицо у края полный кадр не видит, по 2 плитки/с искали бы до 2 с
 		const tileDue = !full && d.noFace && (!d.placed || now >= d.nextTileAt)
@@ -505,14 +506,16 @@ export default class FaceFrame extends TrackSinkSource {
 			let faces
 			let tile = null
 			if (full) {
-				faces = this._detectBoxes(d, video, canvas.width, canvas.height, now)
+				faces = this._detectBoxes(d, video, video.videoWidth, video.videoHeight, now)
 			} else {
 				// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
 				tile = TILES[d.tileIdx % TILES.length]
 				const tc = d.tileCanvas ||= document.createElement('canvas')
-				tc.width = canvas.width
-				tc.height = canvas.height
-				tc.getContext('2d').drawImage(video, tile.x * canvas.width, tile.y * canvas.height, tile.w * canvas.width, tile.h * canvas.height, 0, 0, tc.width, tc.height)
+				const vw = video.videoWidth
+				const vh = video.videoHeight
+				tc.width = vw
+				tc.height = vh
+				tc.getContext('2d').drawImage(video, tile.x * vw, tile.y * vh, tile.w * vw, tile.h * vh, 0, 0, vw, vh)
 				faces = this._detectBoxes(d, tc, tc.width, tc.height, now).map((b) => tileToFrame(b, tile))
 			}
 			if (full) {
@@ -523,6 +526,10 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			const target = computeTarget(faces)
 			if (target) {
+				if (faces.length === 1) {
+					// ket4tec (NAS_CLOUD#172): лицо у края — квадрат сужается (до 1.5×), чтобы оно встало в центр плитки
+					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
+				}
 				d.target = target
 				d.lastFace = now
 			}
@@ -546,15 +553,20 @@ export default class FaceFrame extends TrackSinkSource {
 		if (!video.videoWidth) {
 			return
 		}
-		if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-			canvas.width = video.videoWidth
-			canvas.height = video.videoHeight
+		// ket4tec (NAS_CLOUD#172): выход — квадрат (сторона = короткая сторона кадра), вырезается у отправителя:
+		// сдвиг к лицу видят все — собеседники, своя плитка и превью проверки устройств
+		const W = video.videoWidth
+		const H = video.videoHeight
+		const side = Math.min(W, H)
+		if (canvas.width !== side || canvas.height !== side) {
+			canvas.width = side
+			canvas.height = side
 		}
 		// ket4tec (NAS_CLOUD#271): до первой детекции не рисуем; нашли лицо — окно сразу на месте, без пружины
 		if (!d.placed) {
 			this._maybeDetect(d, now)
 			if (d.lastFace) {
-				d.win = { ...d.target }
+				d.win = clampTarget(d.target, W, H)
 			} else if (!d.frozen && now - d.startedAt < HOLD_MS) {
 				return
 			}
@@ -567,12 +579,11 @@ export default class FaceFrame extends TrackSinkSource {
 
 		const dt = d.lastTick ? Math.min(now - d.lastTick, 100) : 0
 		d.lastTick = now
-		d.win = stepWindow(d.win, d.target, dt)
+		d.win = stepWindow(d.win, clampTarget(d.target, W, H), dt, { W, H })
 		this.window = d.win
 
-		const sw = canvas.width / d.win.zoom
-		const sh = canvas.height / d.win.zoom
-		ctx.drawImage(video, d.win.cx * canvas.width - sw / 2, d.win.cy * canvas.height - sh / 2, sw, sh, 0, 0, canvas.width, canvas.height)
+		const { sx, sy, side: ss } = squareRect(d.win, W, H)
+		ctx.drawImage(video, sx, sy, ss, ss, 0, 0, side, side)
 		d.frames++
 		d.fpsFrames++
 
