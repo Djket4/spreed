@@ -158,7 +158,8 @@ export default {
 		},
 
 		formattedCallTime() {
-			return formattedTime(this.callTime)
+			// ket4tec (NAS_CLOUD#264): formattedTime(1) даёт «00 : 00»; пустое время давало «-- : --»
+			return formattedTime(this.callTime || 1)
 		},
 
 		placeholderCallTime() {

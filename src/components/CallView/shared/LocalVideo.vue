@@ -11,6 +11,10 @@
 		@mouseover="mouseover = true"
 		@mouseleave="mouseover = false"
 		@click="onTileClick">
+		<!-- ket4tec (NAS_CLOUD#264): слот 56px в углу плитки; позже вместо значка встанет гифка владельца -->
+		<div v-if="k4handRaised && !isSidebar" class="k4-hand-slot" aria-hidden="true">
+			<IconHandBackLeft :size="30" fillColor="#ffffff" />
+		</div>
 		<img
 			v-if="screenshotModeUrl"
 			class="dev-mode-video--self videoWrapper"
@@ -93,6 +97,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import IconAccountOffOutline from 'vue-material-design-icons/AccountOffOutline.vue'
 import IconArrowExpand from 'vue-material-design-icons/ArrowExpand.vue'
+import IconHandBackLeft from 'vue-material-design-icons/HandBackLeft.vue'
 import K4TileStats from '../k4log/K4TileStats.vue' // ket4tec
 import TileSticker from '../k4stk/TileSticker.vue' // ket4tec: k4stk
 import K4Face from './k4face/K4Face.vue' // ket4tec
@@ -119,6 +124,7 @@ export default {
 		VideoBackground,
 		NcLoadingIcon,
 		IconArrowExpand,
+		IconHandBackLeft,
 		K4TileStats,
 		TileSticker,
 	},
@@ -207,6 +213,11 @@ export default {
 	},
 
 	computed: {
+		// ket4tec (NAS_CLOUD#264): рука поднята на своей плитке
+		k4handRaised() {
+			return this.localMediaModel.attributes.raisedHand?.state === true
+		},
+
 		// ket4tec: k4stk. Моя гифка/стикер вместо камеры (не в боковой панели)
 		k4stkOn() {
 			return !!k4stk.mine && !this.isSidebar
@@ -437,6 +448,15 @@ export default {
 		opacity: 0.5;
 	}
 }
+
+// ket4tec (NAS_CLOUD#264): значок руки в левом верхнем углу (микрофон справа)
+.k4-hand-slot {
+	position: absolute; top: 10px; inset-inline-start: 10px; z-index: 5; width: 56px; height: 56px; border-radius: 18px;
+	display: grid; place-items: center; background: var(--k7-grad, var(--color-primary-element)); box-shadow: 0 6px 18px #0006;
+	pointer-events: none; animation: k4-hand-in .28s cubic-bezier(.2,.9,.3,1.3);
+}
+@keyframes k4-hand-in { from { transform: scale(.4); opacity: 0 } }
+@media (prefers-reduced-motion: reduce) { .k4-hand-slot { animation: none } }
 
 .localVideoContainer {
 	border-radius: var(--border-radius-element, calc(var(--default-clickable-area) / 2));
