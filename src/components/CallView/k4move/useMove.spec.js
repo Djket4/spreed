@@ -30,8 +30,9 @@ vi.mock('../../../utils/webrtc/index.js', () => ({
 	}),
 }))
 
+import { showInfo } from '@nextcloud/dialogs'
 import { appPost } from '../k4draw/macBridge.js'
-import { ACCEPT_WAIT, headerLinkToOpen, isTrustedTake, JOIN_WAIT, moveHere, otherSessionsInCall, watchMove } from './useMove.js'
+import { ACCEPT_WAIT, headerLinkToOpen, isTrustedTake, JOIN_WAIT, LATE_CANCEL, leaveOnce, moveHere, otherSessionsInCall, watchMove } from './useMove.js'
 
 describe('другая сессия в звонке', () => {
 	const S = [
@@ -76,17 +77,24 @@ describe('ссылки шапки', () => {
 
 const deliver = (d) => [...h.subs].forEach((fn) => fn({ type: 'k4move', v: 2, ...d }))
 const ops = (sid) => h.sent.filter(([s]) => !sid || s === sid).map(([, op]) => op)
+function reset(inCall, leaveMs = 0) {
+	vi.useFakeTimers()
+	h.inCall = inCall
+	h.sent = []
+	h.subs.clear()
+	h.store.getters.isInCall = () => h.inCall
+	h.store.dispatch = vi.fn(() => new Promise((resolve) => setTimeout(() => {
+		h.inCall = false
+		resolve()
+	}, leaveMs)))
+	appPost.mockClear()
+	showInfo.mockClear()
+}
 
 describe('перенос v2, исходная сторона (NAS_CLOUD#177)', () => {
 	let unwatch
 	beforeEach(() => {
-		vi.useFakeTimers()
-		h.inCall = true
-		h.sent = []
-		h.subs.clear()
-		h.store.getters.isInCall = () => h.inCall
-		h.store.dispatch = vi.fn(() => Promise.resolve())
-		appPost.mockClear()
+		reset(true, 4000) // выход A идёт 4 с
 		unwatch = watchMove()
 		vi.advanceTimersByTime(2000)
 	})
@@ -94,24 +102,24 @@ describe('перенос v2, исходная сторона (NAS_CLOUD#177)', (
 		unwatch()
 		vi.useRealTimers()
 	})
-	const flush = async () => {
-		await Promise.resolve()
-		await Promise.resolve()
-	}
-	it('offer → accept, joined → выход и moved', async () => {
+	it('offer → accept, joined → один выход, после него moved получателю и окну', async () => {
 		deliver({ op: 'offer', from: 'b', id: '1' })
 		expect(ops('b')).toEqual(['accept'])
-		expect(h.store.dispatch).not.toHaveBeenCalled()
 		deliver({ op: 'joined', from: 'b', id: '1' })
-		await flush()
-		expect(h.store.dispatch).toHaveBeenCalledWith('leaveCall', expect.objectContaining({ token: 't', all: false }))
+		deliver({ op: 'joined', from: 'b', id: '1' })
+		await vi.advanceTimersByTimeAsync(3999)
+		expect(ops('b')).toEqual(['accept'])
+		await vi.advanceTimersByTimeAsync(1)
+		expect(ops('b')).toEqual(['accept', 'moved'])
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
 		expect(appPost).toHaveBeenCalledWith('moved')
 	})
-	it('старый take v1 и чужая сессия — игнор', async () => {
+	it('смешанные версии: v1 take от старой страницы — без реакции; чужая сессия — игнор', async () => {
 		h.subs.forEach((fn) => fn({ type: 'k4move', v: 1, op: 'take', from: 'b' }))
+		h.subs.forEach((fn) => fn({ type: 'k4move', op: 'take', from: 'b' }))
 		deliver({ op: 'offer', from: 'stranger', id: '1' })
 		deliver({ op: 'joined', from: 'stranger', id: '1' })
-		await flush()
+		await vi.advanceTimersByTimeAsync(5000)
 		expect(h.sent).toEqual([])
 		expect(h.store.dispatch).not.toHaveBeenCalled()
 	})
@@ -120,44 +128,48 @@ describe('перенос v2, исходная сторона (NAS_CLOUD#177)', (
 		vi.advanceTimersByTime(JOIN_WAIT + 1)
 		expect(ops('b')).toEqual(['accept', 'cancel'])
 		deliver({ op: 'joined', from: 'b', id: '1' })
-		await flush()
+		await vi.advanceTimersByTimeAsync(5000)
 		expect(ops('b')).toEqual(['accept', 'cancel', 'cancel'])
 		expect(h.store.dispatch).not.toHaveBeenCalled()
 		expect(appPost).not.toHaveBeenCalled()
 	})
-	it('второй перенос при активном первом: busy, его joined — cancel; выход один раз', async () => {
+	it('C.offer при активном переносе B — busy, его joined — cancel', async () => {
 		deliver({ op: 'offer', from: 'b', id: '1' })
 		deliver({ op: 'offer', from: 'c', id: '2' })
-		expect(ops('c')).toEqual(['busy'])
-		deliver({ op: 'joined', from: 'b', id: '1' })
 		deliver({ op: 'joined', from: 'c', id: '2' })
-		await flush()
 		expect(ops('c')).toEqual(['busy', 'cancel'])
-		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
 	})
-	it('cancel от получателя освобождает перенос', () => {
+	it('C.offer во время 4-секундного выхода A — busy; выход один', async () => {
 		deliver({ op: 'offer', from: 'b', id: '1' })
+		deliver({ op: 'joined', from: 'b', id: '1' })
+		await vi.advanceTimersByTimeAsync(2000)
+		h.inCall = false // звонок уже гаснет, выход ещё идёт
+		deliver({ op: 'offer', from: 'c', id: '2' })
+		deliver({ op: 'cancel', from: 'b', id: '1' }) // отмена во время выхода не снимает moving
+		deliver({ op: 'offer', from: 'c', id: '3' })
+		expect(ops('c')).toEqual(['busy', 'busy'])
+		await vi.advanceTimersByTimeAsync(2000)
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
+		expect(ops('b')).toEqual(['accept', 'moved'])
+	})
+	it('двойная отмена от получателя: перенос снят, следующий offer принят', () => {
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		deliver({ op: 'cancel', from: 'b', id: '1' })
 		deliver({ op: 'cancel', from: 'b', id: '1' })
 		deliver({ op: 'offer', from: 'c', id: '2' })
 		expect(ops('c')).toEqual(['accept'])
+		expect(h.store.dispatch).not.toHaveBeenCalled()
 	})
 })
 
 describe('перенос v2, принимающая сторона (NAS_CLOUD#177)', () => {
-	beforeEach(() => {
-		vi.useFakeTimers()
-		h.inCall = false
-		h.sent = []
-		h.subs.clear()
-		h.store.getters.isInCall = () => h.inCall
-		h.store.dispatch = vi.fn(() => {
-			h.inCall = false
-			return Promise.resolve()
-		})
-	})
+	beforeEach(() => reset(false))
 	afterEach(() => vi.useRealTimers())
 	const idOf = () => h.sent[0][2]
-	it('входит только после accept; до входа ушёл лишь offer (никакого раннего take)', async () => {
+	const joinOk = () => vi.fn(async () => {
+		h.inCall = true
+	})
+	it('входит только после accept; до входа ушёл лишь offer; moved от A — готово', async () => {
 		const join = vi.fn(async () => {
 			expect(ops()).toEqual(['offer'])
 			h.inCall = true
@@ -167,10 +179,11 @@ describe('перенос v2, принимающая сторона (NAS_CLOUD#17
 		expect(join).not.toHaveBeenCalled()
 		deliver({ op: 'accept', from: 'a', id: idOf() })
 		await vi.advanceTimersByTimeAsync(0)
-		expect(join).toHaveBeenCalled()
 		expect(ops()).toEqual(['offer', 'joined'])
-		await vi.advanceTimersByTimeAsync(10000)
+		deliver({ op: 'moved', from: 'a', id: idOf() })
 		expect(await r).toBe('joined')
+		deliver({ op: 'cancel', from: 'a', id: h.sent[0][2] }) // после moved — уже не слушаем
+		expect(h.store.dispatch).not.toHaveBeenCalled()
 	})
 	it('busy: не входит', async () => {
 		const join = vi.fn()
@@ -179,14 +192,17 @@ describe('перенос v2, принимающая сторона (NAS_CLOUD#17
 		expect(await r).toBe('busy')
 		expect(join).not.toHaveBeenCalled()
 	})
-	it('молчание (старая страница): после ACCEPT_WAIT входит как раньше', async () => {
-		const join = vi.fn(async () => {
-			h.inCall = true
-		})
-		moveHere(['a'], 't', join)
+	it('смешанные версии: старая исходная молчит на v2 — не входит, отмена и «Обновите страницу»', async () => {
+		const join = joinOk()
+		const r = moveHere(['a'], 't', join)
 		await vi.advanceTimersByTimeAsync(ACCEPT_WAIT)
-		expect(join).toHaveBeenCalled()
-		expect(ops()).toEqual(['offer', 'joined'])
+		expect(await r).toBe('stale')
+		expect(join).not.toHaveBeenCalled()
+		expect(ops()).toEqual(['offer', 'cancel'])
+		expect(showInfo.mock.calls[0][0]).toMatch(/Обновите страницу/)
+		deliver({ op: 'accept', from: 'a', id: idOf() }) // опоздавший accept — уже ничего
+		await vi.advanceTimersByTimeAsync(0)
+		expect(join).not.toHaveBeenCalled()
 	})
 	it('вход не удался: cancel, joined не уходит', async () => {
 		const r = moveHere(['a'], 't', async () => {
@@ -196,36 +212,65 @@ describe('перенос v2, принимающая сторона (NAS_CLOUD#17
 		expect(await r).toBe('failed')
 		expect(ops()).toEqual(['offer', 'cancel'])
 	})
-	it('cancel пришёл во время входа: выходит, joined не шлёт', async () => {
+	it('cancel во время входа: один выход, joined не шлёт', async () => {
 		const r = moveHere(['a'], 't', async () => {
 			deliver({ op: 'cancel', from: 'a', id: idOf() })
 			h.inCall = true
 		})
 		deliver({ op: 'accept', from: 'a', id: idOf() })
-		expect(await r).toBe('cancelled')
+		const out = r
+		await vi.advanceTimersByTimeAsync(0)
+		expect(await out).toBe('cancelled')
 		expect(ops()).toEqual(['offer'])
-		expect(h.store.dispatch).toHaveBeenCalledWith('leaveCall', expect.anything())
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
 	})
-	it('cancel разминулся с joined: выходит', async () => {
-		const r = moveHere(['a'], 't', async () => {
-			h.inCall = true
-		})
+	it('задержанный joined + cancel и двойная отмена: выходит сам, выход один', async () => {
+		h.store.dispatch = vi.fn(() => new Promise((resolve) => setTimeout(() => {
+			h.inCall = false
+			resolve()
+		}, 4000)))
+		const r = moveHere(['a'], 't', joinOk())
 		deliver({ op: 'accept', from: 'a', id: idOf() })
 		await vi.advanceTimersByTimeAsync(0)
 		expect(ops()).toEqual(['offer', 'joined'])
 		deliver({ op: 'cancel', from: 'a', id: idOf() })
-		expect(h.store.dispatch).toHaveBeenCalledWith('leaveCall', expect.anything())
-		await vi.advanceTimersByTimeAsync(10000)
+		deliver({ op: 'cancel', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(4000)
 		expect(await r).toBe('cancelled')
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
+		expect(showInfo).toHaveBeenCalledTimes(1)
+	})
+	it('слушает cancel до таймаута исходной + LATE_CANCEL, не дольше', async () => {
+		const r = moveHere(['a'], 't', joinOk())
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(JOIN_WAIT + LATE_CANCEL - 1)
+		let done = false
+		r.then(() => {
+			done = true
+		})
+		await vi.advanceTimersByTimeAsync(0)
+		expect(done).toBe(false)
+		await vi.advanceTimersByTimeAsync(1)
+		expect(await r).toBe('joined')
+		deliver({ op: 'cancel', from: 'a', id: idOf() })
+		expect(h.store.dispatch).not.toHaveBeenCalled()
 	})
 	it('cancel чужого переноса или от другой сессии — игнор', async () => {
-		moveHere(['a'], 't', async () => {
-			h.inCall = true
-		})
+		moveHere(['a'], 't', joinOk())
 		deliver({ op: 'accept', from: 'a', id: idOf() })
 		await vi.advanceTimersByTimeAsync(0)
 		deliver({ op: 'cancel', from: 'a', id: 'other' })
 		deliver({ op: 'cancel', from: 'x', id: idOf() })
 		expect(h.store.dispatch).not.toHaveBeenCalled()
+	})
+	it('leaveOnce: параллельные вызовы ждут один выход', async () => {
+		h.inCall = true
+		const p1 = leaveOnce('t')
+		const p2 = leaveOnce('t')
+		expect(p1).toBe(p2)
+		await vi.advanceTimersByTimeAsync(0)
+		await p1
+		await leaveOnce('t')
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
 	})
 })
