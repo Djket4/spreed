@@ -1,16 +1,23 @@
 /**
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-// ket4tec (NAS_CLOUD#113): другая сессия того же пользователя и фильтр ссылок шапки
+// ket4tec (NAS_CLOUD#113): другая сессия того же пользователя и фильтр ссылок шапки. Протокол переноса — useMove.pair.spec.js
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@nextcloud/dialogs', () => ({ getDialogBuilder: vi.fn(), showInfo: vi.fn() }))
+vi.mock('../k4draw/macBridge.js', () => ({ appPost: vi.fn() }))
+const dialog = {
+	setText: () => dialog,
+	setButtons: () => dialog,
+	build: () => ({ show: () => {} }),
+}
+vi.mock('@nextcloud/dialogs', () => ({ getDialogBuilder: () => dialog, showInfo: vi.fn() }))
 vi.mock('@nextcloud/router', () => ({ generateUrl: (u) => '/index.php' + u }))
-vi.mock('../../../store/index.js', () => ({ default: { getters: {} } }))
-vi.mock('../../../stores/actor.ts', () => ({ useActorStore: () => ({}) }))
-vi.mock('../../../stores/session.ts', () => ({ useSessionStore: () => ({}) }))
-vi.mock('../../../stores/token.ts', () => ({ useTokenStore: () => ({}) }))
+vi.mock('../../../store/index.js', () => ({ default: {} }))
+vi.mock('../../../stores/actor.ts', () => ({ useActorStore: () => ({ actorType: 'users', participantIdentifier: { attendeeId: 1 } }) }))
+vi.mock('../../../stores/session.ts', () => ({ useSessionStore: () => ({ getSession: (sid) => ({ token: 't', attendeeId: sid === 'stranger' ? 2 : 1 }) }) }))
+vi.mock('../../../stores/token.ts', () => ({ useTokenStore: () => ({ token: 't' }) }))
 vi.mock('../../../utils/webrtc/index.js', () => ({ k4drawSignaling: () => null }))
+vi.mock('../../../services/callsService.ts', () => ({ fetchPeers: vi.fn() }))
 
 import { headerLinkToOpen, isTrustedTake, otherSessionsInCall } from './useMove.js'
 

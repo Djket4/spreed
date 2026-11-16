@@ -5,13 +5,14 @@
  * Safari не пускает (mixed content), CSP Talk — тоже.
  */
 import { showWarning } from '@nextcloud/dialogs'
-import { reactive } from 'vue'
+import { reactive, watch as vueWatch } from 'vue'
 import { consoleCmd, consoleFrame, consoleRtc, consoleTick, inCall, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
 import { clearAll, eraseMarks, hash, identity, localScreen, moveMark, myId, myShow, onDraw, PALETTE, pumpNow, state, strokeEnd, strokePoint, strokeStart, textPut, undo } from './useDrawing.js'
 
 const ORIGIN = 'http://127.0.0.1:47811'
 const URL = ORIGIN + '/'
+const APP_WAIT = 8000 // в приложении K4Draw: столько ждём ready от окна моста
 /** Страница скачивания приложения с инструкцией (статика облака, без входа) */
 export const MAC_DL = 'https://cloud.ket4tec.online/k4draw/'
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
@@ -24,6 +25,33 @@ export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
 export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Скачать приложение для Мака', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
+
+/** Страница открыта внутри приложения K4Draw (его WKWebView; NAS_CLOUD#177) */
+export const inApp = /\bK4Draw\//.test(navigator.userAgent)
+/**
+ * Сообщение приложению: mini | restore | browser | moved | left | incall.
+ *
+ * @param t тип
+ */
+export const appPost = (t) => window.webkit?.messageHandlers?.k4draw?.postMessage({ t })
+/**
+ * Ссылка «Открыть звонок в приложении».
+ *
+ * @param token токен беседы
+ */
+export const appCallUrl = (token) => 'k4draw://call?u=' + encodeURIComponent(location.origin + '/call/' + token)
+/**
+ * Открыть звонок в приложении: скрытый iframe, страница не уходит. Есть ли приложение, отсюда не узнать.
+ *
+ * @param token токен беседы
+ */
+export function openInApp(token) {
+	const f = document.createElement('iframe')
+	f.style.display = 'none'
+	f.src = appCallUrl(token)
+	document.body.appendChild(f)
+	setTimeout(() => f.remove(), 3000)
+}
 
 let pop = null
 let off = null
@@ -112,6 +140,7 @@ function lost() {
 	clearTimeout(graceT)
 	if (mac.st === 'on') {
 		mac.st = 'lost'
+		appPost('restore') // приложение K4Draw (NAS_CLOUD#177): окно звонка, спрятанное «Мини», вернуть на экран
 		clearInterval(watch)
 		consoleCmd('stopShare') // панель закрыта, приложение вышло или окно связи закрыто: показ экрана останавливаем
 		stopConsole()
@@ -284,7 +313,7 @@ export function openMac() {
 		mac.st = 'idle'
 		return
 	}
-	const launch = mac.st === 'launch'
+	const launch = !inApp && mac.st === 'launch'
 	launched = mac.st === 'start'
 	pop?.close() // всегда свежее окно: окно, где Safari показал ошибку, больше не загрузится
 	// Safari: если вкладка в полноэкранном режиме, окно всё равно откроется на весь экран (размер игнорируется), поэтому ещё и left/top
@@ -299,7 +328,38 @@ export function openMac() {
 		return
 	}
 	mac.st = 'wait'
-	retry()
+	if (!inApp) {
+		return retry()
+	}
+	// в приложении ping и запуск по схеме не нужны, но ждём ограниченно: окно моста не ответило — сброс
+	clearTimeout(timer)
+	timer = setTimeout(() => {
+		if (mac.st === 'wait') {
+			pop?.close()
+			pop = null
+			mac.st = 'idle'
+		}
+	}, APP_WAIT)
+}
+
+/**
+ * «Мини» в приложении: поднять мост и дождаться ready (из клика — окно требует жеста).
+ *
+ * @return {Promise<boolean>} true — мост на связи, окно звонка можно прятать
+ */
+export function openMacReady() {
+	openMac()
+	return new Promise((resolve) => {
+		let stop = null
+		const check = () => {
+			if (mac.st !== 'wait') {
+				stop?.()
+				resolve(mac.st === 'on')
+			}
+		}
+		stop = vueWatch(() => mac.st, check, { flush: 'sync' })
+		check()
+	})
 }
 
 /**

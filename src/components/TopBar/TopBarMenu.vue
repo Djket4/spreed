@@ -98,6 +98,20 @@
 			{{ t('spreed', 'Check devices') }}
 		</NcActionButton>
 
+		<!-- ket4tec: k4draw. Звонок в приложении K4Draw (NAS_CLOUD#177) -->
+		<NcActionButton
+			v-if="isInCall && k4App"
+			closeAfterClick
+			@click="appPost('browser')">
+			Вернуться в браузер
+		</NcActionButton>
+		<NcActionButton
+			v-else-if="isInCall && k4Mac"
+			closeAfterClick
+			@click="openInApp(token)">
+			Открыть в приложении
+		</NcActionButton>
+
 		<!-- Breakout rooms -->
 		<NcActionButton
 			v-if="canConfigureBreakoutRooms"
@@ -194,6 +208,7 @@ import { useSidebarStore } from '../../stores/sidebar.ts'
 import { isChannelConversation, isClassifiedConversation } from '../../utils/conversation.ts'
 import { generateAbsoluteUrl } from '../../utils/handleUrl.ts'
 import { callParticipantCollection } from '../../utils/webrtc/index.js'
+import { appPost, inApp, isMac, openInApp } from '../CallView/k4draw/macBridge.js'
 
 export default {
 	name: 'TopBarMenu',
@@ -249,6 +264,10 @@ export default {
 			isFullscreen: useDocumentFullscreen(),
 			canFullscreen: !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
 			isInCall: useIsInCall(),
+			appPost,
+			openInApp,
+			k4App: inApp,
+			k4Mac: isMac(),
 			toggleFullscreen,
 			actorStore,
 			sidebarStore,
