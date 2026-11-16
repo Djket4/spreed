@@ -45,13 +45,14 @@ describe('FaceFrame в цепочке превью', () => {
 		expect(seen).toEqual([false, true])
 		ff.destroy()
 	})
-	test('страховка: канвас без кадров -> через 2 с на выходе исходный трек', () => {
+	test('страховка: канвас без кадров -> через 2 с после ожидания детекции на выходе исходный трек', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
 		window.MediaStream = function(tracks = []) {
 			this._tracks = [...tracks]
 			this.getTracks = () => this._tracks
 		}
 		window.HTMLMediaElement.prototype.play = () => Promise.resolve()
+		window.HTMLCanvasElement.prototype.captureStream = () => ({ getVideoTracks: () => [{ stop() {}, addEventListener() {}, removeEventListener() {} }] })
 		const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
 		const ff = new FaceFrame()
 		const track = { id: 'v2', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
@@ -59,7 +60,7 @@ describe('FaceFrame в цепочке превью', () => {
 		ff._setInputTrack('default', track)
 		return vi.advanceTimersByTimeAsync(100).then(() => {
 			expect(ff.path).toBe('digital')
-			return vi.advanceTimersByTimeAsync(2600)
+			return vi.advanceTimersByTimeAsync(3600)
 		}).then(() => {
 			expect(ff.path).toBe('fallback')
 			expect(ff.getOutputTrack()).toBe(track)
@@ -89,7 +90,7 @@ describe('FaceFrame в цепочке превью', () => {
 			expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.error)
 		})
 	})
-	test('защита: канвас рисует, а выходной трек пуст (проба без кадров) -> откат за 3 с', () => {
+	test('защита: канвас рисует, а выходной трек пуст (проба без кадров) -> откат за 3,5 с', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
 		window.MediaStream = function(tracks = []) {
 			this.getTracks = () => tracks
@@ -111,7 +112,7 @@ describe('FaceFrame в цепочке превью', () => {
 		const ff = new FaceFrame()
 		const track = { id: 'v5', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
 		ff._setInputTrack('default', track)
-		return vi.advanceTimersByTimeAsync(3000).then(() => {
+		return vi.advanceTimersByTimeAsync(3600).then(() => {
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(getFaceFrameLevel()).toBe('off')
 			expect(showWarning).toHaveBeenCalledTimes(1)
@@ -122,7 +123,7 @@ describe('FaceFrame в цепочке превью', () => {
 		})
 	})
 	// проба готова: у <video> на выходном треке есть кадр
-	const setup = (out, probeReady) => {
+	const setup = (out, probeReady, beforeStart = () => {}) => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
 		window.MediaStream = function(tracks = []) {
 			this.getTracks = () => tracks
@@ -141,6 +142,7 @@ describe('FaceFrame в цепочке превью', () => {
 		setFaceFrameLevel('auto')
 		const ff = new FaceFrame()
 		const track = { id: 'vp', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
+		beforeStart(ff)
 		ff._setInputTrack('default', track)
 		const restore = () => {
 			for (const [k, dsc] of [['videoWidth', vw], ['readyState', rs]]) {
@@ -171,6 +173,23 @@ describe('FaceFrame в цепочке превью', () => {
 			restore()
 		}
 	})
+	test('NAS_CLOUD#271: исходная камера на выход не ставится; после выкл/вкл кадр продолжается с прошлого окна', async () => {
+		const out = { stop() {}, addEventListener() {}, removeEventListener() {} }
+		const seen = []
+		const { ff, track, restore } = setup(out, true, (f) => f.on('outputTrackSet', (s, id, t) => seen.push(t)))
+		try {
+			expect(seen).toEqual([out]) // ни разу не исходная камера
+			expect(ff.getOutputTrack()).toBe(out)
+			Object.assign(ff._digital, { placed: true, lastFace: 1, win: { cx: 0.3, cy: 0.6, zoom: 1.6 } })
+			ff._handleInputTrackEnabled('default', false)
+			ff._handleInputTrackEnabled('default', true)
+			expect(ff._digital.win).toEqual({ cx: 0.3, cy: 0.6, zoom: 1.6 })
+			expect(ff._digital.placed).toBe(true)
+			ff.destroy()
+		} finally {
+			restore()
+		}
+	})
 	test('проба не готова -> откат по таймауту, сообщение про выходной трек, пробы в DOM нет', async () => {
 		const out = { stop() {}, addEventListener() {}, removeEventListener() {} }
 		const { ff, track, restore } = setup(out, false)
@@ -179,7 +198,7 @@ describe('FaceFrame в цепочке превью', () => {
 			await vi.advanceTimersByTimeAsync(500)
 			probe = ff._digital.probe
 			expect(document.body.contains(probe)).toBe(true)
-			await vi.advanceTimersByTimeAsync(2500)
+			await vi.advanceTimersByTimeAsync(3100)
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(console.error.mock.calls.some((c) => String(c[1]).includes('выходной трек не отдаёт кадры'))).toBe(true)
 			expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.output)

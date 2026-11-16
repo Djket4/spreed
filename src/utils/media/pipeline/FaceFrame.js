@@ -18,8 +18,10 @@ const DETECT_INTERVAL_MS = 125 // не чаще 8 раз/с
 const TILE_INTERVAL_MS = 500 // плитки (лица нет) не чаще 2 раз/с
 const SLOW_DETECT_MS = 25 // дольше — следующая детекция откладывается
 const RVFC_WAIT_MS = 300 // нет первого rVFC -> requestAnimationFrame
-const MIN_FRAMES = 3 // кадров канваса до переключения выхода
+const MIN_FRAMES = 3 // кадров канваса до проверки выхода пробой
 const NO_FRAMES_MS = 2000
+// ket4tec (NAS_CLOUD#271): первый кадр рисуем сразу в итоговом кадрировании — ждём первую детекцию не дольше этого
+const HOLD_MS = 1200
 const MIN_FPS = 15
 const LOW_FPS_MS = 2000
 const STATS_LOG_MS = 5000
@@ -222,6 +224,9 @@ export default class FaceFrame extends TrackSinkSource {
 		const token = ++this._applyToken
 		const input = this.getInputTrack()
 		const lvl = getFaceFrameLevel()
+		if (lvl !== 'off') {
+			getDetector().catch(() => {}) // ket4tec (NAS_CLOUD#271): к включению камеры детектор уже загружен
+		}
 
 		if (!input || !input.enabled || lvl === 'off') {
 			this._stopDigital()
@@ -257,10 +262,8 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 		}
 		this.path = 'digital'
-		// пока канвас не дал кадров, на выходе исходная камера: пустого превью не бывает
-		if (this._digital?.input !== input) {
-			this._setOutput(input)
-		}
+		// ket4tec (NAS_CLOUD#271): исходную камеру на выход не ставим — её некадрированный кадр и был «скачком».
+		// Выход — канвас с первой отрисовки; плитки (свои и чужие) проявляются по первому настоящему кадру.
 		try {
 			this._startDigital(input)
 		} catch (e) {
@@ -311,14 +314,17 @@ export default class FaceFrame extends TrackSinkSource {
 		document.body.appendChild(canvas)
 		const ctx = canvas.getContext('2d')
 		const t0 = performance.now()
+		// ket4tec (NAS_CLOUD#271): после выкл/вкл продолжаем с последнего кадрирования, а не с центра
+		const last = this._lastWin
 		const d = {
 			input,
 			video,
 			canvas,
 			ctx,
-			win: { cx: 0.5, cy: 0.5, zoom: 1 },
-			target: { cx: 0.5, cy: 0.5, zoom: 1 },
-			lastFace: 0,
+			win: last ? { ...last } : { cx: 0.5, cy: 0.5, zoom: 1 },
+			target: last ? { ...last } : { cx: 0.5, cy: 0.5, zoom: 1 },
+			lastFace: last ? t0 : 0,
+			placed: !!last, // окно стоит на итоговом месте, можно рисовать
 			tileIdx: 0,
 			noFace: true,
 			nextDetectAt: 0,
@@ -328,7 +334,7 @@ export default class FaceFrame extends TrackSinkSource {
 			detector: null,
 			startedAt: t0,
 			frames: 0, // отрисовок канваса с ненулевым размером
-			published: false,
+			published: false, // выходной трек проверен пробой
 			sid: 0,
 			useRaf: !video.requestVideoFrameCallback,
 			rvfcFired: false,
@@ -341,6 +347,24 @@ export default class FaceFrame extends TrackSinkSource {
 			lastLog: t0,
 		}
 		this._digital = d
+		// выход — сразу канвас: до первой отрисовки кадров нет, на плитках держится облако
+		d.output = canvas.captureStream().getVideoTracks()[0]
+		if (!d.output) {
+			throw new Error('captureStream без видеотрека')
+		}
+		// выходной трек кончился сам (не нашей остановкой) — получатели видели бы чёрное
+		d.output.addEventListener('ended', () => this._fallback(d, 'output', 'выходной трек завершился'))
+		// проба: <video> на выходном треке — канвас реально отдаёт кадры; иначе откат на камеру
+		const probe = document.createElement('video')
+		probe.muted = true
+		probe.playsInline = true
+		probe.setAttribute('playsinline', '')
+		probe.style.cssText = video.style.cssText
+		probe.srcObject = new MediaStream([d.output])
+		document.body.appendChild(probe)
+		d.probe = probe
+		probe.play?.()?.catch?.(() => {})
+		this._setOutput(d.output)
 		video.play().catch(() => {})
 		getDetector().then((detector) => {
 			d.detector = detector
@@ -415,7 +439,7 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 		if (!d.published) {
-			if (now - d.startedAt > NO_FRAMES_MS) {
+			if (now - d.startedAt > NO_FRAMES_MS + HOLD_MS) {
 				if (d.frames >= MIN_FRAMES) {
 					this._fallback(d, 'output', `выходной трек не отдаёт кадры за ${NO_FRAMES_MS} мс`)
 				} else {
@@ -525,6 +549,17 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 		const lvl = getFaceFrameLevel()
 
+		// ket4tec (NAS_CLOUD#271): до первой детекции не рисуем; нашли лицо — окно сразу на месте, без пружины
+		if (!d.placed) {
+			this._maybeDetect(d, now, lvl)
+			if (d.lastFace) {
+				d.win = { ...d.target }
+			} else if (now - d.startedAt < HOLD_MS) {
+				return
+			}
+			d.placed = true
+		}
+
 		if (now - d.lastFace > LOST_AFTER_MS) {
 			d.target = { cx: 0.5, cy: 0.5, zoom: 1 }
 		} else if (lvl !== 'auto') {
@@ -542,33 +577,8 @@ export default class FaceFrame extends TrackSinkSource {
 		d.frames++
 		d.fpsFrames++
 
-		if (!d.output) {
-			try {
-				d.output = canvas.captureStream().getVideoTracks()[0]
-				if (!d.output) {
-					throw new Error('captureStream без видеотрека')
-				}
-				// выходной трек кончился сам (не нашей остановкой) — получатели видели бы чёрное
-				d.output.addEventListener('ended', () => this._fallback(d, 'output', 'выходной трек завершился'))
-				// проба: <video> на выходном треке, должен отдать кадр до подмены камеры
-				const probe = document.createElement('video')
-				probe.muted = true
-				probe.playsInline = true
-				probe.setAttribute('playsinline', '')
-				probe.style.cssText = d.video.style.cssText
-				probe.srcObject = new MediaStream([d.output])
-				document.body.appendChild(probe)
-				d.probe = probe
-				probe.play?.()?.catch?.(() => {})
-			} catch (e) {
-				this._fallback(d, 'capture', 'canvas.captureStream недоступен: ' + e.message)
-				return
-			}
-		}
-		// пока канвас не дал 3 кадров, на выходе остаётся исходный трек
 		if (!d.published && d.frames >= MIN_FRAMES && this._probeOk(d)) {
 			d.published = true
-			this._setOutput(d.output)
 		}
 
 		// детекция после отрисовки: кадр от неё не зависит
@@ -601,6 +611,7 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 		d.stopped = true
+		this._lastWin = d.placed && d.lastFace ? { ...d.win } : null
 		clearTimeout(d.rvfcTimer)
 		clearInterval(d.watch)
 		d.video.srcObject = null
