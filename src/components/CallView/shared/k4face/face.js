@@ -350,6 +350,8 @@ export function face(seed) {
 		lvl: 0,
 		talk: 0,
 		t: Math.random() * 100,
+		mt: Math.random() * 100, // ход вращения
+		sp: null, // скорость вращения 0..1
 		idle: 1,
 	}
 }
@@ -405,6 +407,11 @@ export function draw(g, W, H, f, src, on, dt) {
 	const lvl = src && on ? src.read(f.b, f.w) : 0
 	f.lvl = lvl
 	f.t += dt
+	// NAS_CLOUD#271 (Андрей 16.11): микрофон вкл — облако вращается, выкл — стоит. Ход sp плавно (~0,7 с) идёт к цели,
+	// угол копится из хода (mt), а не считается от времени: при переключении нет скачка и сброса фазы
+	f.sp ??= on ? 1 : 0
+	f.sp += ((on ? 1 : 0) - f.sp) * Math.min(1, dt * 4)
+	f.mt += dt * f.sp
 	f.talk += ((lvl > 0.45 ? 1 : 0) - f.talk) * Math.min(1, dt * 5)
 	for (let k = 0; k < NB; k++) {
 		f.d[k] = Math.max(f.b[k], f.d[k] - dt * 2.2)
@@ -464,17 +471,17 @@ export function draw(g, W, H, f, src, on, dt) {
 	const R = Math.min(W * 0.3, H * 0.27)
 	const cx = W / 2
 	const cy = H * 0.44
-	const a = f.t * f.spin * (on ? 1 : 0.5) + Math.sin(f.t * 0.31 + f.bok[0].ph) * 0.5
+	const a = f.mt * f.spin + Math.sin(f.mt * 0.31 + f.bok[0].ph) * 0.5
 	const ca = Math.cos(a)
 	const sa = Math.sin(a)
-	const tl = f.tilt + Math.sin(f.t * 0.23) * 0.08
+	const tl = f.tilt + Math.sin(f.mt * 0.23) * 0.08
 	const ct = Math.cos(tl)
 	const st = Math.sin(tl)
 	const k = R / 60
-	const dim = on ? 1 : 0.45
+	const dim = 0.45 + 0.55 * f.sp
 	const P = nodes.map((n, i) => {
 		const e = E[i]
-		const o = f.o[i] + Math.sin(f.t * 1.3 + n.ph) * 0.015
+		const o = f.o[i] + Math.sin(f.mt * 1.3 + n.ph) * 0.015
 		const x = n.p[0] + n.u[0] * o
 		const y = n.p[1] + n.u[1] * o
 		const z = n.p[2] + n.u[2] * o
