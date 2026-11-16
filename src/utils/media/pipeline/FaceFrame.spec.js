@@ -8,16 +8,24 @@ import { computeTarget, stepWindow, TILES, tileToFrame } from './FaceFrame.js'
 
 describe('FaceFrame logic', () => {
 	test('нет лиц — нет цели', () => {
-		expect(computeTarget([], 'auto')).toBe(null)
+		expect(computeTarget([])).toBe(null)
 	})
 	test('рамка вокруг всех лиц, центр между ними', () => {
-		const t = computeTarget([{ x: 0.1, y: 0.4, w: 0.05, h: 0.09 }, { x: 0.3, y: 0.4, w: 0.05, h: 0.09 }], '2')
+		const t = computeTarget([{ x: 0.1, y: 0.4, w: 0.05, h: 0.09 }, { x: 0.3, y: 0.4, w: 0.05, h: 0.09 }], 0.5)
 		expect(t.cx).toBeCloseTo(0.225)
-		expect(t.zoom).toBe(2)
 	})
 	test('авто: далёкое лицо приближается, близкое остаётся 1×', () => {
-		expect(computeTarget([{ x: 0.45, y: 0.4, w: 0.08, h: 0.14 }], 'auto').zoom).toBeGreaterThan(1.8)
-		expect(computeTarget([{ x: 0.3, y: 0.1, w: 0.4, h: 0.7 }], 'auto').zoom).toBe(1)
+		expect(computeTarget([{ x: 0.45, y: 0.4, w: 0.08, h: 0.14 }], 0.5).zoom).toBeGreaterThan(1.8)
+		expect(computeTarget([{ x: 0.3, y: 0.1, w: 0.4, h: 0.7 }], 0.5).zoom).toBe(1)
+	})
+	test('NAS_CLOUD#232: «Дальность» — ближе крупнее, до потолка 3×', () => {
+		const face = [{ x: 0.4, y: 0.3, w: 0.15, h: 0.2 }]
+		const far = computeTarget(face, 0).zoom
+		const mid = computeTarget(face, 0.5).zoom
+		const near = computeTarget(face, 1).zoom
+		expect(far).toBeLessThan(mid)
+		expect(mid).toBeLessThan(near)
+		expect(computeTarget([{ x: 0.45, y: 0.45, w: 0.05, h: 0.07 }], 1).zoom).toBe(3)
 	})
 	test('мёртвая зона: малый сдвиг не двигает окно', () => {
 		const s = { cx: 0.5, cy: 0.5, zoom: 2 }

@@ -113,8 +113,9 @@ describe('FaceFrame: откат', () => {
 		})
 		await vi.advanceTimersByTimeAsync(1600)
 		expect(ff.getOutputTrack()).toBe(track)
-		setFaceFrameLevel('1.5')
-		expect(localStorage.getItem(KEY)).toBe('1.5')
+		localStorage.removeItem(KEY)
+		setFaceFrameLevel('auto')
+		expect(localStorage.getItem(KEY)).toBe('auto')
 	})
 
 	test('тексты разные для каждой причины', () => {
