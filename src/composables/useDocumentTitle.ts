@@ -168,7 +168,7 @@ export function useDocumentTitle() {
 	function getDefaultPageTitle() {
 		// Do nothing on Desktop
 		if (IS_DESKTOP) {
-			return document.title
+			return document.title.replace(/^Talk [-—] /, '') // ket4tec (NAS_CLOUD#161): без «Talk» и в настольном клиенте
 		}
 		const appNamePrefix = t('spreed', 'Talk') + ' - '
 		// KET4TEC: длинное тире в заголовке («Talk — KET4TEC Cloud», #103)
