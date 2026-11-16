@@ -37,6 +37,12 @@ document.documentElement.classList.add('k7f')
 		const bar = document.querySelector('.top-bar--in-call')
 		const box = document.getElementById('call-container')
 		const stack = document.getElementById('k7-toasts')
+		for (const el of watched) {
+			if (!el.isConnected) {
+				ro.unobserve(el)
+				watched.delete(el)
+			}
+		}
 		for (const el of [bar, stack]) {
 			if (el && !watched.has(el)) {
 				watched.add(el)
@@ -48,6 +54,7 @@ document.documentElement.classList.add('k7f')
 		if (!on) {
 			root.style.removeProperty('--k7-toast-top')
 			root.style.removeProperty('--k7-call-top')
+			root.style.removeProperty('--k7-stack-bottom')
 			return
 		}
 		const bottom = bar.getBoundingClientRect().bottom
@@ -56,6 +63,7 @@ document.documentElement.classList.add('k7f')
 		const stackH = Math.max(shown ? 112 : 52, stack ? stack.getBoundingClientRect().height : 0)
 		root.style.setProperty('--k7-toast-top', Math.round(bottom + 8) + 'px')
 		root.style.setProperty('--k7-call-top', Math.round(bottom - box.getBoundingClientRect().top + 8 + stackH + 8) + 'px')
+		root.style.setProperty('--k7-stack-bottom', Math.round(bottom + 8 + stackH + 8) + 'px') // верх окон на телефоне (k7ui.scss)
 	}
 	setInterval(update, 500)
 	window.addEventListener('resize', update)

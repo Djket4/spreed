@@ -177,6 +177,7 @@
 		<Teleport to="#k7-toasts" :disabled="!hasToastStack()">
 			<div
 				v-if="showAskUnmute"
+				:ref="k4PinAsk"
 				class="k4-ask-unmute k7-toast k7-toast-on"
 				:class="{ 'k4-ask-unmute--solo': !hasToastStack() }"
 				role="alert">
@@ -824,6 +825,15 @@ export default {
 	},
 
 	methods: {
+		// ket4tec (NAS_CLOUD#161): запрос живёт в DOM от Vue — стопка облака (K7.stack) не должна его вытеснять или удалять:
+		// k7act — «плашка с действием» (вытесняется последней), k7kill — пустой, удаляет его только Vue
+		k4PinAsk(el) {
+			if (el) {
+				el.k7act = true
+				el.k7kill = () => {}
+			}
+		},
+
 		hasToastStack() { // ket4tec (NAS_CLOUD#162 п.2)
 			return !!document.getElementById('k7-toasts')
 		},
