@@ -341,7 +341,7 @@ $glass: blur(24px) saturate(180%);
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
 	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 2px 0; }
 	// гость: «Придумать имя» — кнопкой-кубиком в строке с полем, «Есть учётная запись? Войти» и «Введите имя» — по одной мелкой строке: высота уходит превью
-	:root body .media-settings .username-form { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 4px; }
+	:root body .media-settings .username-form { --default-clickable-area: 44px; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 4px; }
 	:root body .media-settings .username-form__display-name { margin: 0; }
 	:root:root body .media-settings .username-form__dice { margin: 0 !important; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; }
 	:root body .media-settings .username-form__dice .button-vue__text { display: none; }
