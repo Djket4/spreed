@@ -180,7 +180,8 @@
 				class="k4-ask-unmute k7-toast k7-toast-on"
 				:class="{ 'k4-ask-unmute--solo': !hasToastStack() }"
 				role="alert">
-				<span>{{ t('spreed', 'The organizer asks you to unmute your microphone') }}</span>
+				<!-- ket4tec (NAS_CLOUD#162 п.2): коротко, чтобы на телефоне было не больше двух строк -->
+				<span>Включите микрофон</span>
 				<button type="button" @click="acceptAskUnmute">
 					{{ t('spreed', 'Unmute') }}
 				</button>
@@ -1197,21 +1198,12 @@ export default {
 <style lang="scss" scoped>
 @use '../../assets/variables.scss' as *;
 
-.k4-ask-unmute--solo { // ket4tec (NAS_CLOUD#154, #162 п.2): запасной вид, когда стопки нет
-	position: fixed;
-	top: var(--k7-toast-top, 70px);
-	left: 50%;
-	transform: translateX(-50%);
-	z-index: 10000;
+.k4-ask-unmute { // ket4tec (NAS_CLOUD#162 п.2): текст и кнопки в ряд, на узком экране кнопки строкой ниже
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 12px;
-	max-width: calc(100vw - 24px);
-	padding: 10px 14px;
-	border-radius: 12px;
-	background: #2b2527;
-	color: #fff;
-	box-shadow: 0 2px 16px rgba(0, 0, 0, .5);
+	justify-content: center;
+	gap: 8px 12px;
 	button {
 		padding: 8px 16px;
 		border: 0;
@@ -1221,6 +1213,20 @@ export default {
 		font-weight: bold;
 		cursor: pointer;
 	}
+}
+
+.k4-ask-unmute--solo { // ket4tec (NAS_CLOUD#154, #162 п.2): запасной вид, когда стопки нет
+	position: fixed;
+	top: var(--k7-toast-top, 70px);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10000;
+	max-width: calc(100vw - 24px);
+	padding: 10px 14px;
+	border-radius: 12px;
+	background: #2b2527;
+	color: #fff;
+	box-shadow: 0 2px 16px rgba(0, 0, 0, .5);
 }
 
 #call-container {
