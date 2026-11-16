@@ -82,6 +82,11 @@ export const ACCEPT_WAIT = 5000
 export const LATE_WAIT = 30000
 /** Шаг опроса списка участников звонка. */
 export const POLL = 1000
+/** Таймаут одного GET списка участников; ответ позже — недействителен. */
+export const GET_TIMEOUT = 5000
+/** Попытки вернуться в звонок, если перенос не подтвердился, и пауза между ними. */
+export const REJOIN_TRIES = 3
+export const REJOIN_PAUSE = 2000
 
 let seq = 0 // номер последней попытки получателя: старая попытка после новой ничего не делает
 let recv = null // идёт попытка как получатель (id)
@@ -106,14 +111,45 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
  * Участники звонка — по серверу.
  *
  * @param {string} token комната
- * @return {Promise<object[]|null>} CallPeer[]; null — сервер не ответил
+ * @return {Promise<object[]|null>} CallPeer[]; null — сервер не ответил за GET_TIMEOUT (поздний ответ отбрасывается)
  */
 export async function peersInCall(token) {
+	const ctl = new AbortController()
+	let t
 	try {
-		return (await fetchPeers(token)).data.ocs.data
+		return await Promise.race([
+			fetchPeers(token, { signal: ctl.signal }).then((r) => r.data.ocs.data),
+			new Promise((resolve) => {
+				t = setTimeout(() => resolve(null), GET_TIMEOUT)
+			}),
+		])
 	} catch (e) {
 		return null
+	} finally {
+		clearTimeout(t)
+		ctl.abort()
 	}
+}
+
+/**
+ * Вернуться в звонок и подтвердить по серверу; при отказе — повторы, потом честная плашка с кнопкой входа.
+ *
+ * @param {string} token комната
+ * @return {Promise<boolean>} true — сервер показал меня в звонке
+ */
+export async function rejoin(token) {
+	const me = () => useActorStore().sessionId
+	for (let i = 0; i < REJOIN_TRIES; i++) {
+		i && await sleep(REJOIN_PAUSE)
+		await Promise.resolve().then(() => joiner?.(token, { k4take: true })).catch(() => {})
+		if ((await peersInCall(token))?.some((p) => p.sessionId === me())) {
+			return true
+		}
+	}
+	ask('Не удалось вернуться в звонок', 'Перенос не удался, и звонок не вернулся в эту вкладку. Нажмите «Войти».', [
+		{ label: 'Войти', type: 'primary', callback: () => joiner?.(token, { k4take: true }) },
+	])
+	return false
 }
 
 /**
@@ -154,11 +190,10 @@ export async function leaveVerified(from, id, token, rsid) {
 		moved(from, token)
 		return true
 	}
-	if (!there) {
-		if (!me) {
-			joiner?.(token, { k4take: true }) // ноль сессий не оставляем: войти обратно
+	if (!there) { // получатель пропал или сервер не подтвердил (таймаут) — moved не шлём
+		if (me || await rejoin(token)) { // ноль сессий не оставляем: войти обратно и проверить по серверу
+			showInfo('Перенос не удался: звонок остаётся в этой вкладке')
 		}
-		showInfo('Перенос не удался: звонок остаётся в этой вкладке')
 		return false
 	}
 	showError('Не удалось выйти из звонка в этой вкладке: звонок идёт в двух местах. Выйдите здесь вручную.')

@@ -250,7 +250,7 @@ describe('перенос на паре вкладок, истина у серв�
 	})
 
 	it('B закрылась во время 4-секундного выхода A: A возвращается в звонок, moved и appPost нет', async () => {
-		srv.min = -1 // B ушла сама: между выходом A и её возвратом звонок пуст ~0,1 с; итог — одна сессия
+		srv.min = -1 // ожидаемо и неустранимо: B закрылась сама во время выхода A — пусто ~0,1 с до возврата A; итог — одна
 		const a = await tab('a', './useMove.js', { inCall: true, leaveMs: 4000 })
 		const b = await tab('b')
 		const moved = []
@@ -266,8 +266,7 @@ describe('перенос на паре вкладок, истина у серв�
 		expect(a.infos.join()).toMatch(/Перенос не удался/)
 	})
 
-	it('устаревший снимок: ответ с B пришёл через 20 с, когда B уже закрылась — A возвращается, moved нет', async () => {
-		srv.min = -1 // как выше: итог — одна сессия
+	it('зависший GET до выхода: ответ с B через 20 с после закрытия B отброшен по таймауту — A не выходит', async () => {
 		srv.drop = (d) => d.op === 'joined' // только опрос
 		let slow = false
 		srv.delay = () => (srv.calls.has('nc-b') && !slow ? (slow = true, 20000) : 20)
@@ -278,6 +277,48 @@ describe('перенос на паре вкладок, истина у серв�
 		await run(2000)
 		b.close()
 		await run(21000)
+		expect(calls()).toEqual(['nc-a'])
+		expect(a.posts).toEqual([])
+	})
+
+	it('задержанный проверочный GET после выхода A: B закрылась, ответ через 20 с — таймаут, A возвращается, moved нет', async () => {
+		srv.min = -1 // ожидаемо: B закрылась уже после выхода A — пусто до таймаута GET (5 с) и возврата A; итог — одна
+		let slow = false
+		srv.delay = () => (!srv.calls.has('nc-a') && srv.calls.has('nc-b') && !slow ? (slow = true, 20000) : 20)
+		const a = await tab('a', './useMove.js', { inCall: true })
+		const b = await tab('b')
+		const moved = []
+		b.subs.add((d) => d.op === 'moved' && moved.push(d))
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(500)
+		expect(calls()).toEqual(['nc-b']) // A вышла, проверочный GET висит
+		b.close()
+		await run(21000)
+		expect(calls()).toEqual(['nc-a'])
+		expect(a.posts).toEqual([])
+		expect(moved).toEqual([])
+	})
+
+	it('восстановительный join падает: 3 попытки с проверкой по серверу, потом плашка «Войти»; по кнопке — в звонке', async () => {
+		srv.min = -1 // ожидаемо: вернуться не удалось — пусто до нажатия «Войти»
+		const a = await tab('a', './useMove.js', { inCall: true, leaveMs: 4000 })
+		const b = await tab('b')
+		let tries = 0
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(500)
+		a.m.setJoiner(async () => {
+			tries++ // вход не состоялся
+		})
+		b.close()
+		await run(12000)
+		expect(tries).toBe(3)
+		expect(calls()).toEqual([])
+		expect(a.dialogs.map((d) => d.name)).toContain('Не удалось вернуться в звонок')
+		a.m.setJoiner(() => a.join())
+		a.click('Войти')
+		await run(500)
 		expect(calls()).toEqual(['nc-a'])
 		expect(a.posts).toEqual([])
 	})

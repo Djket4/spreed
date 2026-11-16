@@ -44,7 +44,7 @@ import { useActorStore } from '../../../stores/actor.ts'
 import pinia from '../../../stores/pinia.ts'
 import { signalingLeaveCall } from '../../../utils/webrtc/index.js'
 import { appPost } from '../k4draw/macBridge.js'
-import { leaveVerified } from './useMove.js'
+import { leaveVerified, setJoiner } from './useMove.js'
 
 const T = 'tok'
 const me = { attendeeId: 1, sessionId: 'nc-a' }
@@ -85,7 +85,10 @@ describe('выход исходной по серверу, настоящий pa
 	it('выход прошёл, но получателя на сервере нет (закрылась): moved и appPost нет, «Перенос не удался»', async () => {
 		h.leaveFail = false
 		h.peers = h.peers.filter((p) => p.sessionId !== 'nc-b')
+		const join = vi.fn(async () => h.peers.push({ actorType: 'users', actorId: 'u', sessionId: 'nc-a' }))
+		setJoiner(join)
 		expect(await leaveVerified('b', 'id1', T, 'nc-b')).toBe(false)
+		expect(join).toHaveBeenCalledOnce() // вернулась в звонок, сервер подтвердил
 		expect(h.sent).toEqual([])
 		expect(appPost).not.toHaveBeenCalled()
 		expect(showInfo).toHaveBeenCalled()
