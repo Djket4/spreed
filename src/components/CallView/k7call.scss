@@ -323,6 +323,9 @@ $glass: blur(24px) saturate(180%);
 	// превью камеры — квадрат, как плитка в звонке (NAS_CLOUD#172; 148 px сплющивало лицо, Андрей 10.11); шторка всё равно ниже шапки Стола;
 	// сторона ≤ 30% высоты экрана: шторка с переключателем и «Войти» помещается без прокрутки
 	:root body .media-settings__preview { width: min(100%, calc(var(--k7-vh, 100dvh) * .3)) !important; height: auto !important; aspect-ratio: 1 / 1 !important; }
+	// всё сразу на iPhone не помещается — превью закреплено сверху, листаются только настройки под ним (Андрей 16.11: превью срезалось);
+	// кольцо цвета шторки закрывает строки, уходящие под превью
+	:root body .media-settings__content--mobile .media-settings__preview { position: sticky !important; top: 8px; z-index: 3; box-shadow: 0 0 0 8px var(--k7-bg2), 0 -16px 0 8px var(--k7-bg2), -40vw 0 0 8px var(--k7-bg2), 40vw 0 0 8px var(--k7-bg2); }
 	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
