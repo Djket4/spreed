@@ -408,12 +408,14 @@ $glass: blur(24px) saturate(180%);
 
 // один в звонке: своя камера крупно по центру, «Ждём остальных» и ссылка над ней (Андрей 10.11); полоска со стрелкой не нужна
 #call-container.k7-alone {
-	--k7-alone-top: 170px;
+	// до замера в main.js: заголовок 31 + зазор 18 + капсула 52 + 16; снизу #videos уже кончается над панелью
+	--k7-alone-top: 120px;
+	--k7-alone-bottom: 16px;
 	// ket4tec (NAS_CLOUD#161): заставка начинается под полосой уведомлений (--k7-call-top от main.js, как у плиток), плашка её не закрывает
 	.empty-call-view:not(.empty-call-view--small) { justify-content: flex-start !important; padding-top: var(--k7-call-top, 96px) !important; z-index: 2; pointer-events: none; }
 	.empty-call-view .empty-call-view__link { pointer-events: auto; }
 	#videos .video__promoted { display: none !important; }
-	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px 96px !important; box-sizing: border-box; background: none !important; }
+	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px var(--k7-alone-bottom) !important; box-sizing: border-box; background: none !important; }
 	.grid-main-wrapper .stripe-controls-position { display: none !important; }
 	:is(.videos-wrapper--stripe, .stripe-wrapper, .stripe-wrapper > .grid) { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; background: none !important; overflow: visible !important; }
 	.grid-main-wrapper.overlap { container-type: size; }
