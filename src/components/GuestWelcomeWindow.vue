@@ -19,7 +19,7 @@
 				{{ conversationDescription }}
 			</p>
 
-			<label for="textField">{{ t('spreed', 'Enter your name') }}</label>
+			<label for="textField">Имя<!-- ket4tec (NAS_CLOUD#161) --></label>
 			<NcTextField
 				id="textField"
 				v-model="guestUserName"

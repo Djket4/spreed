@@ -181,6 +181,7 @@ export function useDocumentTitle() {
 			// When a conversation is opened directly, "Talk - " might be missing from the title
 			result = appNamePrefix + current
 		}
-		return result.replace(appNamePrefix, t('spreed', 'Talk') + ' — ')
+		// ket4tec (NAS_CLOUD#161): слово «Talk» в заголовке вкладки убрано
+		return result.replace(appNamePrefix, '')
 	}
 }

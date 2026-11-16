@@ -731,3 +731,22 @@ html.k7f .avatar-wrapper[data-k4ini]::before { content: attr(data-k4ini); positi
 // NAS_CLOUD#109 п.13: три вкладки в звонке на iPad — «Участники (2)» обрезалось; вкладки по ширине подписи, а не поровну
 .app-sidebar-tabs__nav button[class*='sidebarTabsButton'] { flex: 1 1 auto !important; }
 .app-sidebar-tabs__nav [class*='sidebarTabsButton__name'] { overflow: visible !important; text-overflow: clip !important; }
+
+// ket4tec (NAS_CLOUD#162 п.2): стопка уведомлений в звонке — в полосе под верхней строкой (--k7-toast-top ставит main.js);
+// тема облака даёт ей top:128px, перебиваем специфичностью. Вне звонка переменной нет — остаётся 128px.
+html.k7f body #k7-toasts.k7-toasts {
+	top: var(--k7-toast-top, calc(128px + env(safe-area-inset-top, 0px)));
+}
+
+// ket4tec (NAS_CLOUD#162 п.2): телефон — верх окна не выше низа полосы уведомлений (128 + 52 + 8), плашка не ложится на заголовок и крестик
+@media (max-width: 700px) {
+	html.k7f body .modal-mask .modal-wrapper { --modal-header-offset: 188px; }
+	html.k7f body :is(.modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container), .modal-mask#k7-app-settings, .modal-mask:has(#k7-app-settings), .new-group-conversation, .k7-sheet) .modal-container {
+		inset-block-start: 188px !important;
+	}
+}
+@media (max-width: 500px) {
+	html.k7f:root:root body .modal-container:has(.media-settings) .modal-container__content {
+		max-height: calc(var(--k7-vh, 100dvh) - 188px - var(--k7-sheet-bottom, 0px)) !important;
+	}
+}

@@ -159,6 +159,7 @@
 
 		<!-- Conversation settings -->
 		<NcActionButton
+			v-if="actorStore.isLoggedIn /* ket4tec (NAS_CLOUD#161): гостю не показываем */"
 			closeAfterClick
 			@click="openConversationSettings">
 			<template #icon>
@@ -287,7 +288,7 @@ export default {
 		labelFullscreen() {
 			return this.isFullscreen
 				? t('spreed', 'Exit full screen (F)')
-				: t('spreed', 'Full screen (F)')
+				: 'Во весь экран' // ket4tec (NAS_CLOUD#161)
 		},
 
 		isFileConversation() {
