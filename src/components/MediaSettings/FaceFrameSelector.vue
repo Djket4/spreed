@@ -6,7 +6,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
-import IconFaceRecognition from 'vue-material-design-icons/FaceRecognition.vue'
 import {
 	getFaceFrameLevel,
 	getFaceFrameRange,
@@ -39,12 +38,9 @@ function onRange(event: Event) {
 
 <template>
 	<div class="face-frame">
-		<div class="face-frame__row">
-			<IconFaceRecognition class="face-frame__icon" :size="20" />
-			<NcCheckboxRadioSwitch v-model="enabled" type="switch">
-				Автокадрирование
-			</NcCheckboxRadioSwitch>
-		</div>
+		<NcCheckboxRadioSwitch v-model="enabled" type="switch">
+			Автокадрирование
+		</NcCheckboxRadioSwitch>
 		<label v-if="enabled" class="face-frame__range">
 			<span>Дальность</span>
 			<span class="face-frame__end">дальше</span>
@@ -65,23 +61,11 @@ function onRange(event: Event) {
 .face-frame {
 	margin: calc(2 * var(--default-grid-baseline)) 0;
 
-	&__row {
-		display: flex;
-		gap: var(--default-grid-baseline);
-		align-items: center;
-	}
-
-	&__icon {
-		display: flex;
-		flex-shrink: 0;
-		margin-inline-end: var(--default-grid-baseline);
-	}
-
 	&__range {
 		display: flex;
 		gap: calc(2 * var(--default-grid-baseline));
 		align-items: center;
-		padding-inline-start: calc(20px + 2 * var(--default-grid-baseline));
+		padding-inline: calc(2 * var(--default-grid-baseline));
 
 		input {
 			flex: 1;
