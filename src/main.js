@@ -23,35 +23,37 @@ initializeTalkOnce()
 // ket4tec: метка форка v7 — тема облака (custom.css) не применяет к нему правила штатного Talk (html:not(.k7f))
 document.documentElement.classList.add('k7f')
 // ket4tec (NAS_CLOUD#162 п.2): в звонке стопка уведомлений (#k7-toasts) стоит в постоянной полосе под верхней строкой звонка:
-// --k7-toast-top = низ строки + 8, --k7-call-top = низ строки + полоса (8 + 52 + 8) — с неё начинаются плитки и доска.
-// Сам звонок опрашиваем раз в полсекунды (строка появляется при входе), размер строки ловит ResizeObserver.
+// --k7-toast-top = низ строки + 8, --k7-call-top = низ строки + 8 + высота стопки (не меньше одной плашки, 52) + 8 —
+// с неё начинаются плитки и доска. В звонке видно не больше двух плашек (html.k7-lane, k7ui.scss), третья вытесняет старшую.
+// Сам звонок опрашиваем раз в полсекунды (строка появляется при входе), размеры строки и стопки ловит ResizeObserver.
 // ponytail: опрос 500 мс вместо слежки за DOM; заменить, если появится событие входа в звонок на всю страницу.
 {
 	const root = document.documentElement
 	const landscapePhone = window.matchMedia('(max-height: 500px) and (orientation: landscape)') // там своя раскладка (k7call.scss)
-	let watched = null
+	const watched = new Set()
 	const ro = new ResizeObserver(() => update())
 	/** Пересчитать полосу под уведомления */
 	function update() {
 		const bar = document.querySelector('.top-bar--in-call')
 		const box = document.getElementById('call-container')
-		if (bar !== watched) {
-			if (watched) {
-				ro.unobserve(watched)
-			}
-			watched = bar
-			if (bar) {
-				ro.observe(bar)
+		const stack = document.getElementById('k7-toasts')
+		for (const el of [bar, stack]) {
+			if (el && !watched.has(el)) {
+				watched.add(el)
+				ro.observe(el)
 			}
 		}
-		if (!bar || !box || landscapePhone.matches) {
+		const on = !!(bar && box) && !landscapePhone.matches
+		root.classList.toggle('k7-lane', on)
+		if (!on) {
 			root.style.removeProperty('--k7-toast-top')
 			root.style.removeProperty('--k7-call-top')
 			return
 		}
 		const bottom = bar.getBoundingClientRect().bottom
+		const stackH = Math.max(52, stack ? stack.getBoundingClientRect().height : 0)
 		root.style.setProperty('--k7-toast-top', Math.round(bottom + 8) + 'px')
-		root.style.setProperty('--k7-call-top', Math.round(bottom - box.getBoundingClientRect().top + 68) + 'px')
+		root.style.setProperty('--k7-call-top', Math.round(bottom - box.getBoundingClientRect().top + 8 + stackH + 8) + 'px')
 	}
 	setInterval(update, 500)
 	window.addEventListener('resize', update)
