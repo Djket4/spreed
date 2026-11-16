@@ -68,9 +68,10 @@ function hpb() {
 // B после accept входит и шлёт joined(id). Сама B не выходит никогда: худший исход — две мои сессии в звонке, ноль — нет.
 // A выходит, только когда сервер показал сессию sid в звонке (опрос до JOIN_WAIT, joined — проверить сразу).
 // Срок вышел — A остаётся в звонке, роль снята; ещё LATE_WAIT следит за поздним входом B и тогда выходит (добивание).
-// Свой выход A проверяет по серверу: своей сессии в звонке нет — moved(id) и окну moved; иначе ошибка, moved не шлёт.
+// Свой выход A проверяет по серверу: B в звонке и меня нет — moved(id) и окну moved; B пропала — вход обратно; я ещё там — ошибка.
 // Нет ответа v2 за ACCEPT_WAIT (старая исходная) — B НЕ входит: «Обновите страницу».
-// v1 `take` от старой принимающей (боевой #113): A выходит сразу, как старый код, выход проверяет по серверу.
+// v1 `take` от старой принимающей (боевой #113): A выходит, когда сервер покажет новую мою сессию в звонке (не было при take).
+// Перед moved A проверяет по серверу: получатель в звонке, меня нет. Получатель пропал — A входит обратно.
 // Одна сессия — одна роль: пока идёт попытка как получатель, offer к ней — busy, и наоборот.
 const V = 2
 /** Сколько исходная держит роль и ждёт входа получателя по серверу; потом остаётся в звонке. */
@@ -134,23 +135,34 @@ export function leaveOnce(token) {
 }
 
 /**
- * Исходная: выйти и проверить выход по серверу. Только тогда moved получателю и окну приложения.
+ * Исходная: выйти и проверить по серверу, что получатель в звонке, а меня там нет. Только тогда moved получателю и окну.
+ * Получатель пропал (закрылся во время выхода, устаревший снимок) или сервер не ответил — звонок возвращается сюда.
  *
  * @param {string} from куда ушёл звонок
  * @param {string|null} id перенос (null — v1)
  * @param {string} token комната
- * @return {Promise<boolean>} true — сервер подтвердил: меня в звонке нет
+ * @param {string} rsid Nextcloud-сессия получателя, которую сервер показал в звонке
+ * @return {Promise<boolean>} true — перенос подтверждён сервером
  */
-export async function leaveVerified(from, id, token) {
+export async function leaveVerified(from, id, token, rsid) {
 	await leaveOnce(token)
 	const list = await peersInCall(token)
-	if (!list || list.some((p) => p.sessionId === useActorStore().sessionId)) { // не узнали — тоже не подтверждено
-		showError('Не удалось выйти из звонка в этой вкладке: звонок идёт в двух местах. Выйдите здесь вручную.')
+	const there = !!list?.some((p) => p.sessionId === rsid)
+	const me = !!list?.some((p) => p.sessionId === useActorStore().sessionId)
+	if (there && !me) {
+		id && sendOp([from], 'moved', id)
+		moved(from, token)
+		return true
+	}
+	if (!there) {
+		if (!me) {
+			joiner?.(token, { k4take: true }) // ноль сессий не оставляем: войти обратно
+		}
+		showInfo('Перенос не удался: звонок остаётся в этой вкладке')
 		return false
 	}
-	id && sendOp([from], 'moved', id)
-	moved(from, token)
-	return true
+	showError('Не удалось выйти из звонка в этой вкладке: звонок идёт в двух местах. Выйдите здесь вручную.')
+	return false
 }
 
 /**
@@ -280,21 +292,24 @@ export function watchMove() {
 	let sig = null
 	let alive = true
 	const tries = new Map() // принятые переносы: id → { from, id, sid, until }
-	const finish = (t, token) => {
+	const finish = (t, token, rsid) => {
 		if (src?.out) {
 			return
 		}
 		src = { ...t, out: true } // роль держим до конца выхода
 		tries.clear()
-		leaveVerified(t.from, t.id, token).finally(() => {
+		leaveVerified(t.from, t.v1 ? null : t.id, token, rsid).finally(() => {
 			src = null
 		})
 	}
 	const check = async (t, token) => {
 		const a = useActorStore()
 		const list = await peersInCall(token)
-		if (alive && tries.get(t.id) === t && t.sid !== a.sessionId && list?.some((p) => p.sessionId === t.sid && p.actorType === a.actorType && p.actorId === a.actorId)) {
-			finish(t, token)
+		// получатель: v2 — сессия из offer; v1 — моя сессия, которой не было в звонке при take
+		const r = list?.find((p) => p.actorType === a.actorType && p.actorId === a.actorId && p.sessionId !== a.sessionId
+			&& (t.v1 ? !!t.before && !t.before.includes(p.sessionId) : p.sessionId === t.sid))
+		if (alive && tries.get(t.id) === t && r) {
+			finish(t, token, r.sessionId)
 		}
 	}
 	const follow = async (t, token) => {
@@ -324,11 +339,19 @@ export function watchMove() {
 			return
 		}
 		const { from, id, op } = d
-		if (d.v === 1) { // старая принимающая (боевой #113): выйти сразу, как старый код
+		if (d.v === 1) { // старая принимающая (боевой #113) шлёт take и сразу входит: выходим, только когда сервер покажет её вход
 			if (op === 'take' && !src && !recv && store.getters.isInCall(token)) {
-				src = { from, id: null, out: true }
-				leaveVerified(from, null, token).finally(() => {
-					src = null
+				const t = { from, id: 'v1:' + from, v1: true, until: Date.now() + JOIN_WAIT }
+				src = t
+				tries.set(t.id, t)
+				peersInCall(token).then((list) => {
+					if (!list) { // не знаем, кто был в звонке до take — остаёмся
+						src === t && (src = null)
+						tries.delete(t.id)
+						return
+					}
+					t.before = list.map((p) => p.sessionId)
+					follow(t, token)
 				})
 			}
 			return
