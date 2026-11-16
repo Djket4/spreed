@@ -12,7 +12,7 @@
 		:name="conversation.displayName"
 		:title="conversation.displayName"
 		:class="'active-tab-' + activeTab"
-		:toggleClasses="{ 'chat-button-sidebar-toggle': isInCall, 'k7-guest-nochat': isInCall && isChatHidden }"
+		:toggleClasses="{ 'chat-button-sidebar-toggle': isInCall, 'k7-guest-nochat': isChatHidden /* ket4tec (NAS_CLOUD#161): у гостя панели нет и до звонка */ }"
 		:toggleAttrs="isInCall ? inCallToggleAttrs : undefined"
 		@update:open="handleUpdateOpen"
 		@update:active="handleUpdateActive"
@@ -115,18 +115,8 @@
 				<template #icon>
 					<IconInformationOutline :size="20" />
 				</template>
-				<SetGuestUsername v-if="!getUserId" />
+				<!-- ket4tec (NAS_CLOUD#161): имя гостя и «Настройки» убраны — панели у гостя нет -->
 				<SipSettings v-if="showSIPSettings" :conversation="conversation" />
-				<div v-if="!getUserId" id="app-settings">
-					<div id="app-settings-header">
-						<NcButton variant="tertiary" @click="showSettings">
-							<template #icon>
-								<IconCogOutline :size="20" />
-							</template>
-							{{ t('spreed', 'Settings') }}
-						</NcButton>
-					</div>
-				</div>
 			</NcAppSidebarTab>
 			<NcAppSidebarTab
 				v-if="showSharedItemsTab"
@@ -155,10 +145,8 @@ import { useEventListener } from '@vueuse/core'
 import { ref } from 'vue'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
-import NcButton from '@nextcloud/vue/components/NcButton'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import IconAccountMultipleOutline from 'vue-material-design-icons/AccountMultipleOutline.vue'
-import IconCogOutline from 'vue-material-design-icons/CogOutline.vue'
 import IconDotsCircle from 'vue-material-design-icons/DotsCircle.vue'
 import IconInformationOutline from 'vue-material-design-icons/InformationOutline.vue'
 import IconTextBoxOutline from 'vue-material-design-icons/TextBoxOutline.vue' // ket4tec
@@ -166,7 +154,6 @@ import IconStickerEmoji from 'vue-material-design-icons/StickerEmoji.vue' // ket
 import K4CallLogTab from '../CallView/k4log/K4CallLogTab.vue' // ket4tec
 import K4Snaps from '../CallView/k4draw/K4Snaps.vue'
 import StickerSheet from '../CallView/k4stk/StickerSheet.vue' // ket4tec: k4stk
-import SetGuestUsername from '../SetGuestUsername.vue'
 import BreakoutRoomsTab from './BreakoutRooms/BreakoutRoomsTab.vue'
 import InternalSignalingHint from './InternalSignalingHint.vue'
 import LobbyStatus from './LobbyStatus.vue'
@@ -206,18 +193,15 @@ export default {
 		IconStickerEmoji,
 		IconTextBoxOutline,
 		StickerSheet,
-		NcButton,
 		NcIconSvgWrapper,
 		ParticipantsTab,
 		RightSidebarContent,
 		SearchMessagesTab,
-		SetGuestUsername,
 		SharedItemsTab,
 		ThreadsTab,
 		SipSettings,
 		// Icons
 		IconAccountMultipleOutline,
-		IconCogOutline,
 		IconDotsCircle,
 		IconInformationOutline,
 	},
@@ -410,7 +394,7 @@ export default {
 		},
 
 		showDetailsTab() {
-			return !this.getUserId || this.showSIPSettings
+			return this.showSIPSettings // ket4tec (NAS_CLOUD#161): гостю вкладка «Детали» не нужна
 		},
 
 		isNoteToSelf() {
@@ -637,10 +621,6 @@ export default {
 		/** Вкладка звонка по умолчанию: «Участники», если их нет — «Файлы». */
 		inCallTab() {
 			return this.showParticipantsTab ? 'participants' : 'shared-items'
-		},
-
-		showSettings() {
-			emit('show-settings', {})
 		},
 
 		handleClosed() {

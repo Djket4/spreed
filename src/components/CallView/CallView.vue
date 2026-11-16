@@ -173,18 +173,22 @@
 		</div>
 
 		<!-- ket4tec (NAS_CLOUD#154): просьба организатора включить микрофон -->
-		<div
-			v-if="showAskUnmute"
-			class="k4-ask-unmute"
-			role="alert">
-			<span>{{ t('spreed', 'The organizer asks you to unmute your microphone') }}</span>
-			<button type="button" @click="acceptAskUnmute">
-				{{ t('spreed', 'Unmute') }}
-			</button>
-			<button type="button" @click="declineAskUnmute">
-				{{ t('spreed', 'Not now') }}
-			</button>
-		</div>
+		<!-- ket4tec (NAS_CLOUD#162 п.2): плашка живёт в общей стопке уведомлений #k7-toasts; без стопки — под верхней строкой по центру -->
+		<Teleport to="#k7-toasts" :disabled="!hasToastStack()">
+			<div
+				v-if="showAskUnmute"
+				class="k4-ask-unmute k7-toast k7-toast-on"
+				:class="{ 'k4-ask-unmute--solo': !hasToastStack() }"
+				role="alert">
+				<span>{{ t('spreed', 'The organizer asks you to unmute your microphone') }}</span>
+				<button type="button" @click="acceptAskUnmute">
+					{{ t('spreed', 'Unmute') }}
+				</button>
+				<button type="button" @click="declineAskUnmute">
+					{{ t('spreed', 'Not now') }}
+				</button>
+			</div>
+		</Teleport>
 	</div>
 </template>
 
@@ -819,6 +823,10 @@ export default {
 	},
 
 	methods: {
+		hasToastStack() { // ket4tec (NAS_CLOUD#162 п.2)
+			return !!document.getElementById('k7-toasts')
+		},
+
 		t,
 		declineAskUnmute() { // ket4tec (NAS_CLOUD#154)
 			localCallParticipantModel.set('askUnmute', false)
@@ -1189,9 +1197,9 @@ export default {
 <style lang="scss" scoped>
 @use '../../assets/variables.scss' as *;
 
-.k4-ask-unmute { // ket4tec (NAS_CLOUD#154)
+.k4-ask-unmute--solo { // ket4tec (NAS_CLOUD#154, #162 п.2): запасной вид, когда стопки нет
 	position: fixed;
-	top: 70px;
+	top: var(--k7-toast-top, 70px);
 	left: 50%;
 	transform: translateX(-50%);
 	z-index: 10000;
@@ -1201,8 +1209,8 @@ export default {
 	max-width: calc(100vw - 24px);
 	padding: 10px 14px;
 	border-radius: 12px;
-	background: var(--color-main-background);
-	color: var(--color-main-text);
+	background: #2b2527;
+	color: #fff;
 	box-shadow: 0 2px 16px rgba(0, 0, 0, .5);
 	button {
 		padding: 8px 16px;
@@ -1230,8 +1238,9 @@ export default {
 #videos {
 	position: absolute;
 	width: 100%;
-	height: calc(100% - (var(--top-bar-height) + var(--bottom-bar-height)));
-	top: var(--top-bar-height);
+	// ket4tec (NAS_CLOUD#162 п.2): --k7-call-top = низ верхней строки + полоса под плашку уведомления (main.js)
+	height: calc(100% - (var(--k7-call-top, var(--top-bar-height)) + var(--bottom-bar-height)));
+	top: var(--k7-call-top, var(--top-bar-height));
 	overflow: hidden;
 	display: flex;
 	justify-content: space-around;

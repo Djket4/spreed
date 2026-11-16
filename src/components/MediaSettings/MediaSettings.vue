@@ -208,7 +208,8 @@
 					</MediaSettingsTabs>
 
 					<!-- Guest display name setting-->
-					<SetGuestUsername v-if="isGuest" compact />
+					<!-- ket4tec (NAS_CLOUD#161): до звонка имя — поле на странице; здесь только в звонке или если имя пусто -->
+					<SetGuestUsername v-if="isGuest && (isInCall || !guestNameStore.guestUserName.length)" compact />
 
 					<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
 					<!-- Notify call option-->

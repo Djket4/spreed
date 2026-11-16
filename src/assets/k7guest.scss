@@ -27,3 +27,7 @@ body#body-public {
 
 // п.27: пока открыта «Проверка устройств», имя и «Войти» за окном (боковая панель, пустое место гостя) не дублируем
 body#body-public:has(.modal-container .media-settings) :is(.app-sidebar .username-form, .guest-join) { visibility: hidden; }
+
+// ket4tec (NAS_CLOUD#161): штатное меню аватара публичной страницы (ядро: «Сейчас вы не идентифицированы», «Задать публичное имя»)
+// у гостя в звонке не нужно — имя задаётся одним полем «Имя». id/класс — из ядра NC (PublicPageUserMenu), на живом DOM сверить.
+body#body-public :is(#public-page-user-menu, .public-page-user-menu) { display: none !important; }

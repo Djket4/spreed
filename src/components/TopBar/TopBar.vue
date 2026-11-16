@@ -59,7 +59,7 @@
 			<a
 				role="button"
 				class="conversation-header"
-				@click="openConversationSettings">
+				@click="actorStore.isLoggedIn && openConversationSettings() /* ket4tec (NAS_CLOUD#161): гостю не открываем */">
 				<div
 					class="conversation-header__text"
 					:class="{ 'conversation-header__text--offline': isOffline }">
