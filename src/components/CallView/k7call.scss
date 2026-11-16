@@ -433,10 +433,11 @@ $glass: blur(24px) saturate(180%);
 	.empty-call-view .empty-call-view__link { pointer-events: auto; }
 	// NAS_CLOUD#172 (16.11): «Ждём остальных» и «Отправить ссылку» — одной компактной строкой, место отдано плитке
 	.empty-call-view:not(.empty-call-view--small):not(.empty-call-view--sidebar) {
-		flex-flow: row wrap !important; align-items: center !important; align-content: flex-start; justify-content: center !important; gap: 6px 12px !important; padding-inline: 16px !important;
+		// сверху без пустой полосы под плашки (52 + 8): плашка, если придёт, ляжет поверх строки на свои секунды
+		flex-flow: row wrap !important; align-items: center !important; align-content: flex-start; justify-content: center !important; gap: 6px 12px !important; padding: max(8px, calc(var(--k7-call-top, 96px) - 60px)) 16px 0 !important;
 		h2 { font-size: 17px; line-height: 40px; white-space: nowrap; }
 		.emptycontent-additional { flex-basis: 100%; text-align: center; font-size: 13px; }
-		.empty-call-view__link.button-vue { min-height: 40px !important; padding: 0 16px !important; font-size: 14px; box-shadow: 0 4px 12px color-mix(in srgb, var(--k7-acc2) 45%, transparent) !important; }
+		.empty-call-view__link.button-vue { margin: 0 !important; height: 40px !important; min-height: 40px !important; padding: 0 16px !important; font-size: 14px; box-shadow: 0 4px 12px color-mix(in srgb, var(--k7-acc2) 45%, transparent) !important; }
 	}
 	#videos .video__promoted { display: none !important; }
 	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px var(--k7-alone-bottom) !important; box-sizing: border-box; background: none !important; }
@@ -446,6 +447,7 @@ $glass: blur(24px) saturate(180%);
 	// ket4tec (NAS_CLOUD#159, #172 16.11): своя камера — во всю ширину (поля 16) и всю высоту между строкой «Ждём» и панелью;
 	// на широком экране — квадрат во всю высоту (кадр камеры квадратный, шире — резало бы лицо сверху и снизу)
 	.stripe-wrapper .grid > .localVideoContainer { position: relative !important; inset: auto !important; flex: none !important; width: min(100cqw, 100cqh) !important; height: 100cqh !important; aspect-ratio: auto !important; margin: 0 !important; }
+	@media (max-width: 600px) { .stripe-wrapper .grid > .localVideoContainer { width: 100cqw !important; } }
 }
 
 // ket4tec (NAS_CLOUD#159): камеры — квадраты (решение владельца 12.11); показ экрана и доска — в своих пропорциях
