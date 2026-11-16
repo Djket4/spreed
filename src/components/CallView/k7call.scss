@@ -137,9 +137,9 @@ $glass: blur(24px) saturate(180%);
 :root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option--highlight { background: var(--k7-pill); color: var(--k7-fg); }
 :root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option--selected { font-weight: 700; color: var(--k7-acc); }
 // «Начать вызов» — капсула Слива
-:root body .media-settings .button-vue.join-call { border-radius: 999px !important; min-height: 52px; font-weight: 700; border: 0 !important; background: var(--k7-grad) !important; color: #fff !important; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent); }
+:root body .media-settings .button-vue:is(.join-call, .k4-apply) { border-radius: 999px !important; min-height: 52px; font-weight: 700; border: 0 !important; background: var(--k7-grad) !important; color: #fff !important; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent); }
 // ket4tec (NAS_CLOUD#109 п.14): недоступная кнопка одинакова на телефоне и планшете — без прозрачности (сквозь неё просвечивал список)
-:root:root body .media-settings .button-vue.join-call:disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
+:root:root body .media-settings .button-vue:is(.join-call, .k4-apply):disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
 
 // показ экрана: поверхность плитки, а не серый фон
 #call-container .screen-share, #call-container .screen { border-radius: var(--k7-r-tile); }

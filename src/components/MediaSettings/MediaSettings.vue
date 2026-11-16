@@ -209,7 +209,8 @@
 
 					<!-- Guest display name setting-->
 					<!-- ket4tec (NAS_CLOUD#161): до звонка имя — поле на странице; здесь только в звонке или если имя было пусто при открытии -->
-					<SetGuestUsername v-if="isGuest && (isInCall || k4NameEmpty)" compact />
+					<!-- #172: в звонке имени, «Придумать» и «Войти» нет — это проверка устройств, не вход -->
+					<SetGuestUsername v-if="isGuest && !isInCall && k4NameEmpty" compact />
 
 					<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
 					<!-- Notify call option-->
@@ -230,9 +231,13 @@
 						:aria-hidden="guestNameStore.guestUserName.length ? 'true' : null">
 						Введите имя, чтобы войти
 					</p>
+					<!-- #172: в звонке место кнопки занято всегда — превью не меняет размер, когда она появляется; вид как у «Начать звонок» -->
 					<NcButton
-						v-if="showUpdateChangesButton"
-						class="action-button"
+						v-if="showUpdateChangesButton || isInCall"
+						class="action-button k4-apply"
+						:disabled="!showUpdateChangesButton"
+						:style="showUpdateChangesButton ? null : { visibility: 'hidden' }"
+						:aria-hidden="showUpdateChangesButton ? null : 'true'"
 						@click="closeModalAndApplySettings">
 						{{ isDeviceCheck ? t('spreed', 'Save') : t('spreed', 'Apply settings') }}
 					</NcButton>
@@ -440,6 +445,7 @@ export default {
 			mediaLoading: false,
 			isDeviceCheck: false,
 			pvIn: false, // ket4tec: видео превью проявлено (по первому кадру)
+			k4CloseOnJoin: false, // ket4tec #172: закрыть шторку, когда звонок откроется
 		}
 	},
 
@@ -532,6 +538,10 @@ export default {
 
 		isInLobby() {
 			return this.$store.getters.isInLobby
+		},
+
+		isJoiningCall() {
+			return this.$store.getters.isJoiningCall(this.token)
 		},
 
 		recordingConsent() {
@@ -726,6 +736,10 @@ export default {
 		},
 
 		isInCall(value) {
+			if (value && this.k4CloseOnJoin) {
+				this.k4CloseOnJoin = false
+				this.close()
+			}
 			if (value) {
 				const virtualBackgroundEnabled = BrowserStorage.getItem('virtualBackgroundEnabled') === 'true'
 				// Apply global blur background setting
@@ -735,6 +749,14 @@ export default {
 			} else {
 				// Reset the flag for the next call
 				this.skipBlurVirtualBackground = false
+			}
+		},
+
+		isJoiningCall(value) {
+			// вход не удался — шторку не держим
+			if (!value && this.k4CloseOnJoin && !this.isInCall) {
+				this.k4CloseOnJoin = false
+				this.close()
 			}
 		},
 
@@ -858,6 +880,8 @@ export default {
 		},
 
 		close() {
+			this.k4CloseOnJoin = false
+			clearTimeout(this.k4CloseTimer)
 			// ket4tec v7: сначала убрать шторку, поток и фон гасить уже без неё (iOS: пустая страница после закрытия)
 			const wasShown = this.show
 			this.show = false
@@ -923,6 +947,15 @@ export default {
 		},
 
 		closeModalAndApplySettings() {
+			// ket4tec NAS_CLOUD#172: вход из проверки — шторка держится, пока звонок не откроется под ней
+			// (иначе ~0,4 с мелькает гостевая страница с «Соединение…»). Настройки до входа не применяются, как и раньше.
+			if (this.show && this.isBeforeJoinCall) {
+				this.k4CloseOnJoin = true
+				clearTimeout(this.k4CloseTimer)
+				this.k4CloseTimer = setTimeout(() => this.k4CloseOnJoin && this.close(), 20000) // ponytail: страховка, если вход повис
+				return
+			}
+
 			if (this.updatedBackground) {
 				this.handleUpdateBackground(this.updatedBackground)
 			}
