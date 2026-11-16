@@ -296,3 +296,48 @@ describe('macBridge: запуск без служебных окон', () => {
 		expect(open).not.toHaveBeenCalled()
 	})
 })
+
+describe('macBridge: «Мини» в приложении K4Draw (NAS_CLOUD#177)', () => {
+	let pop
+	/** Модуль заново, User-Agent приложения. */
+	async function load() {
+		vi.resetModules()
+		vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 Version/26.0 Safari/605.1.15 K4Draw/1.8.0', platform: 'MacIntel' })
+		return import('./macBridge.js')
+	}
+	beforeEach(() => {
+		call.in = true
+		pop = { closed: false, close: vi.fn(), postMessage: vi.fn(), focus: vi.fn() }
+		window.open = vi.fn(() => pop)
+	})
+	afterEach(() => {
+		vi.useRealTimers()
+		vi.restoreAllMocks()
+		vi.unstubAllGlobals()
+	})
+
+	it('окно моста молчит 8 с: ожидание прекращается, окно закрыто, звонок не прячем', async () => {
+		vi.useFakeTimers()
+		const m = await load()
+		const r = m.openMacReady()
+		await vi.advanceTimersByTimeAsync(8000)
+		expect(await r).toBe(false)
+		expect(m.mac.st).toBe('idle')
+		expect(pop.close).toHaveBeenCalled()
+	})
+
+	it('ждёт ready от окна моста', async () => {
+		const m = await load()
+		const r = m.openMacReady()
+		await Promise.resolve()
+		window.dispatchEvent(new MessageEvent('message', { origin: 'http://127.0.0.1:47811', source: pop, data: { t: 'ready' } }))
+		expect(await r).toBe(true)
+		expect(m.mac.st).toBe('on')
+	})
+
+	it('окно моста заблокировано: сразу false', async () => {
+		window.open = vi.fn(() => null)
+		const m = await load()
+		expect(await m.openMacReady()).toBe(false)
+	})
+})
