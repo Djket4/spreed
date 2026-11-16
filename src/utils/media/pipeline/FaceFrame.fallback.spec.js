@@ -94,7 +94,7 @@ describe('FaceFrame: откат', () => {
 				throw new Error('InvalidStateError')
 			},
 		})
-		await vi.advanceTimersByTimeAsync(1300) // NAS_CLOUD#271: первая отрисовка — после ожидания детекции
+		await vi.advanceTimersByTimeAsync(1600) // NAS_CLOUD#271: первая отрисовка — после ожидания детекции
 		expectFallback(track, 'error')
 	})
 
@@ -105,7 +105,7 @@ describe('FaceFrame: откат', () => {
 				throw new Error('x')
 			},
 		})
-		await vi.advanceTimersByTimeAsync(1300)
+		await vi.advanceTimersByTimeAsync(1600)
 		expect(ff.getOutputTrack()).toBe(track)
 		setFaceFrameLevel('1.5')
 		expect(localStorage.getItem(KEY)).toBe('1.5')

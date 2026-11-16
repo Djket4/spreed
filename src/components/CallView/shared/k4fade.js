@@ -57,12 +57,20 @@ export function useK4VideoFade() {
 		state.opaque = false
 		getVideo()?.play()?.catch(() => {})
 		const t0 = performance.now()
+		// новый кадр после включения: прошлый замерший кадр (или кадр до подмены трека) не в счёт
+		let fresh = null
 		const poll = () => {
 			if (t !== tok) {
 				return
 			}
 			const v = getVideo()
-			if ((v && v.readyState >= 2 && v.videoWidth && hasPicture(v)) || performance.now() - t0 > WAIT_MS) {
+			if (v && fresh === null) {
+				fresh = !v.requestVideoFrameCallback
+				v.requestVideoFrameCallback?.(() => {
+					fresh = true
+				})
+			}
+			if ((fresh && v.readyState >= 2 && v.videoWidth && hasPicture(v)) || performance.now() - t0 > WAIT_MS) {
 				state.opaque = true
 				later(t, () => {
 					state.full = true

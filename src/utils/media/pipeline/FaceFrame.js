@@ -21,7 +21,7 @@ const RVFC_WAIT_MS = 300 // нет первого rVFC -> requestAnimationFrame
 const MIN_FRAMES = 3 // кадров канваса до проверки выхода пробой
 const NO_FRAMES_MS = 2000
 // ket4tec (NAS_CLOUD#271): первый кадр рисуем сразу в итоговом кадрировании — ждём первую детекцию не дольше этого
-const HOLD_MS = 1200
+const HOLD_MS = 1500
 const MIN_FPS = 15
 const LOW_FPS_MS = 2000
 const STATS_LOG_MS = 5000
@@ -198,6 +198,12 @@ export default class FaceFrame extends TrackSinkSource {
 	}
 
 	_handleInputTrackEnabled(trackId, enabled) {
+		// ket4tec (NAS_CLOUD#271): при включении сначала ставим выход-канвас — иначе исходная камера
+		// успевает уйти на плитки и получателям некадрированной
+		const early = enabled && getFaceFrameLevel() !== 'off'
+		if (early) {
+			this._apply()
+		}
 		// ket4tec (NAS_CLOUD#108): на выходе исходный трек (кадр «Выкл», аппаратный зум, откат) — замены трека нет,
 		// получателям надо сказать явно, иначе кнопка камеры не переключается и камеру не вернуть
 		if (this.getOutputTrack() === this.getInputTrack()) {
@@ -209,7 +215,9 @@ export default class FaceFrame extends TrackSinkSource {
 			this.path = 'off'
 			return
 		}
-		this._apply()
+		if (!early) {
+			this._apply()
+		}
 	}
 
 	// Повторная установка того же трека заставляет VirtualBackground перезапустить
@@ -493,7 +501,8 @@ export default class FaceFrame extends TrackSinkSource {
 	_maybeDetect(d, now, lvl) {
 		const { video, canvas } = d
 		const full = now >= d.nextDetectAt
-		const tileDue = !full && d.noFace && now >= d.nextTileAt
+		// до первой отрисовки плитки — каждый кадр: лицо у края полный кадр не видит, по 2 плитки/с искали бы до 2 с
+		const tileDue = !full && d.noFace && (!d.placed || now >= d.nextTileAt)
 		if (!d.detector || !(full || tileDue)) {
 			return
 		}

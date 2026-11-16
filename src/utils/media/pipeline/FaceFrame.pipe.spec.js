@@ -60,7 +60,7 @@ describe('FaceFrame в цепочке превью', () => {
 		ff._setInputTrack('default', track)
 		return vi.advanceTimersByTimeAsync(100).then(() => {
 			expect(ff.path).toBe('digital')
-			return vi.advanceTimersByTimeAsync(3600)
+			return vi.advanceTimersByTimeAsync(4000)
 		}).then(() => {
 			expect(ff.path).toBe('fallback')
 			expect(ff.getOutputTrack()).toBe(track)
@@ -90,7 +90,7 @@ describe('FaceFrame в цепочке превью', () => {
 			expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.error)
 		})
 	})
-	test('защита: канвас рисует, а выходной трек пуст (проба без кадров) -> откат за 3,5 с', () => {
+	test('защита: канвас рисует, а выходной трек пуст (проба без кадров) -> откат за 4 с', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
 		window.MediaStream = function(tracks = []) {
 			this.getTracks = () => tracks
@@ -112,7 +112,7 @@ describe('FaceFrame в цепочке превью', () => {
 		const ff = new FaceFrame()
 		const track = { id: 'v5', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
 		ff._setInputTrack('default', track)
-		return vi.advanceTimersByTimeAsync(3600).then(() => {
+		return vi.advanceTimersByTimeAsync(4100).then(() => {
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(getFaceFrameLevel()).toBe('off')
 			expect(showWarning).toHaveBeenCalledTimes(1)
@@ -198,7 +198,7 @@ describe('FaceFrame в цепочке превью', () => {
 			await vi.advanceTimersByTimeAsync(500)
 			probe = ff._digital.probe
 			expect(document.body.contains(probe)).toBe(true)
-			await vi.advanceTimersByTimeAsync(3100)
+			await vi.advanceTimersByTimeAsync(3600)
 			expect(ff.getOutputTrack()).toBe(track)
 			expect(console.error.mock.calls.some((c) => String(c[1]).includes('выходной трек не отдаёт кадры'))).toBe(true)
 			expect(showWarning).toHaveBeenCalledWith(FALLBACK_TEXT.output)
