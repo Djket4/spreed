@@ -114,14 +114,51 @@ describe('перенос v2, исходная сторона (NAS_CLOUD#177)', (
 		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
 		expect(appPost).toHaveBeenCalledWith('moved')
 	})
-	it('смешанные версии: v1 take от старой страницы — без реакции; чужая сессия — игнор', async () => {
+	it('смешанные версии: v1 take от старой принимающей — выход сразу, как боевой код, окну moved', async () => {
 		h.subs.forEach((fn) => fn({ type: 'k4move', v: 1, op: 'take', from: 'b' }))
-		h.subs.forEach((fn) => fn({ type: 'k4move', op: 'take', from: 'b' }))
+		h.subs.forEach((fn) => fn({ type: 'k4move', v: 1, op: 'take', from: 'b' }))
+		await vi.advanceTimersByTimeAsync(4000)
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
+		expect(appPost).toHaveBeenCalledWith('moved')
+		expect(h.sent).toEqual([])
+	})
+	it('чужая сессия — игнор', async () => {
+		h.subs.forEach((fn) => fn({ type: 'k4move', v: 1, op: 'take', from: 'stranger' }))
 		deliver({ op: 'offer', from: 'stranger', id: '1' })
 		deliver({ op: 'joined', from: 'stranger', id: '1' })
 		await vi.advanceTimersByTimeAsync(5000)
 		expect(h.sent).toEqual([])
 		expect(h.store.dispatch).not.toHaveBeenCalled()
+	})
+	it('выход не удался (inCall остался): failed получателю, без moved и appPost; перенос снят', async () => {
+		h.store.dispatch = vi.fn(() => Promise.resolve())
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		deliver({ op: 'joined', from: 'b', id: '1' })
+		await vi.advanceTimersByTimeAsync(0)
+		expect(ops('b')).toEqual(['accept', 'failed'])
+		expect(appPost).not.toHaveBeenCalled()
+		deliver({ op: 'offer', from: 'c', id: '2' })
+		expect(ops('c')).toEqual(['accept'])
+	})
+	it('leaveCall упал: failed, без moved', async () => {
+		h.store.dispatch = vi.fn(() => Promise.reject(new Error('x')))
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		deliver({ op: 'joined', from: 'b', id: '1' })
+		await vi.advanceTimersByTimeAsync(0)
+		expect(ops('b')).toEqual(['accept', 'failed'])
+		expect(appPost).not.toHaveBeenCalled()
+	})
+	it('одна роль: пока идёт моя попытка как получатель, offer ко мне — busy; пока я источник — moveHere busy без offer', async () => {
+		const r = moveHere(['z'], 't', vi.fn())
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		expect(ops('b')).toEqual(['busy'])
+		await vi.advanceTimersByTimeAsync(ACCEPT_WAIT)
+		await r
+		deliver({ op: 'offer', from: 'b', id: '2' })
+		expect(ops('b')).toEqual(['busy', 'accept'])
+		h.sent = []
+		expect(await moveHere(['b'], 't', vi.fn())).toBe('busy')
+		expect(h.sent).toEqual([])
 	})
 	it('joined не пришёл за JOIN_WAIT: cancel получателю; поздний joined — снова cancel, звонок остаётся здесь', async () => {
 		deliver({ op: 'offer', from: 'b', id: '1' })
@@ -262,6 +299,54 @@ describe('перенос v2, принимающая сторона (NAS_CLOUD#17
 		deliver({ op: 'cancel', from: 'a', id: 'other' })
 		deliver({ op: 'cancel', from: 'x', id: idOf() })
 		expect(h.store.dispatch).not.toHaveBeenCalled()
+	})
+	it('отменённая попытка не гасит успешную повторную', async () => {
+		let release
+		const r1 = moveHere(['a'], 't', () => new Promise((resolve) => {
+			release = resolve
+		}))
+		const id1 = idOf()
+		deliver({ op: 'accept', from: 'a', id: id1 })
+		await vi.advanceTimersByTimeAsync(0)
+		deliver({ op: 'cancel', from: 'a', id: id1 })
+		h.sent = []
+		const r2 = moveHere(['a'], 't', joinOk())
+		const id2 = idOf()
+		deliver({ op: 'accept', from: 'a', id: id2 })
+		await vi.advanceTimersByTimeAsync(0)
+		deliver({ op: 'moved', from: 'a', id: id2 })
+		expect(await r2).toBe('joined')
+		release()
+		expect(await r1).toBe('superseded')
+		deliver({ op: 'cancel', from: 'a', id: id1 })
+		expect(h.inCall).toBe(true)
+		expect(h.store.dispatch).not.toHaveBeenCalled()
+	})
+	it('failed от исходной после joined: выходит сама, один выход', async () => {
+		const r = moveHere(['a'], 't', joinOk())
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(0)
+		deliver({ op: 'failed', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(0)
+		expect(await r).toBe('failed')
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
+		expect(h.inCall).toBe(false)
+	})
+	it('вход завис дольше JOIN_WAIT: cancel, подписка снята; поздний вход — выход', async () => {
+		let release
+		const r = moveHere(['a'], 't', () => new Promise((resolve) => {
+			release = resolve
+		}))
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(JOIN_WAIT + 1)
+		expect(await r).toBe('expired')
+		expect(ops()).toEqual(['offer', 'cancel'])
+		expect(h.subs.size).toBe(0)
+		h.inCall = true
+		release()
+		await vi.advanceTimersByTimeAsync(0)
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
+		expect(h.inCall).toBe(false)
 	})
 	it('leaveOnce: параллельные вызовы ждут один выход', async () => {
 		h.inCall = true
