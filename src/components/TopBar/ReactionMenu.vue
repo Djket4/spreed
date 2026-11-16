@@ -240,14 +240,13 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 	.reaction__button .action-button, .reaction__button button {
 		width: 100% !important; aspect-ratio: 1; min-width: 0; min-height: 0 !important; padding: 0 !important; border-radius: 50% !important;
 		display: flex !important; align-items: center !important; justify-content: center !important;
-		background: var(--k7-pill) !important; box-shadow: inset 0 0 0 1px var(--k7-line2); font-size: 26px; line-height: 1;
+		background: var(--k7-pill) !important; box-shadow: inset 0 0 0 1px var(--k7-line2); font-size: 26px !important; line-height: 1 !important;
 		transition: transform .12s ease, background .12s ease; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 	}
 	.reaction__button .action-button__icon {
 		position: static !important; width: 100% !important; height: 100% !important; min-width: 0 !important; display: flex !important;
 		align-items: center; justify-content: center; margin: 0 !important; padding: 0 !important; font-size: 26px; line-height: 1 !important; background: none;
 	}
-	.reaction__button :is(.action-button__icon, .action-button__icon *) { font-size: 26px !important; line-height: 1 !important; }   // эмодзи во вложенном span со своим размером
 	.reaction__button :is(.action-button__longtext-wrapper, .action-button__text, .action-button__name) { display: none !important; }
 	.reaction__button :is(.action-button, button):active { transform: scale(.82); }
 	@media (hover: hover) { .reaction__button :is(.action-button, button):hover { transform: scale(1.12); background: color-mix(in srgb, var(--k7-acc) 22%, var(--k7-pill)) !important; } }
@@ -270,8 +269,7 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 		.v-popper__inner { border-radius: 28px 28px 0 0 !important; }
 		.v-popper__inner::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--k7-line2); margin: 8px auto 0; }
 		.reaction__group .nc-button-group-content { width: 100%; }
-		.reaction__button .action-button, .reaction__button button { font-size: 30px; }
-		.reaction__button :is(.action-button__icon, .action-button__icon *) { font-size: 30px !important; }
+		.reaction__button .action-button, .reaction__button button { font-size: 30px !important; }
 	}
 }
 </style>
