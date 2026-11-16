@@ -59,7 +59,7 @@
 			<a
 				role="button"
 				class="conversation-header"
-				@click="actorStore.isLoggedIn && openConversationSettings() /* ket4tec (NAS_CLOUD#161): гостю не открываем */">
+				@click="openConversationSettings">
 				<div
 					class="conversation-header__text"
 					:class="{ 'conversation-header__text--offline': isOffline }">
@@ -414,6 +414,9 @@ export default {
 		},
 
 		openConversationSettings() {
+			if (!this.actorStore.isLoggedIn) { // ket4tec (NAS_CLOUD#161): гостю параметры обсуждения не открываем — ни названием, ни аватаром
+				return
+			}
 			emit('show-conversation-settings', { token: this.token })
 		},
 	},
