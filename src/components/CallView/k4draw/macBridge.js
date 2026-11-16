@@ -29,7 +29,7 @@ export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent)
 /** Страница открыта внутри приложения K4Draw (его WKWebView; NAS_CLOUD#177) */
 export const inApp = /\bK4Draw\//.test(navigator.userAgent)
 /**
- * Сообщение приложению: mini | browser | left | incall.
+ * Сообщение приложению: mini | restore | browser | moved | left | incall.
  *
  * @param t тип
  */
@@ -140,6 +140,7 @@ function lost() {
 	clearTimeout(graceT)
 	if (mac.st === 'on') {
 		mac.st = 'lost'
+		appPost('restore') // приложение K4Draw (NAS_CLOUD#177): окно звонка, спрятанное «Мини», вернуть на экран
 		clearInterval(watch)
 		consoleCmd('stopShare') // панель закрыта, приложение вышло или окно связи закрыто: показ экрана останавливаем
 		stopConsole()
