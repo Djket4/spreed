@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JOIN_WAIT } from './useMove.js'
 
 const bus = new Map()
-const srv = { calls: new Set(), min: Infinity, drop: () => false }
+const srv = { calls: new Set(), min: Infinity, drop: () => false, delay: () => 20 }
 
 /**
  * Вкладка: свой экземпляр useMove со своим store, диалогами и сигналингом.
@@ -44,10 +44,13 @@ async function tab(sid, file = './useMove.js', o = {}) {
 	vi.doMock('@nextcloud/router', () => ({ generateUrl: (u) => u, generateOcsUrl: (u) => u }))
 	vi.doMock('@nextcloud/axios', () => ({ default: { get: async () => ({ data: { ocs: { data: [{ attendeeId: 1, inCall: srv.calls.size ? 7 : 0 }] } } }) } }))
 	vi.doMock('../../../services/callsService.ts', () => ({
-		fetchPeers: () => new Promise((resolve) => setTimeout(() => resolve({ data: { ocs: { data: [
-			...[...srv.calls].map((s) => ({ actorType: 'users', actorId: 'u', sessionId: s })),
-			{ actorType: 'users', actorId: 'other', sessionId: 'nc-other' }, // чужой участник в звонке не считается
-		] } } }), 20)),
+		fetchPeers: () => {
+			const data = [ // снимок на момент запроса; ответ приходит через srv.delay()
+				...[...srv.calls].map((s) => ({ actorType: 'users', actorId: 'u', sessionId: s })),
+				{ actorType: 'users', actorId: 'other', sessionId: 'nc-other' }, // чужой участник в звонке не считается
+			]
+			return new Promise((resolve) => setTimeout(() => resolve({ data: { ocs: { data } } }), srv.delay()))
+		},
 	}))
 	vi.doMock('../../../store/index.js', () => ({
 		default: {
@@ -93,6 +96,13 @@ async function tab(sid, file = './useMove.js', o = {}) {
 		p.watch()
 	}
 	p.m.setJoiner(() => p.join())
+	p.close = () => { // окно закрыто: сессия ушла с сервера
+		srv.calls.delete(p.nc)
+		p.inCall = false
+		p.unwatch?.()
+		p.unwatch = null
+		bus.delete(p.sid)
+	}
 	if (p.inCall) {
 		p.watch()
 	}
@@ -116,6 +126,7 @@ describe('перенос на паре вкладок, истина у серв�
 		srv.calls.clear()
 		srv.min = Infinity
 		srv.drop = () => false
+		srv.delay = () => 20
 	})
 	afterEach(() => {
 		bus.forEach((p) => p.unwatch?.())
@@ -217,8 +228,7 @@ describe('перенос на паре вкладок, истина у серв�
 		expect(b.inCall).toBe(true)
 	})
 
-	it('старая принимающая (боевой 8bd62f6) → новая исходная: выходит сразу, выход проверен по серверу, окну moved', async () => {
-		srv.min = -1 // v1 как на боевом (закрыто): исходная выходит до входа старой принимающей, ноль на миг — свойство v1
+	it('старая принимающая (боевой 8bd62f6) → новая исходная: выходит после входа по серверу, окну moved', async () => {
 		const a = await tab('a', './useMove.js', { inCall: true })
 		const b = await tab('b', OLD)
 		await b.m.moveGate('t', b.join)
@@ -237,5 +247,49 @@ describe('перенос на паре вкладок, истина у серв�
 		await run(6000)
 		expect(calls()).toEqual(['nc-a'])
 		expect(b.infos.join()).toMatch(/Обновите страницу/)
+	})
+
+	it('B закрылась во время 4-секундного выхода A: A возвращается в звонок, moved и appPost нет', async () => {
+		srv.min = -1 // B ушла сама: между выходом A и её возвратом звонок пуст ~0,1 с; итог — одна сессия
+		const a = await tab('a', './useMove.js', { inCall: true, leaveMs: 4000 })
+		const b = await tab('b')
+		const moved = []
+		b.subs.add((d) => d.op === 'moved' && moved.push(d))
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(500)
+		b.close()
+		await run(5000)
+		expect(calls()).toEqual(['nc-a'])
+		expect(a.posts).toEqual([])
+		expect(moved).toEqual([])
+		expect(a.infos.join()).toMatch(/Перенос не удался/)
+	})
+
+	it('устаревший снимок: ответ с B пришёл через 20 с, когда B уже закрылась — A возвращается, moved нет', async () => {
+		srv.min = -1 // как выше: итог — одна сессия
+		srv.drop = (d) => d.op === 'joined' // только опрос
+		let slow = false
+		srv.delay = () => (srv.calls.has('nc-b') && !slow ? (slow = true, 20000) : 20)
+		const a = await tab('a', './useMove.js', { inCall: true })
+		const b = await tab('b')
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(2000)
+		b.close()
+		await run(21000)
+		expect(calls()).toEqual(['nc-a'])
+		expect(a.posts).toEqual([])
+	})
+
+	it('старая принимающая (v1): вход упал — исходная не выходит, звонок не теряется', async () => {
+		const a = await tab('a', './useMove.js', { inCall: true })
+		const b = await tab('b', OLD)
+		b.join = async () => {} // вход не состоялся: на сервере B нет (боевой код ошибку не ловит, поэтому без throw)
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(JOIN_WAIT + 31000)
+		expect(calls()).toEqual(['nc-a'])
+		expect(a.posts).toEqual([])
 	})
 })
