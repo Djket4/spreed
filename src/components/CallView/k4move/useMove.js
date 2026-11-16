@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 // ket4tec (NAS_CLOUD#113): тот же пользователь открыл звонок второй раз (вкладка/устройство): спросить и перенести звонок.
-// Транспорт: сообщение сигналинга HPB { type:'k4move', v:1, op:'take' } конкретной сессии (recipient session).
+// Транспорт: сообщения сигналинга HPB { type:'k4move', v:2, op, id } конкретной сессии (recipient session), протокол — у moveHere.
 import axios from '@nextcloud/axios'
 import { getDialogBuilder, showInfo } from '@nextcloud/dialogs'
 import { generateOcsUrl, generateUrl } from '@nextcloud/router'
@@ -62,35 +62,90 @@ function hpb() {
 	return s && typeof s.doSend === 'function' ? s : null
 }
 
-/** Сколько исходная сессия ждёт `joined` после `take`; не дождалась — остаётся в звонке. */
+// Протокол переноса v2 (NAS_CLOUD#177). Старые страницы понимают только v1 `take` («выйди сразу») и v2 игнорируют.
+// Принимающая B → исходная A: offer(id) → A: accept(id) | busy(id) → B входит → joined(id) → A выходит, окну moved.
+// Вход у B не удался → B: cancel(id). A не дождалась joined за JOIN_WAIT → A: cancel(id), B выходит, если уже вошла.
+// joined без активного переноса (поздний) → A отвечает cancel. Активный перенос у A один: offer другой сессии → busy.
+const V = 2
+/** Сколько исходная сессия ждёт `joined` после accept; дольше — отменяет перенос и остаётся в звонке. */
 export const JOIN_WAIT = 30000
+/** Сколько принимающая ждёт accept/busy; молчание (старая страница, сессия ушла) — входит как раньше. */
+export const ACCEPT_WAIT = 5000
+/** Сколько принимающая после joined ещё слушает cancel (joined и cancel по таймауту разминулись). */
+const LATE_CANCEL = 10000
 
 /**
  * @param {string[]} sids кому
- * @param {string} op 'take' — «перехожу к вам»; 'joined' — «я вошёл, можно выходить»
+ * @param {string} op offer | accept | busy | joined | cancel
+ * @param {string} id перенос
  */
-function sendOp(sids, op) {
+function sendOp(sids, op, id) {
 	const s = hpb()
-	sids.forEach((sid) => s?.doSend({ type: 'message', message: { recipient: { type: 'session', sessionid: sid }, data: { type: 'k4move', v: 1, op } } }))
+	sids.forEach((sid) => s?.doSend({ type: 'message', message: { recipient: { type: 'session', sessionid: sid }, data: { type: 'k4move', v: V, op, id } } }))
 }
 
+const isOp = (d) => d?.type === 'k4move' && d.v === V && typeof d.from === 'string' && typeof d.id === 'string' && typeof d.op === 'string'
+
 /**
- * Принимающая сторона: `take`, вход здесь, и только после успешного входа — `joined`.
- * Вход не удался — `joined` не уходит, исходная сессия остаётся в звонке (NAS_CLOUD#177).
+ * Принимающая сторона: offer, ответ A, вход здесь, joined; на cancel от A — выйти (или не входить).
  *
  * @param {string[]} sids исходные сессии
  * @param {string} token комната
  * @param {Function} join войти здесь без проверки
+ * @return {Promise<string>} joined | busy | failed | cancelled
  */
-export async function takeThenJoin(sids, token, join) {
-	sendOp(sids, 'take')
-	try {
-		await join()
-	} catch (e) {
-		return
+export async function moveHere(sids, token, join) {
+	const sig = hpb()
+	const id = Math.random().toString(36).slice(2) + Date.now().toString(36)
+	let cancelled = false
+	let answer = null
+	let wake = () => {}
+	const leave = () => store.dispatch('leaveCall', { token, participantIdentifier: useActorStore().participantIdentifier, all: false })
+	const onMsg = (d) => {
+		if (!isOp(d) || d.id !== id || !sids.includes(d.from)) {
+			return
+		}
+		if (d.op === 'accept' || d.op === 'busy') {
+			answer = d.op
+			wake()
+		} else if (d.op === 'cancel') {
+			cancelled = true
+			if (store.getters.isInCall(token)) {
+				leave()
+				showInfo('Перенос отменён: звонок остался в другой вкладке')
+			}
+		}
 	}
-	if (store.getters.isInCall(token)) {
-		sendOp(sids, 'joined')
+	sig?.on('message', onMsg)
+	try {
+		sendOp(sids, 'offer', id)
+		await new Promise((resolve) => {
+			wake = resolve
+			setTimeout(resolve, ACCEPT_WAIT)
+		})
+		if (answer === 'busy') {
+			showInfo('Звонок уже переносится в другую вкладку')
+			return 'busy'
+		}
+		try {
+			await join()
+		} catch (e) {
+			// вход не удался — ниже cancel
+		}
+		if (!store.getters.isInCall(token)) {
+			sendOp(sids, 'cancel', id)
+			return 'failed'
+		}
+		if (cancelled) {
+			await leave()
+			showInfo('Перенос отменён: звонок остался в другой вкладке')
+			return 'cancelled'
+		}
+		sendOp(sids, 'joined', id)
+		await new Promise((resolve) => setTimeout(resolve, LATE_CANCEL))
+		return cancelled ? 'cancelled' : 'joined'
+	} finally {
+		sig?.off('message', onMsg)
 	}
 }
 
@@ -131,41 +186,58 @@ export async function moveGate(token, join) {
 	const others = otherSessionsInCall(Object.values(useSessionStore().sessions), token, att, s.getSessionId(), true)
 	ask('Вы уже в этом звонке', 'Звонок открыт в другой вкладке или на другом устройстве.', [
 		{ label: 'Остаться там', callback: () => {} },
-		{ label: 'Перенести звонок сюда', type: 'primary', callback: () => takeThenJoin(others, token, join) },
+		{ label: 'Перенести звонок сюда', type: 'primary', callback: () => moveHere(others, token, join) },
 	])
 	return true
 }
 
 /**
- * Слушатель переноса — пока я в звонке (CallView). На `take` ждёт `joined` той же сессии (не дольше JOIN_WAIT),
- * только потом выходит из звонка, шлёт окну приложения `moved` и предлагает вернуть. Без `joined` звонок остаётся здесь.
+ * Слушатель переноса — пока я в звонке (CallView), исходная сторона протокола v2 (см. moveHere).
+ * Выходит из звонка и шлёт окну приложения `moved` только на joined активного переноса.
  *
  * @return {Function} отписка
  */
 export function watchMove() {
 	let sig = null
-	let wait = null // { from, t } — ждём вход принимающей сессии
+	let wait = null // активный перенос: { from, id, t }
 	const drop = () => {
 		clearTimeout(wait?.t)
 		wait = null
 	}
-	const onMsg = (data) => {
-		if (data?.type !== 'k4move' || data.v !== 1 || typeof data.from !== 'string') {
+	const onMsg = (d) => {
+		if (!isOp(d)) {
 			return
 		}
 		const token = useTokenStore().token
 		const actor = useActorStore()
 		// только та сессия, что сейчас в звонке, и только от своей же (иначе — перекидывание по кругу и чужие запросы)
-		if (!store.getters.isInCall(token) || !isTrustedTake(useSessionStore().getSession(data.from), actor.participantIdentifier.attendeeId, actor.actorType, token)) {
+		if (!store.getters.isInCall(token) || !isTrustedTake(useSessionStore().getSession(d.from), actor.participantIdentifier.attendeeId, actor.actorType, token)) {
 			return
 		}
-		const from = data.from
-		if (data.op === 'take') {
+		const { from, id, op } = d
+		const active = wait && wait.from === from && wait.id === id
+		if (op === 'offer') {
+			if (wait && !active) {
+				sendOp([from], 'busy', id) // один перенос за раз
+				return
+			}
 			drop()
-			wait = { from, t: setTimeout(drop, JOIN_WAIT) }
+			wait = { from, id, t: setTimeout(() => {
+				sendOp([from], 'cancel', id) // не дождались входа: получатель выйдет, если всё же вошёл
+				drop()
+			}, JOIN_WAIT) }
+			sendOp([from], 'accept', id)
 			return
 		}
-		if (data.op !== 'joined' || wait?.from !== from) {
+		if (op === 'cancel') {
+			active && drop()
+			return
+		}
+		if (op !== 'joined') {
+			return
+		}
+		if (!active) {
+			sendOp([from], 'cancel', id) // поздний или чужой joined: звонок остаётся здесь, получатель выходит
 			return
 		}
 		drop()
@@ -173,7 +245,7 @@ export function watchMove() {
 			appPost('moved') // окно приложения K4Draw (NAS_CLOUD#177): звонок уже идёт там, окно можно закрыть
 			ask('Звонок перенесён', 'Звонок продолжается в другой вкладке или на другом устройстве.', [
 				{ label: 'Закрыть', callback: () => {} },
-				{ label: 'Вернуть сюда', type: 'primary', callback: () => joiner && takeThenJoin([from], token, () => joiner(token, { k4take: true })) },
+				{ label: 'Вернуть сюда', type: 'primary', callback: () => joiner && moveHere([from], token, () => joiner(token, { k4take: true })) },
 			])
 		})
 	}

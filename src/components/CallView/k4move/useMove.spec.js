@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
 	inCall: true,
 	sent: [],
-	onMsg: null,
+	subs: new Set(),
 	store: { getters: {}, dispatch: null },
 }))
 vi.mock('../k4draw/macBridge.js', () => ({ appPost: vi.fn() }))
@@ -24,16 +24,14 @@ vi.mock('../../../stores/session.ts', () => ({ useSessionStore: () => ({ getSess
 vi.mock('../../../stores/token.ts', () => ({ useTokenStore: () => ({ token: 't' }) }))
 vi.mock('../../../utils/webrtc/index.js', () => ({
 	k4drawSignaling: () => ({
-		doSend: (m) => h.sent.push([m.message.recipient.sessionid, m.message.data.op]),
-		on: (_e, fn) => {
-			h.onMsg = fn
-		},
-		off: () => {},
+		doSend: (m) => h.sent.push([m.message.recipient.sessionid, m.message.data.op, m.message.data.id]),
+		on: (_e, fn) => h.subs.add(fn),
+		off: (_e, fn) => h.subs.delete(fn),
 	}),
 }))
 
 import { appPost } from '../k4draw/macBridge.js'
-import { headerLinkToOpen, isTrustedTake, JOIN_WAIT, otherSessionsInCall, takeThenJoin, watchMove } from './useMove.js'
+import { ACCEPT_WAIT, headerLinkToOpen, isTrustedTake, JOIN_WAIT, moveHere, otherSessionsInCall, watchMove } from './useMove.js'
 
 describe('другая сессия в звонке', () => {
 	const S = [
@@ -76,13 +74,16 @@ describe('ссылки шапки', () => {
 	})
 })
 
-describe('перенос звонка: исходная выходит только после входа принимающей (NAS_CLOUD#177)', () => {
+const deliver = (d) => [...h.subs].forEach((fn) => fn({ type: 'k4move', v: 2, ...d }))
+const ops = (sid) => h.sent.filter(([s]) => !sid || s === sid).map(([, op]) => op)
+
+describe('перенос v2, исходная сторона (NAS_CLOUD#177)', () => {
 	let unwatch
-	const msg = (op, from = 'b') => h.onMsg({ type: 'k4move', v: 1, op, from })
 	beforeEach(() => {
 		vi.useFakeTimers()
 		h.inCall = true
 		h.sent = []
+		h.subs.clear()
 		h.store.getters.isInCall = () => h.inCall
 		h.store.dispatch = vi.fn(() => Promise.resolve())
 		appPost.mockClear()
@@ -93,40 +94,138 @@ describe('перенос звонка: исходная выходит толь�
 		unwatch()
 		vi.useRealTimers()
 	})
-	it('take без joined: остаётся в звонке, moved не уходит', async () => {
-		msg('take')
-		vi.advanceTimersByTime(JOIN_WAIT + 1)
-		msg('joined') // запоздал — ожидание уже сброшено
+	const flush = async () => {
 		await Promise.resolve()
+		await Promise.resolve()
+	}
+	it('offer → accept, joined → выход и moved', async () => {
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		expect(ops('b')).toEqual(['accept'])
 		expect(h.store.dispatch).not.toHaveBeenCalled()
-		expect(appPost).not.toHaveBeenCalled()
-	})
-	it('joined без take или от другой сессии — игнор', async () => {
-		msg('joined')
-		msg('take', 'b')
-		msg('joined', 'c')
-		msg('joined', 'stranger')
-		await Promise.resolve()
-		expect(h.store.dispatch).not.toHaveBeenCalled()
-	})
-	it('take, затем joined той же сессии: выход и moved', async () => {
-		msg('take')
-		msg('joined')
-		await Promise.resolve()
-		await Promise.resolve()
+		deliver({ op: 'joined', from: 'b', id: '1' })
+		await flush()
 		expect(h.store.dispatch).toHaveBeenCalledWith('leaveCall', expect.objectContaining({ token: 't', all: false }))
 		expect(appPost).toHaveBeenCalledWith('moved')
 	})
-	it('принимающая: вход не удался — joined не уходит', async () => {
+	it('старый take v1 и чужая сессия — игнор', async () => {
+		h.subs.forEach((fn) => fn({ type: 'k4move', v: 1, op: 'take', from: 'b' }))
+		deliver({ op: 'offer', from: 'stranger', id: '1' })
+		deliver({ op: 'joined', from: 'stranger', id: '1' })
+		await flush()
+		expect(h.sent).toEqual([])
+		expect(h.store.dispatch).not.toHaveBeenCalled()
+	})
+	it('joined не пришёл за JOIN_WAIT: cancel получателю; поздний joined — снова cancel, звонок остаётся здесь', async () => {
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		vi.advanceTimersByTime(JOIN_WAIT + 1)
+		expect(ops('b')).toEqual(['accept', 'cancel'])
+		deliver({ op: 'joined', from: 'b', id: '1' })
+		await flush()
+		expect(ops('b')).toEqual(['accept', 'cancel', 'cancel'])
+		expect(h.store.dispatch).not.toHaveBeenCalled()
+		expect(appPost).not.toHaveBeenCalled()
+	})
+	it('второй перенос при активном первом: busy, его joined — cancel; выход один раз', async () => {
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		deliver({ op: 'offer', from: 'c', id: '2' })
+		expect(ops('c')).toEqual(['busy'])
+		deliver({ op: 'joined', from: 'b', id: '1' })
+		deliver({ op: 'joined', from: 'c', id: '2' })
+		await flush()
+		expect(ops('c')).toEqual(['busy', 'cancel'])
+		expect(h.store.dispatch).toHaveBeenCalledTimes(1)
+	})
+	it('cancel от получателя освобождает перенос', () => {
+		deliver({ op: 'offer', from: 'b', id: '1' })
+		deliver({ op: 'cancel', from: 'b', id: '1' })
+		deliver({ op: 'offer', from: 'c', id: '2' })
+		expect(ops('c')).toEqual(['accept'])
+	})
+})
+
+describe('перенос v2, принимающая сторона (NAS_CLOUD#177)', () => {
+	beforeEach(() => {
+		vi.useFakeTimers()
 		h.inCall = false
-		await takeThenJoin(['a'], 't', async () => {})
-		await takeThenJoin(['a'], 't', async () => {
+		h.sent = []
+		h.subs.clear()
+		h.store.getters.isInCall = () => h.inCall
+		h.store.dispatch = vi.fn(() => {
+			h.inCall = false
+			return Promise.resolve()
+		})
+	})
+	afterEach(() => vi.useRealTimers())
+	const idOf = () => h.sent[0][2]
+	it('входит только после accept; до входа ушёл лишь offer (никакого раннего take)', async () => {
+		const join = vi.fn(async () => {
+			expect(ops()).toEqual(['offer'])
+			h.inCall = true
+		})
+		const r = moveHere(['a'], 't', join)
+		await vi.advanceTimersByTimeAsync(100)
+		expect(join).not.toHaveBeenCalled()
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(0)
+		expect(join).toHaveBeenCalled()
+		expect(ops()).toEqual(['offer', 'joined'])
+		await vi.advanceTimersByTimeAsync(10000)
+		expect(await r).toBe('joined')
+	})
+	it('busy: не входит', async () => {
+		const join = vi.fn()
+		const r = moveHere(['a'], 't', join)
+		deliver({ op: 'busy', from: 'a', id: idOf() })
+		expect(await r).toBe('busy')
+		expect(join).not.toHaveBeenCalled()
+	})
+	it('молчание (старая страница): после ACCEPT_WAIT входит как раньше', async () => {
+		const join = vi.fn(async () => {
+			h.inCall = true
+		})
+		moveHere(['a'], 't', join)
+		await vi.advanceTimersByTimeAsync(ACCEPT_WAIT)
+		expect(join).toHaveBeenCalled()
+		expect(ops()).toEqual(['offer', 'joined'])
+	})
+	it('вход не удался: cancel, joined не уходит', async () => {
+		const r = moveHere(['a'], 't', async () => {
 			throw new Error('x')
 		})
-		expect(h.sent).toEqual([['a', 'take'], ['a', 'take']])
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		expect(await r).toBe('failed')
+		expect(ops()).toEqual(['offer', 'cancel'])
 	})
-	it('принимающая: вошла — joined', async () => {
-		await takeThenJoin(['a'], 't', async () => {})
-		expect(h.sent).toEqual([['a', 'take'], ['a', 'joined']])
+	it('cancel пришёл во время входа: выходит, joined не шлёт', async () => {
+		const r = moveHere(['a'], 't', async () => {
+			deliver({ op: 'cancel', from: 'a', id: idOf() })
+			h.inCall = true
+		})
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		expect(await r).toBe('cancelled')
+		expect(ops()).toEqual(['offer'])
+		expect(h.store.dispatch).toHaveBeenCalledWith('leaveCall', expect.anything())
+	})
+	it('cancel разминулся с joined: выходит', async () => {
+		const r = moveHere(['a'], 't', async () => {
+			h.inCall = true
+		})
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(0)
+		expect(ops()).toEqual(['offer', 'joined'])
+		deliver({ op: 'cancel', from: 'a', id: idOf() })
+		expect(h.store.dispatch).toHaveBeenCalledWith('leaveCall', expect.anything())
+		await vi.advanceTimersByTimeAsync(10000)
+		expect(await r).toBe('cancelled')
+	})
+	it('cancel чужого переноса или от другой сессии — игнор', async () => {
+		moveHere(['a'], 't', async () => {
+			h.inCall = true
+		})
+		deliver({ op: 'accept', from: 'a', id: idOf() })
+		await vi.advanceTimersByTimeAsync(0)
+		deliver({ op: 'cancel', from: 'a', id: 'other' })
+		deliver({ op: 'cancel', from: 'x', id: idOf() })
+		expect(h.store.dispatch).not.toHaveBeenCalled()
 	})
 })
