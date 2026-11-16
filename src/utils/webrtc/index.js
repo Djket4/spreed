@@ -12,7 +12,6 @@ import store from '../../store/index.js'
 import { isIOS, isSafari } from '../browserCheck.ts'
 import CancelableRequest from '../CancelableRequest.ts'
 import Encryption from '../e2ee/encryption.js'
-import { k4log } from '../k4log.js'
 import { startK4stats, stopK4stats } from '../k4stats.js'
 import Signaling from '../signaling.js'
 import SignalingTypingHandler from '../SignalingTypingHandler.js'
@@ -269,11 +268,9 @@ async function signalingJoinCall(token, flags, silent, recordingConsent, silentF
 			// The previous state might be wiped after the media is started, so
 			// it should be saved now.
 			const noiseSuppressionWithModel = !!BrowserStorage.getItem('noiseSuppressionWithModel')
-			// ket4tec (NAS_CLOUD#172, 16.11): микрофон и камера входят в звонок такими, как были в «Проверке устройств»
-			// (шторка пишет audioDisabled_/videoDisabled_); тихий вход NAS_CLOUD#15 отменён — без шторки useJoinCall сам даёт videoOn: false
-			const enableAudio = options?.audioOn ?? !BrowserStorage.getItem('audioDisabled_' + token)
-			const enableVideo = options?.videoOn ?? !BrowserStorage.getItem('videoDisabled_' + token)
-			k4log('join.media', { audio: enableAudio, video: enableVideo, opt: options })
+			// ket4tec: everyone joins muted with video off; the pre-join check only previews devices
+			const enableAudio = false
+			const enableVideo = false
 			const enableVirtualBackground = !!BrowserStorage.getItem('virtualBackgroundEnabled')
 			const virtualBackgroundType = BrowserStorage.getItem('virtualBackgroundType')
 			const virtualBackgroundBlurStrength = BrowserStorage.getItem('virtualBackgroundBlurStrength')
