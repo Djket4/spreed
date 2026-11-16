@@ -208,7 +208,8 @@
 					</MediaSettingsTabs>
 
 					<!-- Guest display name setting-->
-					<SetGuestUsername v-if="isGuest" compact />
+					<!-- ket4tec (NAS_CLOUD#161): до звонка имя — поле на странице; здесь только в звонке или если имя было пусто при открытии -->
+					<SetGuestUsername v-if="isGuest && (isInCall || k4NameEmpty)" compact />
 
 					<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
 					<!-- Notify call option-->
@@ -421,6 +422,7 @@ export default {
 	data() {
 		return {
 			show: false,
+			k4NameEmpty: false, // ket4tec (NAS_CLOUD#161): имя гостя пусто при открытии — поле не пропадает с первой буквой
 			tabContent: 'devices',
 			audioOn: undefined,
 			videoOn: undefined,
@@ -650,6 +652,7 @@ export default {
 	watch: {
 		show(newValue) {
 			if (newValue) {
+				this.k4NameEmpty = !this.guestNameStore.guestUserName.length
 				this.subscribeToDevices(PARTICIPANT.PERMISSIONS.MAX_DEFAULT)
 				this.$nextTick(() => {
 					this.registerVideoElement(this.video)

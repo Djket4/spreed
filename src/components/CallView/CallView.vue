@@ -173,18 +173,24 @@
 		</div>
 
 		<!-- ket4tec (NAS_CLOUD#154): просьба организатора включить микрофон -->
-		<div
-			v-if="showAskUnmute"
-			class="k4-ask-unmute"
-			role="alert">
-			<span>{{ t('spreed', 'The organizer asks you to unmute your microphone') }}</span>
-			<button type="button" @click="acceptAskUnmute">
-				{{ t('spreed', 'Unmute') }}
-			</button>
-			<button type="button" @click="declineAskUnmute">
-				{{ t('spreed', 'Not now') }}
-			</button>
-		</div>
+		<!-- ket4tec (NAS_CLOUD#162 п.2): плашка живёт в общей стопке уведомлений #k7-toasts; без стопки — под верхней строкой по центру -->
+		<Teleport to="#k7-toasts" :disabled="!hasToastStack()">
+			<div
+				v-if="showAskUnmute"
+				:ref="k4PinAsk"
+				class="k4-ask-unmute k7-toast k7-toast-on"
+				:class="{ 'k4-ask-unmute--solo': !hasToastStack() }"
+				role="alert">
+				<!-- ket4tec (NAS_CLOUD#162 п.2): коротко, чтобы на телефоне было не больше двух строк -->
+				<span>Включите микрофон</span>
+				<button type="button" @click="acceptAskUnmute">
+					{{ t('spreed', 'Unmute') }}
+				</button>
+				<button type="button" @click="declineAskUnmute">
+					{{ t('spreed', 'Not now') }}
+				</button>
+			</div>
+		</Teleport>
 	</div>
 </template>
 
@@ -819,6 +825,19 @@ export default {
 	},
 
 	methods: {
+		// ket4tec (NAS_CLOUD#161): запрос живёт в DOM от Vue — стопка облака (K7.stack) не должна его вытеснять или удалять:
+		// k7act — «плашка с действием» (вытесняется последней), k7kill — пустой, удаляет его только Vue
+		k4PinAsk(el) {
+			if (el) {
+				el.k7act = true
+				el.k7kill = () => {}
+			}
+		},
+
+		hasToastStack() { // ket4tec (NAS_CLOUD#162 п.2)
+			return !!document.getElementById('k7-toasts')
+		},
+
 		t,
 		declineAskUnmute() { // ket4tec (NAS_CLOUD#154)
 			localCallParticipantModel.set('askUnmute', false)
@@ -1189,21 +1208,19 @@ export default {
 <style lang="scss" scoped>
 @use '../../assets/variables.scss' as *;
 
-.k4-ask-unmute { // ket4tec (NAS_CLOUD#154)
-	position: fixed;
-	top: 70px;
-	left: 50%;
-	transform: translateX(-50%);
-	z-index: 10000;
+.k4-ask-unmute { // ket4tec (NAS_CLOUD#162 п.2): вид кнопок — от плашек облака; тут только раскладка
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 12px;
-	max-width: calc(100vw - 24px);
-	padding: 10px 14px;
-	border-radius: 12px;
-	background: var(--color-main-background);
-	color: var(--color-main-text);
-	box-shadow: 0 2px 16px rgba(0, 0, 0, .5);
+	justify-content: center;
+	gap: 8px 12px;
+	@media (max-width: 700px) { // телефон: текст строкой, под ним обе кнопки поровну
+		> span { flex: 1 0 100%; text-align: center; }
+		> button { flex: 1 1 0; }
+	}
+}
+
+.k4-ask-unmute--solo { // ket4tec (NAS_CLOUD#154, #162 п.2): запасной вид, когда стопки нет
 	button {
 		padding: 8px 16px;
 		border: 0;
@@ -1213,6 +1230,17 @@ export default {
 		font-weight: bold;
 		cursor: pointer;
 	}
+	position: fixed;
+	top: var(--k7-toast-top, 70px);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10000;
+	max-width: calc(100vw - 24px);
+	padding: 10px 14px;
+	border-radius: 12px;
+	background: #2b2527;
+	color: #fff;
+	box-shadow: 0 2px 16px rgba(0, 0, 0, .5);
 }
 
 #call-container {
@@ -1230,8 +1258,9 @@ export default {
 #videos {
 	position: absolute;
 	width: 100%;
-	height: calc(100% - (var(--top-bar-height) + var(--bottom-bar-height)));
-	top: var(--top-bar-height);
+	// ket4tec (NAS_CLOUD#162 п.2): --k7-call-top = низ верхней строки + полоса под плашку уведомления (main.js)
+	height: calc(100% - (var(--k7-call-top, var(--top-bar-height)) + var(--bottom-bar-height)));
+	top: var(--k7-call-top, var(--top-bar-height));
 	overflow: hidden;
 	display: flex;
 	justify-content: space-around;

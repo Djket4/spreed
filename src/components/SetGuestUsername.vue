@@ -132,7 +132,7 @@ function toggleEdit() {
 				v-model="guestUserName"
 				:placeholder="t('spreed', 'Guest')"
 				class="username-form__input"
-				:label="compact ? 'Ваше имя' /* ket4tec 9Б п.25: длинная подпись обрезалась */ : t('spreed', 'Display name (required)')"
+				:label="compact ? 'Имя' /* ket4tec 9Б п.25, (NAS_CLOUD#161): одно слово «Имя» */ : t('spreed', 'Display name (required)')"
 				:showTrailingButton="!!guestUserName && !compact"
 				trailingButtonIcon="arrowEnd"
 				:trailingButtonLabel="t('spreed', 'Save name')"

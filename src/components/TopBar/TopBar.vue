@@ -414,6 +414,9 @@ export default {
 		},
 
 		openConversationSettings() {
+			if (!this.actorStore.isLoggedIn) { // ket4tec (NAS_CLOUD#161): гостю параметры обсуждения не открываем — ни названием, ни аватаром
+				return
+			}
 			emit('show-conversation-settings', { token: this.token })
 		},
 	},

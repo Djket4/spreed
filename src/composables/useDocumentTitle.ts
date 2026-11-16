@@ -168,7 +168,7 @@ export function useDocumentTitle() {
 	function getDefaultPageTitle() {
 		// Do nothing on Desktop
 		if (IS_DESKTOP) {
-			return document.title
+			return document.title.replace(/^Talk [-—] /, '') // ket4tec (NAS_CLOUD#161): без «Talk» и в настольном клиенте
 		}
 		const appNamePrefix = t('spreed', 'Talk') + ' - '
 		// KET4TEC: длинное тире в заголовке («Talk — KET4TEC Cloud», #103)
@@ -181,6 +181,7 @@ export function useDocumentTitle() {
 			// When a conversation is opened directly, "Talk - " might be missing from the title
 			result = appNamePrefix + current
 		}
-		return result.replace(appNamePrefix, t('spreed', 'Talk') + ' — ')
+		// ket4tec (NAS_CLOUD#161): слово «Talk» в заголовке вкладки убрано
+		return result.replace(appNamePrefix, '')
 	}
 }

@@ -731,3 +731,33 @@ html.k7f .avatar-wrapper[data-k4ini]::before { content: attr(data-k4ini); positi
 // NAS_CLOUD#109 п.13: три вкладки в звонке на iPad — «Участники (2)» обрезалось; вкладки по ширине подписи, а не поровну
 .app-sidebar-tabs__nav button[class*='sidebarTabsButton'] { flex: 1 1 auto !important; }
 .app-sidebar-tabs__nav [class*='sidebarTabsButton__name'] { overflow: visible !important; text-overflow: clip !important; }
+
+// ket4tec (NAS_CLOUD#162 п.2): стопка уведомлений в звонке — в полосе под верхней строкой (--k7-toast-top ставит main.js);
+// тема облака даёт ей top:128px, перебиваем специфичностью. Вне звонка переменной нет — остаётся 128px.
+html.k7f body #k7-toasts.k7-toasts {
+	top: var(--k7-toast-top, calc(128px + env(safe-area-inset-top, 0px)));
+}
+// в звонке (html.k7-lane ставит main.js) видно не больше двух плашек: новые встают вниз, старшие сверх двух прячем
+// запрос микрофона (.k4-ask-unmute) виден всегда: при нём из остальных — только самая новая
+html.k7f.k7-lane body #k7-toasts.k7-toasts:not(:has(> .k4-ask-unmute)) > :nth-last-child(n+3),
+html.k7f.k7-lane body #k7-toasts.k7-toasts:has(> .k4-ask-unmute) > :not(.k4-ask-unmute):nth-last-child(n+2 of :not(.k4-ask-unmute)) {
+	display: none !important;
+}
+// плашки в полосе лежат на фоне страницы — тень не нужна (под плашкой давала розоватое свечение, между двумя — цветную полосу)
+html.k7f.k7-lane body #k7-toasts.k7-toasts > * { box-shadow: none !important; }
+html.k7f.k7-lane body #k7-toasts.k7-toasts > :is(.k7-toast-err, .toast-error) { box-shadow: inset 4px 0 0 #ff6b6b !important; }
+// крестик плашки: у @nextcloud/dialogs свой тёмный крест картинкой в ::before, облако рисует там же светлый «×» — оставляем один
+html body .toastify.k7-toast-native .toast-close::before { background-image: none !important; }
+
+// ket4tec (NAS_CLOUD#162 п.2): телефон — верх окна не выше низа полосы уведомлений (в звонке --k7-stack-bottom от main.js, иначе 128 + 52 + 8), плашка не ложится на заголовок и крестик
+@media (max-width: 700px) {
+	html.k7f body .modal-mask .modal-wrapper { --modal-header-offset: var(--k7-stack-bottom, 188px); }
+	html.k7f body :is(.modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container), .modal-mask#k7-app-settings, .modal-mask:has(#k7-app-settings), .new-group-conversation, .k7-sheet) .modal-container {
+		inset-block-start: var(--k7-stack-bottom, 188px) !important;
+	}
+}
+@media (max-width: 500px) {
+	html.k7f:root:root body .modal-container:has(.media-settings) .modal-container__content {
+		max-height: calc(var(--k7-vh, 100dvh) - var(--k7-stack-bottom, 188px) - var(--k7-sheet-bottom, 0px)) !important;
+	}
+}
