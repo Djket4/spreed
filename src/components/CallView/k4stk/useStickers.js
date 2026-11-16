@@ -186,7 +186,8 @@ function onAdd() {
 export function watchStickers() {
 	let held = false
 	let n = 0
-	const t = setInterval(() => {
+	// NAS_CLOUD#172: первая проверка сразу — сигналинг к входу в звонок уже есть, кнопка стикеров в панели с первого кадра (а не через 2 с, расширяя панель)
+	const tick = () => {
 		if (!held) {
 			const s = k4drawSignaling()
 			if (s && typeof s.doSend === 'function') {
@@ -204,7 +205,9 @@ export function watchStickers() {
 		}
 		n < 3 && wire({ op: 'q' })
 		++n >= 3 && clearInterval(t)
-	}, 2000)
+	}
+	const t = setInterval(tick, 2000)
+	tick()
 	return () => {
 		clearInterval(t)
 		clearTimeout(addTimer)

@@ -54,6 +54,17 @@
 				{{ t('spreed', 'Check devices') }}
 			</NcActionButton>
 		</NcActions>
+
+		<!-- ket4tec NAS_CLOUD#172: ошибка камеры — только по нажатию, плотная капсула у панели (не стопка уведомлений над «Ждём остальных») -->
+		<Teleport to="body">
+			<div
+				v-if="k4CamMsg"
+				class="k4-cam-toast"
+				role="alert"
+				:style="k4CamPos">
+				{{ k4CamMsg }}
+			</div>
+		</Teleport>
 	</div>
 </template>
 
@@ -133,6 +144,8 @@ export default {
 
 		/* Flag to smoothly toggle the video while in call */
 		const resumeVideoAfterChange = ref(false)
+		const k4CamMsg = ref('') // ket4tec NAS_CLOUD#172
+		const k4CamPos = ref(null)
 
 		return {
 			devices,
@@ -144,6 +157,8 @@ export default {
 			unsubscribeFromDevices,
 			updateSubscriptionPermissions,
 			resumeVideoAfterChange,
+			k4CamMsg,
+			k4CamPos,
 		}
 	},
 
@@ -243,6 +258,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		clearTimeout(this.k4CamTimer)
 		this.unsubscribeFromDevices(this.conversation.permissions, true)
 	},
 
@@ -251,6 +267,19 @@ export default {
 		emit,
 
 		toggleVideo() {
+			// ket4tec NAS_CLOUD#172: камера не открылась или её нет — говорим об этом по нажатию, вместо шторки проверки
+			const err = this.model.attributes.localStreamRequestVideoError
+			if (this.isVideoAllowed && !this.isVideoAvailable && (err || !this.devices.some((d) => d.kind === 'videoinput'))) {
+				this.k4CamToast(!err
+					? t('spreed', 'No camera available')
+					: err.name === 'NotAllowedError'
+						? t('spreed', 'Access to camera was denied')
+						: ['NotReadableError', 'AbortError'].includes(err.name)
+								? t('spreed', 'Error while accessing camera: It is likely in use by another program')
+								: t('spreed', 'Error while accessing camera'))
+				return
+			}
+
 			if (!this.isVideoAllowed || !this.isVideoAvailable) {
 				emit('talk:media-settings:show')
 				return
@@ -261,6 +290,20 @@ export default {
 			} else {
 				this.model.enableVideo()
 			}
+		},
+
+		k4CamToast(msg) {
+			// поверх своей плитки сверху по центру, поля 12 (ничего не закрывает: «Вы» и кнопки плитки внизу); без плитки — у панели
+			const tile = [...document.querySelectorAll('#call-container .localVideoContainer')].map((el) => el.getBoundingClientRect()).find((t) => t.width > 0 && t.height > 0)
+			const r = this.$el.getBoundingClientRect()
+			this.k4CamPos = tile
+				? { top: (tile.top + 12) + 'px', left: (tile.left + tile.width / 2) + 'px', maxWidth: (tile.width - 24) + 'px' }
+				: r.top > innerHeight / 2 ? { bottom: (innerHeight - r.top + 12) + 'px' } : { top: (r.bottom + 12) + 'px' }
+			this.k4CamMsg = msg
+			clearTimeout(this.k4CamTimer)
+			this.k4CamTimer = setTimeout(() => {
+				this.k4CamMsg = ''
+			}, 4000)
 		},
 
 		handleVideoInputIdChange(videoInputId) {
@@ -277,6 +320,24 @@ export default {
 </script>
 
 <style scoped lang="scss">
+.k4-cam-toast {
+	position: fixed;
+	left: 50%;
+	z-index: 100000;
+	transform: translateX(-50%);
+	width: max-content;
+	max-width: min(92vw, 520px);
+	padding: 12px 20px;
+	border-radius: 16px;
+	background: var(--k7-dng, #e5453d); // красный, как «Положить трубку» (#172)
+	color: #fff;
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.3;
+	text-align: center;
+	box-shadow: 0 10px 30px #0006;
+}
+
 .no-video-available {
 	opacity: .7;
 }

@@ -350,6 +350,8 @@ export function face(seed) {
 		lvl: 0,
 		talk: 0,
 		t: Math.random() * 100,
+		mt: Math.random() * 100, // ход вращения
+		sp: null, // скорость вращения 0..1
 		idle: 1,
 	}
 }
@@ -368,6 +370,8 @@ function ignite(f, k, delay) {
 }
 
 // один кадр: src — probe() или null (нет звука), on — микрофон включён
+const SP_RAMP = 1.2 // с: разгон/остановка облака при вкл/выкл микрофона
+
 /**
  *
  * @param g
@@ -405,14 +409,21 @@ export function draw(g, W, H, f, src, on, dt) {
 	const lvl = src && on ? src.read(f.b, f.w) : 0
 	f.lvl = lvl
 	f.t += dt
+	// NAS_CLOUD#271 (Андрей 16.11): микрофон вкл — облако вращается, выкл — стоит. sp идёт к цели с постоянной скоростью за SP_RAMP с,
+	// ход — smoothstep(sp): разгон и остановка одинаково плавные, с нуля (#172: экспонента давала ~60% в первый же кадр).
+	// Угол копится из хода (mt), а не считается от времени: при переключении нет скачка и сброса фазы
+	f.sp ??= on ? 1 : 0
+	f.sp += Math.max(-dt / SP_RAMP, Math.min(dt / SP_RAMP, (on ? 1 : 0) - f.sp))
+	const ease = f.sp * f.sp * (3 - 2 * f.sp)
+	f.mt += dt * ease
 	f.talk += ((lvl > 0.45 ? 1 : 0) - f.talk) * Math.min(1, dt * 5)
 	for (let k = 0; k < NB; k++) {
 		f.d[k] = Math.max(f.b[k], f.d[k] - dt * 2.2)
 	}
 	const { nodes, links, nb, core } = f.g
 	// вспышки: от ядра наружу по связям; говорит — часто, молчит — изредка «думает»
-	f.idle -= dt
-	const rate = on ? lvl * lvl * 9 : 0
+	f.idle -= dt * ease // пока стоял, «думать» не копилось — при включении нет мгновенной вспышки
+	const rate = on ? lvl * lvl * 9 * ease : 0
 	if (Math.random() < rate * dt || (on && f.idle < 0)) {
 		ignite(f, Math.random() < 0.3 ? Math.floor(Math.random() * nodes.length) : core[Math.floor(Math.random() * core.length)], 0)
 		f.idle = 0.8 + Math.random() * 4
@@ -464,17 +475,17 @@ export function draw(g, W, H, f, src, on, dt) {
 	const R = Math.min(W * 0.3, H * 0.27)
 	const cx = W / 2
 	const cy = H * 0.44
-	const a = f.t * f.spin * (on ? 1 : 0.5) + Math.sin(f.t * 0.31 + f.bok[0].ph) * 0.5
+	const a = f.mt * f.spin + Math.sin(f.mt * 0.31 + f.bok[0].ph) * 0.5
 	const ca = Math.cos(a)
 	const sa = Math.sin(a)
-	const tl = f.tilt + Math.sin(f.t * 0.23) * 0.08
+	const tl = f.tilt + Math.sin(f.mt * 0.23) * 0.08
 	const ct = Math.cos(tl)
 	const st = Math.sin(tl)
 	const k = R / 60
-	const dim = on ? 1 : 0.45
+	const dim = 0.45 + 0.55 * ease
 	const P = nodes.map((n, i) => {
 		const e = E[i]
-		const o = f.o[i] + Math.sin(f.t * 1.3 + n.ph) * 0.015
+		const o = f.o[i] + Math.sin(f.mt * 1.3 + n.ph) * 0.015
 		const x = n.p[0] + n.u[0] * o
 		const y = n.p[1] + n.u[1] * o
 		const z = n.p[2] + n.u[2] * o
@@ -547,7 +558,8 @@ export function draw(g, W, H, f, src, on, dt) {
 		g.arc(x, y, k * (0.9 + b * 1.1) * s, 0, 6.283)
 		g.fill()
 	}
-	for (let n = (on ? 5 + lvl * 60 : 1) * dt; n > 0; n--) {
+	// фоновые искры 1/с стоя и 5/с на ходу — по тому же разгону, что и вращение (иначе при включении облако «вскипает» сразу); голос — сразу
+	for (let n = (1 + 4 * ease + lvl * 60) * dt; n > 0; n--) {
 		if (Math.random() < n) {
 			const [i, j] = links[Math.floor(Math.random() * links.length)]
 			spark(P[i], P[j], 0.8 + lvl * 1.6)

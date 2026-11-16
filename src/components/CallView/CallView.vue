@@ -739,6 +739,7 @@ export default {
 			handler(value) {
 				k4log('view.alone', { on: !!value })
 				this.callViewStore.setIsEmptyCallView(value)
+				this.$nextTick(() => window.dispatchEvent(new Event('k7-layout'))) // ket4tec (NAS_CLOUD#172)
 			},
 		},
 	},

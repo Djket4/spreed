@@ -137,9 +137,9 @@ $glass: blur(24px) saturate(180%);
 :root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option--highlight { background: var(--k7-pill); color: var(--k7-fg); }
 :root body:has(.media-settings) .vs__dropdown-menu--floating .vs__dropdown-option--selected { font-weight: 700; color: var(--k7-acc); }
 // «Начать вызов» — капсула Слива
-:root body .media-settings .button-vue.join-call { border-radius: 999px !important; min-height: 52px; font-weight: 700; border: 0 !important; background: var(--k7-grad) !important; color: #fff !important; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent); }
+:root body .media-settings .button-vue:is(.join-call, .k4-apply) { border-radius: 999px !important; min-height: 52px; font-weight: 700; border: 0 !important; background: var(--k7-grad) !important; color: #fff !important; box-shadow: 0 8px 22px color-mix(in srgb, var(--k7-acc2) 55%, transparent); }
 // ket4tec (NAS_CLOUD#109 п.14): недоступная кнопка одинакова на телефоне и планшете — без прозрачности (сквозь неё просвечивал список)
-:root:root body .media-settings .button-vue.join-call:disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
+:root:root body .media-settings .button-vue:is(.join-call, .k4-apply):disabled { opacity: 1 !important; filter: saturate(.35) brightness(.8); }
 
 // показ экрана: поверхность плитки, а не серый фон
 #call-container .screen-share, #call-container .screen { border-radius: var(--k7-r-tile); }
@@ -314,29 +314,47 @@ $glass: blur(24px) saturate(180%);
 	#content-vue #call-container > .bottom-bar > .bottom-bar-call-controls:not(:has(.buttons-bar)) { display: none !important; }
 }
 
-/* телефон: окно проверки устройств — шторка снизу, под шапкой Стола (~110 px); всё внутри шторки, листается сама шторка */
+/* телефон: окно проверки устройств — шторка во всю высоту экрана; всё сразу без прокрутки, превью занимает остаток (NAS_CLOUD#172, Андрей 16.11) */
 @media (max-width: 500px) {
 	:root:root body .modal-wrapper:has(.media-settings) { display: flex !important; flex-direction: column; justify-content: flex-end !important; align-items: stretch !important; padding: 0 0 var(--k7-sheet-bottom, 0px) !important; }
-	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
-	// предел высоты — у самой прокрутки, не у контейнера: Safari не сжимает flex-ребёнка под max-height родителя, и листалась маска со всей шторкой
-	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: calc(var(--k7-vh, 100dvh) - 110px - var(--k7-sheet-bottom, 0px)) !important; }
-	// превью камеры — нормальной формы 16:10 (148 px сплющивало лицо, Андрей 10.11); шторка всё равно ниже шапки Стола
-	:root body .media-settings__preview { width: 100% !important; height: auto !important; aspect-ratio: 16 / 10 !important; }
+	:root:root body .modal-container:has(.media-settings) { position: relative !important; inset: auto !important; top: auto !important; transform: none !important; width: 100% !important; max-width: 100% !important; height: calc(var(--k7-vh, 100dvh) - var(--k7-sheet-bottom, 0px) - 8px) !important; max-height: none !important; margin: 0 !important; border-radius: 28px 28px var(--k7-sheet-radius-b, 0) var(--k7-sheet-radius-b, 0) !important; overflow: hidden; display: flex; flex-direction: column; }
+	// высота шторки задана — дети делят её столбиком: заголовок и настройки по размеру, превью — остаток.
+	// Прокрутка только на совсем низком экране (ниже ~520 px), когда превью уже сжато до 96 px
+	:root:root body .modal-container:has(.media-settings) .modal-container__content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: none !important; }
+	:root:root body .modal-container:has(.media-settings) .media-settings { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+	:root body .media-settings__content--mobile { flex: 1 1 auto; min-height: 0; display: flex !important; flex-direction: column; }
+	:root body .media-settings__content--mobile > .media-settings__settings { flex: 0 0 auto; }
+	// превью камеры — квадрат, как плитка в звонке (NAS_CLOUD#172; 148 px сплющивало лицо, Андрей 10.11): высота — остаток столбика, ширина по ней; не меньше 120 (по нему проверяют картинку)
+	:root body .media-settings__content--mobile .media-settings__preview { flex: 1 1 0 !important; min-height: 120px; height: auto !important; width: auto !important; max-width: 100%; aspect-ratio: 1 / 1 !important; align-self: center; }
 	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
 	:root body .media-settings__toggles { bottom: 10px; }
-	:root:root body .media-settings__toggles .button-vue { width: 48px; min-width: 48px; height: 48px; }
-	:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 48px !important; min-height: 48px !important; }
-	:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { top: 6px; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
-	:root body .media-settings { padding: 20px 16px max(20px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
-	:root body .media-settings__title { font-size: 24px; margin-bottom: 12px; }
-	:root body .media-settings__content--mobile { gap: 12px !important; }
-	:root body .media-settings__preview { margin-inline-end: 0 !important; }
+	:root:root body .media-settings__toggles .button-vue { width: 44px; min-width: 44px; height: 44px; }
+	:root:root body .media-settings :is(.media-devices-selector, .face-frame) .nc-select.v-select.select .vs__dropdown-toggle { height: 44px !important; min-height: 44px !important; }
+	:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { top: 4px; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
+	:root body .media-settings { padding: 14px 16px max(12px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
+	:root body .media-settings__title { font-size: 20px; margin-bottom: 8px; }
+	:root body .media-settings__content--mobile { gap: 6px !important; }
+	:root body .media-settings__preview { margin-inline: auto !important; }
 	:root body .media-settings .media-settings__settings { max-width: none; }
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
-	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 4px 0; }
-	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: sticky !important; inset: auto 0 12px 0 !important; z-index: 2; width: 100% !important; min-width: 0 !important; margin: 10px 0 0 !important; box-shadow: 0 0 0 10px var(--k7-bg2), 0 14px 0 10px var(--k7-bg2) !important; }
+	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 2px 0; }
+	// гость: «Придумать» — кубик с подписью в строке с полем, «Есть учётная запись? Войти» и «Введите имя» — по одной мелкой строке: высота уходит превью
+	:root body .media-settings .username-form { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 4px; }
+	:root body .media-settings .username-form__display-name { margin: 0; }
+	// поле имени — капсула 44, как списки (общая капсула облака 56, k7ui.scss блок 4): подпись с текстом — вверху мельче
+	html.k7f body .media-settings .username-form .input-field__main-wrapper:has(> .input-field__label) {
+		.input-field__input { height: 44px !important; padding-block: 17px 1px !important; }
+		.input-field__input:placeholder-shown { padding-block: 10px !important; }
+		.input-field__input:not(:placeholder-shown) + .input-field__label { inset-block-start: 4px !important; font-size: 11px !important; line-height: 13px !important; }
+	}
+	:root:root body .media-settings .username-form__dice { margin: 0 !important; height: 44px; min-height: 44px; }
+	:root body .media-settings .username-form__dice-tail { display: none; } // в строке с полем — «Придумать» (правило владельца 11.11: не голый кубик)
+	:root body .media-settings .login-info { grid-column: 1 / -1; margin: 0; padding: 2px 0 0; font-size: 12px; line-height: 16px; text-align: center; white-space: nowrap; }
+	:root body .media-settings .k4-join-hint { margin: 0; font-size: 12px; line-height: 16px; }
+	:root body .media-settings :is(.media-devices-selector__icon, .face-frame__icon) { top: 22px; }
+	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: sticky !important; inset: auto 0 12px 0 !important; z-index: 2; width: 100% !important; min-width: 0 !important; margin: 8px 0 0 !important; box-shadow: 0 0 0 10px var(--k7-bg2), 0 14px 0 10px var(--k7-bg2) !important; }
 }
 
 // светлая и тёмная тема: компоненты звонка стоят в data-theme-dark (белый текст), на светлом фоне Стола он не виден — подставляем цвет темы
@@ -407,23 +425,44 @@ $glass: blur(24px) saturate(180%);
 
 // один в звонке: своя камера крупно по центру, «Ждём остальных» и ссылка над ней (Андрей 10.11); полоска со стрелкой не нужна
 #call-container.k7-alone {
-	--k7-alone-top: 170px;
+	// до замера в main.js: заголовок 31 + зазор 18 + капсула 52 + 16; снизу #videos уже кончается над панелью
+	--k7-alone-top: 120px;
+	--k7-alone-bottom: 16px;
 	// ket4tec (NAS_CLOUD#161): заставка начинается под полосой уведомлений (--k7-call-top от main.js, как у плиток), плашка её не закрывает
 	.empty-call-view:not(.empty-call-view--small) { justify-content: flex-start !important; padding-top: var(--k7-call-top, 96px) !important; z-index: 2; pointer-events: none; }
 	.empty-call-view .empty-call-view__link { pointer-events: auto; }
+	// NAS_CLOUD#172 (16.11): «Ждём остальных» и «Отправить ссылку» — одной компактной строкой, место отдано плитке
+	.empty-call-view:not(.empty-call-view--small):not(.empty-call-view--sidebar) {
+		// сверху без полосы под плашки: плашка ложится поверх строки на свои секунды, сцена не сдвигается (её высота не входит в отступ)
+		flex-flow: row wrap !important; align-items: center !important; align-content: flex-start; justify-content: center !important; gap: 6px 12px !important; padding: var(--k7-call-top0, 36px) 16px 0 !important;
+		// телефон: строка по краям плитки (16 | 16): текст от левого края, «Отправить ссылку» к правому (#172)
+		@media (max-width: 600px) { justify-content: space-between !important; }
+		h2 { font-size: 17px; line-height: 40px; white-space: nowrap; }
+		.empty-call-view__link .button-vue__wrapper { padding: 0 !important; }
+		.empty-call-view__link .button-vue__text { font-size: 14px !important; padding: 0 !important; margin: 0 !important; }
+		.emptycontent-additional { flex-basis: 100%; text-align: center; font-size: 13px; }
+		.empty-call-view__link.button-vue { --default-clickable-area: 32px; margin: 0 !important; height: 40px !important; min-height: 40px !important; padding: 0 14px 0 8px !important; font-size: 14px; box-shadow: 0 4px 12px color-mix(in srgb, var(--k7-acc2) 45%, transparent) !important; }
+	}
 	#videos .video__promoted { display: none !important; }
-	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px 96px !important; box-sizing: border-box; background: none !important; }
+	// плитки тоже от строки без полосы плашек: плашка поверх, плитка не прыгает на 60 px на её 5 секунд (#172)
+	#videos { top: var(--k7-call-top0, var(--top-bar-height)); height: calc(100% - (var(--k7-call-top0, var(--top-bar-height)) + var(--bottom-bar-height))); }
+	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px var(--k7-alone-bottom) !important; box-sizing: border-box; background: none !important; }
 	.grid-main-wrapper .stripe-controls-position { display: none !important; }
 	:is(.videos-wrapper--stripe, .stripe-wrapper, .stripe-wrapper > .grid) { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; background: none !important; overflow: visible !important; }
 	.grid-main-wrapper.overlap { container-type: size; }
-	// ket4tec (NAS_CLOUD#159): своя камера — квадрат по центру свободного места
-	.stripe-wrapper .grid > .localVideoContainer { position: relative !important; inset: auto !important; flex: none !important; width: min(100cqw, 100cqh) !important; height: min(100cqw, 100cqh) !important; aspect-ratio: 1 !important; margin: 0 !important; }
+	// ket4tec (NAS_CLOUD#159, #172 16.11): своя камера — во всю ширину (поля 16) и всю высоту между строкой «Ждём» и панелью;
+	// на широком экране — квадрат во всю высоту (кадр камеры квадратный, шире — резало бы лицо сверху и снизу)
+	.stripe-wrapper .grid > .localVideoContainer { position: relative !important; inset: auto !important; flex: none !important; width: min(100cqw, 100cqh) !important; height: 100cqh !important; aspect-ratio: auto !important; margin: 0 !important; }
+	@media (max-width: 600px) { .stripe-wrapper .grid > .localVideoContainer { width: 100cqw !important; } }
 }
 
 // ket4tec (NAS_CLOUD#159): камеры — квадраты (решение владельца 12.11); показ экрана и доска — в своих пропорциях
 // крупный кадр камеры (закреплённый, говорящий): квадрат по центру главной области
 #call-container .video__promoted { container-type: size; }
 #call-container .video__promoted > .video-container-big { position: absolute !important; inset: 0 !important; margin: auto !important; padding: 0 !important; width: 100cqmin !important; height: 100cqmin !important; max-width: none !important; }
+// кадр камеры заполняет квадрат без полей: «Выкл» и откат дают широкий кадр, он режется по центру (NAS_CLOUD#172); обёртка VideoVue не сжимается по пропорции кадра
+#call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) { width: 100% !important; height: 100% !important; margin: 0 !important; }
+#call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) > video { object-fit: cover; object-position: center; }
 // лента (в том числе «Вы»): квадраты высотой с ленту, листается пальцем и колесом
 #call-container .grid-main-wrapper:not(.is-grid) .grid { display: flex !important; gap: var(--grid-gap); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 #call-container .grid-main-wrapper:not(.is-grid) .grid::-webkit-scrollbar { display: none; }
@@ -620,8 +659,12 @@ body:has(#call-container.k4-selflost) :is(.top-bar--in-call, .app-sidebar__toggl
 }
 
 /* ket4tec (NAS_CLOUD#271): камера вкл/выкл — проявление и угасание за 1 с поверх облака (k4fade.js) */
-#call-container .videoWrapper.k4-vfade { position: absolute !important; inset: 0; z-index: 2; opacity: 0; transition: opacity 1s ease; background: transparent !important; }
-#call-container .videoWrapper.k4-vfade.k4-vfade--on { opacity: 1; }
-#call-container .videoWrapper.k4-vfade video { background: transparent !important; }
+// обёртка всё время в одном слое (iOS: смена position в момент перехода давала пустой кадр); облако под ней — z-index -1 внутри плитки,
+// подписи и значки плитки идут в DOM после обёртки и остаются над ней. Кривая ровная: ease проявлял за ~0,3 с
+#call-container :is(.localVideoContainer, .video-container) { isolation: isolate; }
+#call-container :is(.localVideoContainer, .video-container) > .avatar-container { z-index: -1; }
+#call-container .videoWrapper.k4-vf:not(.presenter-overlay) { position: absolute !important; inset: 0; opacity: 0; transition: opacity 1s cubic-bezier(.4, 0, .6, 1); background: transparent !important; }
+#call-container .videoWrapper.k4-vf.k4-vf--on { opacity: 1; }
+#call-container .videoWrapper.k4-vf video { background: transparent !important; }
 #call-container .videoWrapper .k4-vsnap { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 #call-container .videoWrapper .k4-vsnap.video--fit { object-fit: contain; }

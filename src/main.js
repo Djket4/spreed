@@ -63,10 +63,22 @@ document.documentElement.classList.add('k7f')
 		const stackH = Math.max(shown ? 112 : 52, stack ? stack.getBoundingClientRect().height : 0)
 		root.style.setProperty('--k7-toast-top', Math.round(bottom + 8) + 'px')
 		root.style.setProperty('--k7-call-top', Math.round(bottom - box.getBoundingClientRect().top + 8 + stackH + 8) + 'px')
+		root.style.setProperty('--k7-call-top0', Math.round(bottom - box.getBoundingClientRect().top + 8) + 'px') // без полосы плашек: «один в звонке» — плашка поверх, сцена не ездит (#172)
 		root.style.setProperty('--k7-stack-bottom', Math.round(bottom + 8 + stackH + 8) + 'px') // верх окон на телефоне (k7ui.scss)
+		// ket4tec (NAS_CLOUD#172, iPhone владельца 16.11): один в звонке — своя камера самым большим квадратом между «Отправить ссылку»
+		// и панелью. Отступы по факту: на iPhone шапка выше, и постоянные 170/96 px оставляли плитку ~130 px
+		const link = box.classList.contains('k7-alone') && box.querySelector('.empty-call-view__link')
+		const vids = link && document.getElementById('videos')
+		const panel = vids && box.querySelector(':scope > .bottom-bar')
+		if (vids && link.offsetHeight) {
+			const v = vids.getBoundingClientRect()
+			box.style.setProperty('--k7-alone-top', Math.max(16, Math.round(link.getBoundingClientRect().bottom - v.top + 16)) + 'px')
+			box.style.setProperty('--k7-alone-bottom', Math.max(16, Math.round(v.bottom - (panel ? panel.getBoundingClientRect().top : v.bottom) + 16)) + 'px')
+		}
 	}
 	setInterval(update, 500)
 	window.addEventListener('resize', update)
+	window.addEventListener('k7-layout', update) // CallView: остался один — меряем сразу, а не через до 500 мс (плитка прыгала дважды)
 }
 // ket4tec: шторки не уходят под нижнюю панель Safari. --k7-vv-gap — сколько низа страницы закрыто (visualViewport),
 // html.k7-ios-bar — iPhone в Safari (не на экране «Домой»). Развёрнутая панель iOS 26 стоит под страницей (вьюпорт кончается над ней),

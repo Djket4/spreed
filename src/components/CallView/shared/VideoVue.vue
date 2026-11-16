@@ -15,8 +15,8 @@
 		@click="onTileClick">
 		<div
 			v-show="fade.state.shown"
-			:class="[videoWrapperClass, { 'k4-vfade': !fade.state.full, 'k4-vfade--on': fade.state.opaque }]"
-			class="videoWrapper"
+			:class="[videoWrapperClass, { 'k4-vf--on': fade.state.opaque }]"
+			class="videoWrapper k4-vf"
 			:style="videoWrapperStyle">
 			<video
 				ref="video"

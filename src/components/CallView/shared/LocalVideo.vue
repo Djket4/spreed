@@ -19,8 +19,8 @@
 
 		<div
 			v-show="!screenshotModeUrl && fade.state.shown"
-			class="videoWrapper"
-			:class="{ 'k4-vfade': !fade.state.full, 'k4-vfade--on': fade.state.opaque }"
+			class="videoWrapper k4-vf"
+			:class="{ 'k4-vf--on': fade.state.opaque }"
 			:style="videoWrapperStyle">
 			<video
 				id="localVideo"
@@ -85,7 +85,7 @@
 </template>
 
 <script>
-import { showError, showInfo } from '@nextcloud/dialogs'
+import { showInfo } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { inject, ref } from 'vue'
@@ -278,10 +278,6 @@ export default {
 			}
 		},
 
-		localStreamVideoError() {
-			return this.localMediaModel.attributes.localStream && this.localMediaModel.attributes.localStreamRequestVideoError
-		},
-
 		hasLocalVideo() {
 			return this.localMediaModel.attributes.videoEnabled
 		},
@@ -327,27 +323,8 @@ export default {
 			this._setLocalStream(localStream)
 		},
 
-		localStreamVideoError: {
-			immediate: true,
-			handler(error) {
-				if (error) {
-					if (error.name === 'NotAllowedError') {
-						this.notificationHandle = showError(t('spreed', 'Access to camera was denied'))
-					} else if (error.name === 'NotReadableError' || error.name === 'AbortError') {
-						// when camera in use, Chrome gives NotReadableError, Firefox gives AbortError
-						this.notificationHandle = showError(t('spreed', 'Error while accessing camera: It is likely in use by another program'), {
-							timeout: 5000,
-						})
-					} else {
-						console.error('Error while accessing camera: ', error.message, error.name)
-						this.notificationHandle = showError(t('spreed', 'Error while accessing camera'), {
-							timeout: 5000,
-						})
-					}
-				}
-			},
-		},
-
+		// ket4tec NAS_CLOUD#172: ошибку камеры при входе не показываем — входим с выключенной камерой (правило 04.11);
+		// сообщение даёт кнопка камеры по нажатию (LocalVideoControlButton)
 	},
 
 	mounted() {
