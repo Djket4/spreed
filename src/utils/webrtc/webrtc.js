@@ -656,6 +656,9 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 
 	signaling.on('message', function(message) {
 		if (!localUserInCall) {
+			if (message.type === 'k4move') {
+				return // ket4tec (NAS_CLOUD#177): перенос звонка слушает useMove и вне звонка («Вернуть сюда»), тип не трогать
+			}
 			console.debug('Message received when not in the call, ignore', message.type, message)
 
 			message.type = 'message-to-ignore'
