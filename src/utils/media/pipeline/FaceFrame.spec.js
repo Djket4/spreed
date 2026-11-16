@@ -15,7 +15,7 @@ describe('FaceFrame logic', () => {
 		expect(t.cx).toBeCloseTo(0.225)
 	})
 	test('авто: далёкое лицо приближается, близкое остаётся 1×', () => {
-		expect(computeTarget([{ x: 0.45, y: 0.4, w: 0.08, h: 0.14 }], 0.5).zoom).toBeGreaterThan(1.8)
+		expect(computeTarget([{ x: 0.45, y: 0.4, w: 0.08, h: 0.14 }], 0.5).zoom).toBeGreaterThan(1.6)
 		expect(computeTarget([{ x: 0.3, y: 0.1, w: 0.4, h: 0.7 }], 0.5).zoom).toBe(1)
 	})
 	test('NAS_CLOUD#232: «Дальность» — ближе крупнее, до потолка 3×', () => {
@@ -26,6 +26,15 @@ describe('FaceFrame logic', () => {
 		expect(far).toBeLessThan(mid)
 		expect(mid).toBeLessThan(near)
 		expect(computeTarget([{ x: 0.45, y: 0.45, w: 0.05, h: 0.07 }], 1).zoom).toBe(3)
+	})
+	test('NAS_CLOUD#232: «Дальность» 0 — весь кадр, 1 — голова во весь квадрат, шаги заметные', () => {
+		const face = [{ x: 0.42, y: 0.3, w: 0.14, h: 0.25 }] // крупное лицо, как с веб-камеры 1080p
+		const z = [0, 0.25, 0.5, 0.75, 1].map((r) => computeTarget(face, r).zoom)
+		expect(z[0]).toBe(1)
+		expect(z[4]).toBeCloseTo(1 / (0.25 * 1.9))
+		for (let i = 1; i < 5; i++) {
+			expect(z[i] / z[i - 1]).toBeGreaterThan(1.15)
+		}
 	})
 	test('мёртвая зона: малый сдвиг не двигает окно', () => {
 		const s = { cx: 0.5, cy: 0.5, zoom: 2 }

@@ -30,8 +30,8 @@ const STATS_LOG_MS = 5000
 const LOST_AFTER_MS = 2000
 // Подстройка «Авто» (рамка детектора — лоб..подбородок, без макушки и шеи):
 const AUTO_MAX_ZOOM = 3 // потолок приближения (#232: было 2.2, «Ближе» упиралось в него)
-const AUTO_FACE_SPAN_W = 3 // окно по ширине = ширина рамки * это (было 2.6)
-const AUTO_FACE_SPAN_H = 3.4 // окно по высоте = высота рамки * это: запас на макушку и подбородок (было 2.6)
+const AUTO_FACE_TIGHT_W = 1.8 // «ближе» до упора: окно по ширине = ширина рамки * это
+const AUTO_FACE_TIGHT_H = 1.9 // «ближе» до упора: окно по высоте = высота рамки * это — макушка и подбородок ещё в кадре
 const AUTO_HEAD_SHIFT = 0.12 // центр окна выше центра рамки на долю высоты рамки (макушка)
 
 let level = 'auto' // ket4tec v7: кадр по лицу включён по умолчанию (Андрей 10.11)
@@ -126,11 +126,10 @@ export function computeTarget(faces, r = range) {
 	const y1 = Math.min(...faces.map((f) => f.y))
 	const x2 = Math.max(...faces.map((f) => f.x + f.w))
 	const y2 = Math.max(...faces.map((f) => f.y + f.h))
-	// окно должно вместить рамку по ширине и по высоте (с запасом); дальность: запас ×1.5 (дальше) .. ×0.6 (ближе)
-	const k = 1.5 - 0.9 * r
-	const needW = (x2 - x1) * AUTO_FACE_SPAN_W * k
-	const needH = (y2 - y1) * AUTO_FACE_SPAN_H * k
-	const zoom = 1 / Math.max(needW, needH, 1 / AUTO_MAX_ZOOM)
+	// ket4tec (NAS_CLOUD#232): «Дальность» 0 — весь кадр (1×), 1 — голова во весь квадрат (до потолка); между — равные шаги в разах.
+	// Было: запас ×1.5..×0.6 от «обычного» окна — на крупном лице 0, 0.25 и 0.5 упирались в 1× и почти не различались
+	const zMax = Math.min(AUTO_MAX_ZOOM, 1 / Math.max((x2 - x1) * AUTO_FACE_TIGHT_W, (y2 - y1) * AUTO_FACE_TIGHT_H, 1e-3))
+	const zoom = Math.max(1, zMax) ** r
 	const shift = (y2 - y1) * AUTO_HEAD_SHIFT
 	return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2 - shift, zoom: Math.max(1, zoom) }
 }
@@ -526,7 +525,7 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			const target = computeTarget(faces)
 			if (target) {
-				if (faces.length === 1) {
+				if (faces.length === 1 && range > 0) { // «Дальность» 0 — весь кадр, без доводки к центру
 					// ket4tec (NAS_CLOUD#172): лицо у края — квадрат сужается (до 1.5×), чтобы оно встало в центр плитки
 					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
 				}
