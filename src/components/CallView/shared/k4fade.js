@@ -21,6 +21,25 @@ function hasPicture(v) {
 	}
 }
 
+// холст с текущим кадром поверх <video> (тот же класс и зеркало); null — кадра нет или он чёрный
+function snapshot(v) {
+	if (!v.videoWidth || v.readyState < 2 || !hasPicture(v)) {
+		return null
+	}
+	try {
+		const c = document.createElement('canvas')
+		c.width = v.videoWidth
+		c.height = v.videoHeight
+		c.getContext('2d').drawImage(v, 0, 0)
+		c.className = v.className + ' k4-vsnap'
+		c.style.transform = v.style.transform
+		v.after(c)
+		return c
+	} catch (e) {
+		return null
+	}
+}
+
 export function useK4VideoFade() {
 	// shown — обёртка видео на экране; opaque — непрозрачна; full — проявилась, облако под ней не нужно
 	const state = reactive({ shown: false, opaque: false, full: false })
@@ -43,10 +62,14 @@ export function useK4VideoFade() {
 			if (!state.shown) {
 				return
 			}
-			getVideo()?.pause()
+			const v = getVideo()
+			v?.pause()
+			// выключенный трек и подмена трека сразу дают чёрное — гаснет снимок последнего кадра
+			const snap = v && snapshot(v)
 			state.opaque = false
 			state.full = false
 			later(t, () => {
+				snap?.remove()
 				state.shown = false
 				getVideo()?.play()?.catch(() => {})
 			})
