@@ -4,8 +4,9 @@
 // ket4tec (NAS_CLOUD#113): тот же пользователь открыл звонок второй раз (вкладка/устройство): спросить и перенести звонок.
 // Транспорт: сообщения сигналинга HPB { type:'k4move', v:2, op, id } конкретной сессии (recipient session), протокол — у moveHere.
 import axios from '@nextcloud/axios'
-import { getDialogBuilder, showInfo } from '@nextcloud/dialogs'
+import { getDialogBuilder, showError, showInfo } from '@nextcloud/dialogs'
 import { generateOcsUrl, generateUrl } from '@nextcloud/router'
+import { fetchPeers } from '../../../services/callsService.ts'
 import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useSessionStore } from '../../../stores/session.ts'
@@ -62,52 +63,70 @@ function hpb() {
 	return s && typeof s.doSend === 'function' ? s : null
 }
 
-// Протокол переноса v2 (NAS_CLOUD#177). Принимающая B → исходная A: offer(id) → A: accept(id) | busy(id).
-// accept: A в состоянии «источник» до конца своего выхода; любой новый offer — busy.
-// B входит → joined(id) → A выходит (leaveOnce) → moved(id); выход A не удался → failed(id), B выходит сама.
-// B не вошла → cancel(id), A остаётся. A не дождалась joined за JOIN_WAIT → cancel(id), A остаётся.
-// B слушает cancel/failed до moved или до JOIN_WAIT + LATE_CANCEL от accept; на них выходит (leaveOnce).
+// Протокол переноса v2 (NAS_CLOUD#177). Истина — у сервера (список участников звонка), сообщения только будят.
+// Принимающая B → исходная A: offer(id, sid — Nextcloud-сессия B) → A: accept(id) | busy(id).
+// B после accept входит и шлёт joined(id). Сама B не выходит никогда: худший исход — две мои сессии в звонке, ноль — нет.
+// A выходит, только когда сервер показал сессию sid в звонке (опрос до JOIN_WAIT, joined — проверить сразу).
+// Срок вышел — A остаётся в звонке, роль снята; ещё LATE_WAIT следит за поздним входом B и тогда выходит (добивание).
+// Свой выход A проверяет по серверу: своей сессии в звонке нет — moved(id) и окну moved; иначе ошибка, moved не шлёт.
 // Нет ответа v2 за ACCEPT_WAIT (старая исходная) — B НЕ входит: «Обновите страницу».
-// v1 `take` от старой принимающей (боевой #113): A выходит сразу, как старый код, и шлёт окну moved.
+// v1 `take` от старой принимающей (боевой #113): A выходит сразу, как старый код, выход проверяет по серверу.
 // Одна сессия — одна роль: пока идёт попытка как получатель, offer к ней — busy, и наоборот.
 const V = 2
-/** Сколько исходная сессия ждёт `joined` после accept; столько же принимающая ждёт свой вход. */
+/** Сколько исходная держит роль и ждёт входа получателя по серверу; потом остаётся в звонке. */
 export const JOIN_WAIT = 30000
 /** Сколько принимающая ждёт accept/busy; молчание — перенос отменяется, вход не делаем. */
 export const ACCEPT_WAIT = 5000
-/** Запас принимающей сверх JOIN_WAIT исходной: столько ещё слушает cancel. */
-export const LATE_CANCEL = 5000
+/** Сколько исходная ещё следит за поздним входом получателя после JOIN_WAIT. */
+export const LATE_WAIT = 30000
+/** Шаг опроса списка участников звонка. */
+export const POLL = 1000
 
 let seq = 0 // номер последней попытки получателя: старая попытка после новой ничего не делает
 let recv = null // идёт попытка как получатель (id)
-let src = null // идёт перенос как источник: { from, id, t, out }
+let src = null // идёт перенос как источник: { from, id, sid, until, out }
 let leaving = null
 
 /**
  * @param {string[]} sids кому
- * @param {string} op offer | accept | busy | joined | moved | failed | cancel
+ * @param {string} op offer | accept | busy | joined | moved
  * @param {string} id перенос
+ * @param {object} extra доп. поля (sid у offer)
  */
-function sendOp(sids, op, id) {
+function sendOp(sids, op, id, extra = {}) {
 	const s = hpb()
-	sids.forEach((sid) => s?.doSend({ type: 'message', message: { recipient: { type: 'session', sessionid: sid }, data: { type: 'k4move', v: V, op, id } } }))
+	sids.forEach((sid) => s?.doSend({ type: 'message', message: { recipient: { type: 'session', sessionid: sid }, data: { type: 'k4move', v: V, op, id, ...extra } } }))
 }
 
 const isOp = (d) => d?.type === 'k4move' && d.v === V && typeof d.from === 'string' && typeof d.id === 'string' && typeof d.op === 'string'
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
+ * Участники звонка — по серверу.
+ *
+ * @param {string} token комната
+ * @return {Promise<object[]|null>} CallPeer[]; null — сервер не ответил
+ */
+export async function peersInCall(token) {
+	try {
+		return (await fetchPeers(token)).data.ocs.data
+	} catch (e) {
+		return null
+	}
+}
+
+/**
  * Выход из звонка, один на всех: параллельные вызовы ждут тот же промис.
  *
  * @param {string} token комната
- * @return {Promise<boolean>} true — после выхода я не в звонке
+ * @return {Promise<void>}
  */
 export function leaveOnce(token) {
 	if (!leaving) {
 		leaving = (store.getters.isInCall(token)
 			? Promise.resolve().then(() => store.dispatch('leaveCall', { token, participantIdentifier: useActorStore().participantIdentifier, all: false }))
 			: Promise.resolve()
-		).catch(() => {}).then(() => !store.getters.isInCall(token)).finally(() => {
+		).catch(() => {}).finally(() => {
 			leaving = null
 		})
 	}
@@ -115,12 +134,32 @@ export function leaveOnce(token) {
 }
 
 /**
- * Принимающая сторона: offer, ответ A, вход здесь, joined; на cancel/failed от A — выйти (или не входить).
+ * Исходная: выйти и проверить выход по серверу. Только тогда moved получателю и окну приложения.
+ *
+ * @param {string} from куда ушёл звонок
+ * @param {string|null} id перенос (null — v1)
+ * @param {string} token комната
+ * @return {Promise<boolean>} true — сервер подтвердил: меня в звонке нет
+ */
+export async function leaveVerified(from, id, token) {
+	await leaveOnce(token)
+	const list = await peersInCall(token)
+	if (!list || list.some((p) => p.sessionId === useActorStore().sessionId)) { // не узнали — тоже не подтверждено
+		showError('Не удалось выйти из звонка в этой вкладке: звонок идёт в двух местах. Выйдите здесь вручную.')
+		return false
+	}
+	id && sendOp([from], 'moved', id)
+	moved(from, token)
+	return true
+}
+
+/**
+ * Принимающая сторона: offer, ответ A, вход здесь, joined. Сама не выходит никогда — решает A по серверу.
  *
  * @param {string[]} sids исходные сессии
  * @param {string} token комната
  * @param {Function} join войти здесь без проверки
- * @return {Promise<string>} joined | busy | stale | failed | cancelled | expired | superseded
+ * @return {Promise<string>} joined | busy | stale | superseded
  */
 export async function moveHere(sids, token, join) {
 	if (src) {
@@ -133,39 +172,26 @@ export async function moveHere(sids, token, join) {
 	const live = () => seq === n
 	recv = id
 	let from = null // ответившая исходная
-	let state = 'offer' // offer → busy | accept → moved | cancel | failed
+	let state = 'offer' // offer → accept | busy
 	let wake = () => {}
-	let told = false
-	const out = () => {
-		told || showInfo('Перенос отменён: звонок остался в другой вкладке')
-		told = true
-		return leaveOnce(token)
-	}
 	const onMsg = (d) => {
-		if (!live() || !isOp(d) || d.id !== id || !sids.includes(d.from) || (from && d.from !== from)) {
-			return
-		}
-		if (state === 'offer' && (d.op === 'accept' || d.op === 'busy')) {
+		if (live() && state === 'offer' && isOp(d) && d.id === id && sids.includes(d.from) && (d.op === 'accept' || d.op === 'busy')) {
 			from = d.from
 			state = d.op
 			wake()
-		} else if (state === 'accept' && (d.op === 'moved' || d.op === 'cancel' || d.op === 'failed')) {
-			state = d.op
-			wake()
-			d.op !== 'moved' && store.getters.isInCall(token) && out()
 		}
 	}
-	const until = (ms) => new Promise((resolve) => {
-		const t = setTimeout(resolve, ms)
-		wake = () => {
-			clearTimeout(t)
-			resolve()
-		}
-	})
 	sig?.on('message', onMsg)
 	try {
-		sendOp(sids, 'offer', id)
-		await until(ACCEPT_WAIT)
+		sendOp(sids, 'offer', id, { sid: useActorStore().sessionId })
+		await new Promise((resolve) => {
+			const t = setTimeout(resolve, ACCEPT_WAIT)
+			wake = () => {
+				clearTimeout(t)
+				resolve()
+			}
+		})
+		sig?.off('message', onMsg)
 		if (!live()) {
 			return 'superseded'
 		}
@@ -174,39 +200,11 @@ export async function moveHere(sids, token, join) {
 			return 'busy'
 		}
 		if (state !== 'accept') {
-			sendOp(sids, 'cancel', id) // вдруг accept ещё в пути
 			showInfo('Обновите страницу в браузере, где идёт звонок, и повторите перенос')
 			return 'stale'
 		}
-		const deadline = Date.now() + JOIN_WAIT + LATE_CANCEL
-		const joining = Promise.resolve().then(join).catch(() => {})
-		const inTime = await Promise.race([joining.then(() => true), sleep(JOIN_WAIT).then(() => false)])
-		if (!live()) {
-			sendOp([from], 'cancel', id) // освободить исходную; звонок не трогаем — он уже у новой попытки
-			return 'superseded'
-		}
-		if (!inTime) {
-			sendOp([from], 'cancel', id)
-			joining.then(() => live() && leaveOnce(token)) // вход всё-таки завершится — выйти
-			await leaveOnce(token)
-			return 'expired'
-		}
-		if (state === 'cancel' || state === 'failed') {
-			await out()
-			return state === 'cancel' ? 'cancelled' : 'failed'
-		}
-		if (!store.getters.isInCall(token)) {
-			sendOp([from], 'cancel', id)
-			return 'failed'
-		}
-		sendOp([from], 'joined', id)
-		while (state === 'accept' && Date.now() < deadline) {
-			await until(deadline - Date.now())
-		}
-		if (live() && (state === 'cancel' || state === 'failed')) {
-			await out()
-			return state === 'cancel' ? 'cancelled' : 'failed'
-		}
+		await Promise.resolve().then(join).catch(() => {})
+		sendOp([from], 'joined', id) // разбудить A; вошла ли я — A проверит по серверу
 		return 'joined'
 	} finally {
 		sig?.off('message', onMsg)
@@ -274,29 +272,46 @@ function moved(from, token) {
 
 /**
  * Слушатель переноса — пока я в звонке (CallView), исходная сторона протокола (см. moveHere).
- * Роль «источник» от accept до конца выхода; выходит только на joined активного переноса или на v1 take.
+ * Выходит только когда сервер показал получателя в звонке, или на v1 take.
  *
  * @return {Function} отписка
  */
 export function watchMove() {
 	let sig = null
-	const drop = () => {
-		clearTimeout(src?.t)
-		src = null
-	}
-	const leave = (from, id, token) => {
-		const m = src
-		leaveOnce(token).then((ok) => {
-			if (src === m) {
-				src = null
-			}
-			if (!ok) {
-				id && sendOp([from], 'failed', id) // звонок остался здесь — получатель выходит
-				return
-			}
-			id && sendOp([from], 'moved', id)
-			moved(from, token)
+	let alive = true
+	const tries = new Map() // принятые переносы: id → { from, id, sid, until }
+	const finish = (t, token) => {
+		if (src?.out) {
+			return
+		}
+		src = { ...t, out: true } // роль держим до конца выхода
+		tries.clear()
+		leaveVerified(t.from, t.id, token).finally(() => {
+			src = null
 		})
+	}
+	const check = async (t, token) => {
+		const a = useActorStore()
+		const list = await peersInCall(token)
+		if (alive && tries.get(t.id) === t && t.sid !== a.sessionId && list?.some((p) => p.sessionId === t.sid && p.actorType === a.actorType && p.actorId === a.actorId)) {
+			finish(t, token)
+		}
+	}
+	const follow = async (t, token) => {
+		const end = t.until + LATE_WAIT
+		while (alive && tries.get(t.id) === t && Date.now() < end) {
+			if (src === t && Date.now() >= t.until) {
+				src = null // срок вышел: звонок остаётся здесь, новые переносы можно; поздний вход ещё добьём
+			}
+			await check(t, token)
+			await sleep(POLL)
+		}
+		if (src === t) {
+			src = null
+		}
+		if (tries.get(t.id) === t) {
+			tries.delete(t.id)
+		}
 	}
 	const onMsg = (d) => {
 		if (d?.type !== 'k4move' || typeof d.from !== 'string') {
@@ -312,57 +327,46 @@ export function watchMove() {
 		if (d.v === 1) { // старая принимающая (боевой #113): выйти сразу, как старый код
 			if (op === 'take' && !src && !recv && store.getters.isInCall(token)) {
 				src = { from, id: null, out: true }
-				leave(from, null, token)
+				leaveVerified(from, null, token).finally(() => {
+					src = null
+				})
 			}
 			return
 		}
 		if (!isOp(d)) {
 			return
 		}
-		const active = src && src.from === from && src.id === id
 		if (op === 'offer') {
 			if (src || recv) {
-				!active && sendOp([from], 'busy', id) // одна роль и один перенос за раз, включая время выхода
-			} else if (store.getters.isInCall(token)) {
-				src = { from, id, t: setTimeout(() => {
-					sendOp([from], 'cancel', id) // не дождались входа: получатель выйдет, если всё же вошёл
-					drop()
-				}, JOIN_WAIT) }
+				!(src && src.from === from && src.id === id) && sendOp([from], 'busy', id) // одна роль и один перенос за раз, включая время выхода
+			} else if (typeof d.sid === 'string' && store.getters.isInCall(token)) {
+				const t = { from, id, sid: d.sid, until: Date.now() + JOIN_WAIT }
+				src = t
+				tries.set(id, t)
 				sendOp([from], 'accept', id)
+				follow(t, token)
 			}
 			return
 		}
-		if (op === 'cancel') {
-			active && !src.out && drop()
-			return
+		const t = tries.get(id)
+		if (op === 'joined' && t && t.from === from) {
+			check(t, token) // проверить сразу, не ждать шага опроса
 		}
-		if (op !== 'joined') {
-			return
-		}
-		if (!active) {
-			sendOp([from], 'cancel', id) // поздний или чужой joined: звонок остаётся здесь, получатель выходит
-			return
-		}
-		if (src.out) {
-			return
-		}
-		clearTimeout(src.t)
-		src.out = true
-		leave(from, id, token)
 	}
 	const attach = () => {
 		sig = hpb()
 		sig?.on('message', onMsg)
 		return !!sig
 	}
-	let t = null
+	let iv = null
 	if (!attach()) { // сигналинг уже есть (вход после переноса) — слушаем сразу, иначе ждём его
-		t = setInterval(() => attach() && clearInterval(t), 2000)
+		iv = setInterval(() => attach() && clearInterval(iv), 2000)
 	}
 	return () => {
-		clearInterval(t)
+		alive = false
+		clearInterval(iv)
 		if (!src?.out) { // выход уже идёт — пусть дойдёт до moved
-			drop()
+			src = null
 		}
 		sig?.off('message', onMsg)
 	}
