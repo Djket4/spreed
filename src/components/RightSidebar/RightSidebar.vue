@@ -689,6 +689,11 @@ export default {
 .k7-guest-nochat {
 	display: none !important;
 }
+// ket4tec (NAS_CLOUD#264): кнопки нет — и места под неё в шапке звонка не держим (NcAppSidebar резервирует по body:has(.app-sidebar__toggle));
+// 8px + 8px отступа шапки = 16px, край таймера и «⋯» по краю плитки
+body:has(.app-sidebar__toggle.k7-guest-nochat) {
+	--app-sidebar-offset: 8px !important;
+}
 
 .chat-button-sidebar-toggle {
 	position: relative;

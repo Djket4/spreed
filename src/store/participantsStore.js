@@ -648,7 +648,7 @@ const actions = {
 		return false
 	},
 
-	async joinCall({ commit, getters, state }, { token, participantIdentifier, flags, silent, recordingConsent, silentFor, options }) {
+	async joinCall({ commit, dispatch, getters, state }, { token, participantIdentifier, flags, silent, recordingConsent, silentFor, options }) {
 		startK4Log(token)
 		k4log('call.join', { flags, silent })
 		calllog('join_click', { flags, silent: !!silent })
@@ -686,6 +686,10 @@ const actions = {
 		// to receive a response from POST 'apps/spreed/api/v4/call/{token}' in large calls,
 		// so should render call UI optimistically based on the signaling message
 		const isCallStarter = !getters.conversation(token)?.hasCall
+		// ket4tec (NAS_CLOUD#264): звонок начинаю я — время начала = нажатие, а не 0 до ответа сервера (таймер стоял на 00:00 и прыгал)
+		if (isCallStarter && !getters.conversation(token)?.callStartTime) {
+			dispatch('setConversationProperties', { token, properties: { callStartTime: convertToUnix(Date.now()) } })
+		}
 		const isStandaloneSignaling = getTalkConfig(token, 'signaling', 'mode') !== SIGNALING.MODE.INTERNAL
 		let hasJoinedCallOptimistically = false
 
