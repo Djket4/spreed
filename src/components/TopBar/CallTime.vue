@@ -167,6 +167,11 @@ export default {
 	},
 
 	watch: {
+		// ket4tec (NAS_CLOUD#264): время начала пришло или уточнилось — пересчитать сразу, не ждать тика
+		start() {
+			this.computeElapsedTime()
+		},
+
 		callTime(value) {
 			if (value > ONE_HOUR_MS && value < (ONE_HOUR_MS + 10000) && !this.isCallDurationHintShown) {
 				this.showCallDurationHint()
@@ -176,6 +181,7 @@ export default {
 
 	mounted() {
 		// Start the timer when mounted
+		this.computeElapsedTime() // ket4tec (NAS_CLOUD#264): первое значение сразу, а не через секунду
 		this.timer = setInterval(this.computeElapsedTime, 1000)
 	},
 
@@ -197,7 +203,7 @@ export default {
 			if (this.start === 0) {
 				return
 			}
-			this.callTime = new Date() - this.callStart
+			this.callTime = Math.max(1, new Date() - this.callStart) // ket4tec (NAS_CLOUD#264): часы сервера чуть впереди — не «-- : --» и не минус
 		},
 
 		showCallDurationHint() {

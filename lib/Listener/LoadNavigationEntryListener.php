@@ -48,7 +48,7 @@ class LoadNavigationEntryListener implements IEventListener {
 
 			return [
 				'id' => Application::APP_ID,
-				'name' => $this->l->t('Talk'),
+				'name' => 'Звонки', // ket4tec (NAS_CLOUD#264): так звонки зовутся по всему облаку; отсюда меню приложений и заголовок вкладки
 				'href' => $this->urlGenerator->linkToRouteAbsolute('spreed.Page.index'),
 				'icon' => $this->urlGenerator->imagePath(Application::APP_ID, 'app.svg'),
 				'order' => -5,

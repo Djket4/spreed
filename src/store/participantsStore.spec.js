@@ -97,6 +97,8 @@ describe('participantsStore', () => {
 		participantActivityStore = useParticipantActivityStore()
 
 		testStoreConfig = cloneDeep(participantsStore)
+		// ket4tec (NAS_CLOUD#264): действие conversationsStore — в изолированном сторе его нет, проверяем вызов
+		testStoreConfig.actions.setConversationProperties = vi.fn()
 		store = createStore(testStoreConfig)
 	})
 
@@ -803,6 +805,11 @@ describe('participantsStore', () => {
 			const promise = dispatchJoinCall()
 			expect(store.getters.isJoiningCall(TOKEN)).toBe(true)
 			expect(store.getters.isInCall(TOKEN)).toBe(false)
+			// ket4tec (NAS_CLOUD#264): таймер звонка идёт от нажатия, не ждёт ответа сервера
+			expect(testStoreConfig.actions.setConversationProperties).toHaveBeenCalledWith(expect.anything(), {
+				token: TOKEN,
+				properties: { callStartTime: expect.any(Number) },
+			})
 
 			// Act: signaling reports us in the call before the request resolves
 			EventBus.emit('signaling-users-changed', [usersChangedPayload])
@@ -824,6 +831,29 @@ describe('participantsStore', () => {
 				inCall: actualFlags,
 				participantType: PARTICIPANT.TYPE.USER,
 			}])
+		})
+
+		test('joining an ongoing call keeps the call start time from the server', () => {
+			testStoreConfig.getters.conversation = () => vi.fn().mockReturnValue({
+				token: TOKEN,
+				type: 3,
+				hasCall: true,
+				callStartTime: 1700000000,
+			})
+			store = createStore(testStoreConfig)
+			store.dispatch('addParticipant', {
+				token: TOKEN,
+				participant: {
+					attendeeId: 1,
+					sessionId: 'session-id-1',
+					participantType: PARTICIPANT.TYPE.USER,
+					inCall: PARTICIPANT.CALL_FLAG.DISCONNECTED,
+				},
+			})
+
+			dispatchJoinCall()
+
+			expect(testStoreConfig.actions.setConversationProperties).not.toHaveBeenCalled()
 		})
 
 		test('optimistic join is rolled back when the request fails', () => {

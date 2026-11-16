@@ -170,9 +170,10 @@ export function useDocumentTitle() {
 		if (IS_DESKTOP) {
 			return document.title.replace(/^Talk [-—] /, '') // ket4tec (NAS_CLOUD#161): без «Talk» и в настольном клиенте
 		}
-		const appNamePrefix = t('spreed', 'Talk') + ' - '
+		// ket4tec (NAS_CLOUD#264): пункт меню — «Звонки» (LoadNavigationEntryListener); у гостя ядро по-прежнему пишет «Talk»
+		const appNamePrefix = 'Звонки - '
 		// KET4TEC: длинное тире в заголовке («Talk — KET4TEC Cloud», #103)
-		const current = document.title.replaceAll(' — ', ' - ')
+		const current = document.title.replaceAll(' — ', ' - ').replace(/(^| - )Talk - /, '$1' + appNamePrefix)
 		let result = current
 		// If coming from a "… - Talk - …" page, keep only "Talk - …" part
 		if (current.includes(' - ' + appNamePrefix)) {

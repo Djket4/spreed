@@ -16,6 +16,7 @@ import NcActionButtonGroup from '@nextcloud/vue/components/NcActionButtonGroup'
 import NcActionCaption from '@nextcloud/vue/components/NcActionCaption'
 import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
+import NcButton from '@nextcloud/vue/components/NcButton'
 import IconEmoticonOutline from 'vue-material-design-icons/EmoticonOutline.vue'
 import IconHandBackLeft from 'vue-material-design-icons/HandBackLeft.vue'
 import IconHandBackLeftOutline from 'vue-material-design-icons/HandBackLeftOutline.vue'
@@ -164,14 +165,26 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 </script>
 
 <template>
+	<!-- ket4tec (NAS_CLOUD#264): рука поднята — отдельная кнопка на панели, повторное нажатие опускает -->
+	<NcButton
+		v-if="isHandRaised"
+		class="reaction k7-hand k7-hand-on"
+		variant="primary"
+		:title="raiseHandButtonLabel"
+		:aria-label="raiseHandButtonLabel"
+		@click="toggleHandRaised">
+		<template #icon>
+			<IconHandBackLeft :size="20" />
+		</template>
+	</NcButton>
 	<NcActions
+		v-else
 		:variant="actionsVariant"
 		:title="actionsLabel"
 		:aria-label="actionsLabel"
 		class="reaction">
 		<template #icon>
-			<IconHandBackLeft v-if="isHandRaised" :size="18" />
-			<IconEmoticonOutline v-else :size="20" />
+			<IconEmoticonOutline :size="20" />
 		</template>
 
 		<NcActionCaption v-if="hasReactionSupport" class="k7-react__title" :name="t('spreed', 'Reactions')" />
@@ -223,12 +236,18 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 	.k7-react__title { color: var(--k7-fg2); font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; text-align: center; padding: 4px 0 6px; }
 	.reaction__group .nc-button-group-content { display: grid !important; grid-template-columns: repeat(6, 1fr); gap: 8px !important; min-width: 0 !important; width: min(360px, calc(100vw - 48px)); padding: 4px 0; }
 	.reaction__button { flex: none !important; width: auto !important; }
+	// ket4tec (NAS_CLOUD#264): эмодзи по центру кружка (классы NcActionButton v9: action-button__icon, __longtext-wrapper, __name)
 	.reaction__button .action-button, .reaction__button button {
-		width: 100% !important; aspect-ratio: 1; min-width: 0; min-height: 0 !important; padding: 0 !important; border-radius: 50% !important; justify-content: center;
-		background: var(--k7-pill) !important; box-shadow: inset 0 0 0 1px var(--k7-line2); font-size: 26px; line-height: 1;
+		width: 100% !important; aspect-ratio: 1; min-width: 0; min-height: 0 !important; padding: 0 !important; border-radius: 50% !important;
+		display: flex !important; align-items: center !important; justify-content: center !important;
+		background: var(--k7-pill) !important; box-shadow: inset 0 0 0 1px var(--k7-line2); font-size: 26px !important; line-height: 1 !important;
 		transition: transform .12s ease, background .12s ease; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 	}
-	.reaction__button :is(.action-button__icon, .action-button__icon span) { font-size: 26px; line-height: 1; }
+	.reaction__button .action-button__icon {
+		position: static !important; width: 100% !important; height: 100% !important; min-width: 0 !important; display: flex !important;
+		align-items: center; justify-content: center; margin: 0 !important; padding: 0 !important; font-size: 26px; line-height: 1 !important; background: none;
+	}
+	.reaction__button :is(.action-button__longtext-wrapper, .action-button__text, .action-button__name) { display: none !important; }
 	.reaction__button :is(.action-button, button):active { transform: scale(.82); }
 	@media (hover: hover) { .reaction__button :is(.action-button, button):hover { transform: scale(1.12); background: color-mix(in srgb, var(--k7-acc) 22%, var(--k7-pill)) !important; } }
 	.raise-hand__button { margin-top: 6px; }
@@ -250,7 +269,7 @@ watch(() => props.localMediaModel.attributes.speaking, (speaking: boolean) => {
 		.v-popper__inner { border-radius: 28px 28px 0 0 !important; }
 		.v-popper__inner::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--k7-line2); margin: 8px auto 0; }
 		.reaction__group .nc-button-group-content { width: 100%; }
-		.reaction__button .action-button, .reaction__button button { font-size: 30px; }
+		.reaction__button .action-button, .reaction__button button { font-size: 30px !important; }
 	}
 }
 </style>

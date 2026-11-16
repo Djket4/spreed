@@ -426,6 +426,12 @@ export default {
 <style lang="scss" scoped>
 @use '../../assets/markdown.scss' as *;
 
+// ket4tec (NAS_CLOUD#264): гость вне звонка — в шапке только название, а оно уже крупно в центре (GuestJoinPlaceholder);
+// дубль со сдвигом от логотипа не показываем. В звонке и у вошедших шапка как была.
+.top-bar:not(.top-bar--in-call, .top-bar--authorised, .top-bar--sidebar) {
+	display: none !important;
+}
+
 .top-bar {
 	--border-width: 1px;
 	display: flex;
