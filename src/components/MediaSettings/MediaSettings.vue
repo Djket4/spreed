@@ -222,8 +222,12 @@
 						{{ t('spreed', 'Notify all participants about this call') }}
 					</NcCheckboxRadioSwitch>
 
-					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна -->
-					<p v-if="isBeforeJoinCall && isGuest && !guestNameStore.guestUserName.length" class="k4-join-hint">
+					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна; имя ввели — подсказка прячется, но место держит (#172: превью не прыгает) -->
+					<p
+						v-if="isBeforeJoinCall && isGuest"
+						class="k4-join-hint"
+						:style="guestNameStore.guestUserName.length ? { visibility: 'hidden' } : null"
+						:aria-hidden="guestNameStore.guestUserName.length ? 'true' : null">
 						Введите имя, чтобы войти
 					</p>
 					<NcButton

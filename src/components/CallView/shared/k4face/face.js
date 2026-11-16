@@ -370,6 +370,8 @@ function ignite(f, k, delay) {
 }
 
 // один кадр: src — probe() или null (нет звука), on — микрофон включён
+const SP_RAMP = 1.2 // с: разгон/остановка облака при вкл/выкл микрофона
+
 /**
  *
  * @param g
@@ -407,19 +409,21 @@ export function draw(g, W, H, f, src, on, dt) {
 	const lvl = src && on ? src.read(f.b, f.w) : 0
 	f.lvl = lvl
 	f.t += dt
-	// NAS_CLOUD#271 (Андрей 16.11): микрофон вкл — облако вращается, выкл — стоит. Ход sp плавно (~0,7 с) идёт к цели,
-	// угол копится из хода (mt), а не считается от времени: при переключении нет скачка и сброса фазы
+	// NAS_CLOUD#271 (Андрей 16.11): микрофон вкл — облако вращается, выкл — стоит. sp идёт к цели с постоянной скоростью за SP_RAMP с,
+	// ход — smoothstep(sp): разгон и остановка одинаково плавные, с нуля (#172: экспонента давала ~60% в первый же кадр).
+	// Угол копится из хода (mt), а не считается от времени: при переключении нет скачка и сброса фазы
 	f.sp ??= on ? 1 : 0
-	f.sp += ((on ? 1 : 0) - f.sp) * Math.min(1, dt * 4)
-	f.mt += dt * f.sp
+	f.sp += Math.max(-dt / SP_RAMP, Math.min(dt / SP_RAMP, (on ? 1 : 0) - f.sp))
+	const ease = f.sp * f.sp * (3 - 2 * f.sp)
+	f.mt += dt * ease
 	f.talk += ((lvl > 0.45 ? 1 : 0) - f.talk) * Math.min(1, dt * 5)
 	for (let k = 0; k < NB; k++) {
 		f.d[k] = Math.max(f.b[k], f.d[k] - dt * 2.2)
 	}
 	const { nodes, links, nb, core } = f.g
 	// вспышки: от ядра наружу по связям; говорит — часто, молчит — изредка «думает»
-	f.idle -= dt
-	const rate = on ? lvl * lvl * 9 : 0
+	f.idle -= dt * ease // пока стоял, «думать» не копилось — при включении нет мгновенной вспышки
+	const rate = on ? lvl * lvl * 9 * ease : 0
 	if (Math.random() < rate * dt || (on && f.idle < 0)) {
 		ignite(f, Math.random() < 0.3 ? Math.floor(Math.random() * nodes.length) : core[Math.floor(Math.random() * core.length)], 0)
 		f.idle = 0.8 + Math.random() * 4
@@ -478,7 +482,7 @@ export function draw(g, W, H, f, src, on, dt) {
 	const ct = Math.cos(tl)
 	const st = Math.sin(tl)
 	const k = R / 60
-	const dim = 0.45 + 0.55 * f.sp
+	const dim = 0.45 + 0.55 * ease
 	const P = nodes.map((n, i) => {
 		const e = E[i]
 		const o = f.o[i] + Math.sin(f.mt * 1.3 + n.ph) * 0.015
