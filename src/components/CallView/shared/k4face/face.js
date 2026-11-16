@@ -558,7 +558,8 @@ export function draw(g, W, H, f, src, on, dt) {
 		g.arc(x, y, k * (0.9 + b * 1.1) * s, 0, 6.283)
 		g.fill()
 	}
-	for (let n = (on ? 5 + lvl * 60 : 1) * dt; n > 0; n--) {
+	// фоновые искры 1/с стоя и 5/с на ходу — по тому же разгону, что и вращение (иначе при включении облако «вскипает» сразу); голос — сразу
+	for (let n = (1 + 4 * ease + lvl * 60) * dt; n > 0; n--) {
 		if (Math.random() < n) {
 			const [i, j] = links[Math.floor(Math.random() * links.length)]
 			spark(P[i], P[j], 0.8 + lvl * 1.6)

@@ -442,6 +442,8 @@ $glass: blur(24px) saturate(180%);
 		.empty-call-view__link.button-vue { --default-clickable-area: 32px; margin: 0 !important; height: 40px !important; min-height: 40px !important; padding: 0 14px 0 8px !important; font-size: 14px; box-shadow: 0 4px 12px color-mix(in srgb, var(--k7-acc2) 45%, transparent) !important; }
 	}
 	#videos .video__promoted { display: none !important; }
+	// плитки тоже от строки без полосы плашек: плашка поверх, плитка не прыгает на 60 px на её 5 секунд (#172)
+	#videos { top: var(--k7-call-top0, var(--top-bar-height)); height: calc(100% - (var(--k7-call-top0, var(--top-bar-height)) + var(--bottom-bar-height))); }
 	.grid-main-wrapper.overlap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; display: flex !important; align-items: center; justify-content: center; padding: var(--k7-alone-top) 16px var(--k7-alone-bottom) !important; box-sizing: border-box; background: none !important; }
 	.grid-main-wrapper .stripe-controls-position { display: none !important; }
 	:is(.videos-wrapper--stripe, .stripe-wrapper, .stripe-wrapper > .grid) { position: static !important; width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; background: none !important; overflow: visible !important; }
