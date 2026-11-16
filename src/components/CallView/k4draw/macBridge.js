@@ -41,16 +41,15 @@ export const appPost = (t) => window.webkit?.messageHandlers?.k4draw?.postMessag
  */
 export const appCallUrl = (token) => 'k4draw://call?u=' + encodeURIComponent(location.origin + '/call/' + token)
 /**
- * Открыть звонок в приложении: скрытый iframe, страница не уходит. Есть ли приложение, отсюда не узнать.
+ * Открыть звонок в приложении — как запуск «Рисовать на экране»: окно с k4draw://, Safari спросит и запустит приложение.
+ * Не iframe: CSP облака (frame-src 'self' blob:) его режет, до приложения ссылка не доходит (живая проверка 16.11).
+ * Окно остаётся about:blank, его закрываем позже: раньше нельзя, вопрос Safari живёт в этом окне.
  *
  * @param token токен беседы
  */
 export function openInApp(token) {
-	const f = document.createElement('iframe')
-	f.style.display = 'none'
-	f.src = appCallUrl(token)
-	document.body.appendChild(f)
-	setTimeout(() => f.remove(), 3000)
+	const w = window.open(appCallUrl(token), 'k4draw-call', 'popup=yes,width=380,height=170')
+	setTimeout(() => w?.close(), 20000)
 }
 
 let pop = null

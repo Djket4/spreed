@@ -622,3 +622,10 @@ body:has(#call-container.k4-selflost) :is(.top-bar--in-call, .app-sidebar__toggl
 	#content-vue .top-bar .conversation-header__text:has(.k4-shows) > :not(.title, .k4-shows) { flex-basis: 100%; }
 	#content-vue .top-bar .k4-shows { margin: 0; }
 }
+
+/* ket4tec (NAS_CLOUD#271): камера вкл/выкл — проявление и угасание за 1 с поверх облака (k4fade.js) */
+#call-container .videoWrapper.k4-vfade { position: absolute !important; inset: 0; z-index: 2; opacity: 0; transition: opacity 1s ease; background: transparent !important; }
+#call-container .videoWrapper.k4-vfade.k4-vfade--on { opacity: 1; }
+#call-container .videoWrapper.k4-vfade video { background: transparent !important; }
+#call-container .videoWrapper .k4-vsnap { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#call-container .videoWrapper .k4-vsnap.video--fit { object-fit: contain; }
