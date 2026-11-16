@@ -435,6 +435,8 @@ $glass: blur(24px) saturate(180%);
 	.empty-call-view:not(.empty-call-view--small):not(.empty-call-view--sidebar) {
 		// сверху без полосы под плашки: плашка ложится поверх строки на свои секунды, сцена не сдвигается (её высота не входит в отступ)
 		flex-flow: row wrap !important; align-items: center !important; align-content: flex-start; justify-content: center !important; gap: 6px 12px !important; padding: var(--k7-call-top0, 36px) 16px 0 !important;
+		// телефон: строка по краям плитки (16 | 16): текст от левого края, «Отправить ссылку» к правому (#172)
+		@media (max-width: 600px) { justify-content: space-between !important; }
 		h2 { font-size: 17px; line-height: 40px; white-space: nowrap; }
 		.empty-call-view__link .button-vue__wrapper { padding: 0 !important; }
 		.empty-call-view__link .button-vue__text { font-size: 14px !important; padding: 0 !important; margin: 0 !important; }

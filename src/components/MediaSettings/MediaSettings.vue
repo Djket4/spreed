@@ -175,7 +175,8 @@
 								:deviceId="videoInputId"
 								@refresh="updateDevices"
 								@update:deviceId="handleVideoInputIdChange" />
-							<FaceFrameSelector />
+							<!-- ket4tec NAS_CLOUD#172: без доступной камеры кадрировать нечего -->
+							<FaceFrameSelector v-if="!videoStreamError && devices.some((d) => d.kind === 'videoinput')" />
 							<MediaDevicesSelector
 								v-if="audioOutputSupported"
 								kind="audiooutput"

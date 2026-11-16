@@ -293,9 +293,12 @@ export default {
 		},
 
 		k4CamToast(msg) {
-			// над панелью, если она внизу экрана (телефон), иначе под ней
+			// поверх своей плитки сверху по центру, поля 12 (ничего не закрывает: «Вы» и кнопки плитки внизу); без плитки — у панели
+			const tile = [...document.querySelectorAll('#call-container .localVideoContainer')].map((el) => el.getBoundingClientRect()).find((t) => t.width > 0 && t.height > 0)
 			const r = this.$el.getBoundingClientRect()
-			this.k4CamPos = r.top > innerHeight / 2 ? { bottom: (innerHeight - r.top + 12) + 'px' } : { top: (r.bottom + 12) + 'px' }
+			this.k4CamPos = tile
+				? { top: (tile.top + 12) + 'px', left: (tile.left + tile.width / 2) + 'px', maxWidth: (tile.width - 24) + 'px' }
+				: r.top > innerHeight / 2 ? { bottom: (innerHeight - r.top + 12) + 'px' } : { top: (r.bottom + 12) + 'px' }
 			this.k4CamMsg = msg
 			clearTimeout(this.k4CamTimer)
 			this.k4CamTimer = setTimeout(() => {
@@ -325,8 +328,8 @@ export default {
 	width: max-content;
 	max-width: min(92vw, 520px);
 	padding: 12px 20px;
-	border-radius: 999px;
-	background: #4a1f1d; // плотный, как ошибки облака (k7ui.scss)
+	border-radius: 16px;
+	background: var(--k7-dng, #e5453d); // красный, как «Положить трубку» (#172)
 	color: #fff;
 	font-size: 15px;
 	font-weight: 600;
