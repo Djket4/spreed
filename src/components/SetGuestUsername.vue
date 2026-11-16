@@ -156,6 +156,8 @@ function toggleEdit() {
 			v-if="compact"
 			variant="tertiary"
 			class="username-form__dice"
+			:aria-label="t('spreed', 'Придумать имя')"
+			:title="t('spreed', 'Придумать имя')"
 			@click="guestUserName = funnyName()">
 			<template #icon>
 				<IconDice :size="20" />

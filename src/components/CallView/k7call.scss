@@ -324,8 +324,8 @@ $glass: blur(24px) saturate(180%);
 	:root:root body .modal-container:has(.media-settings) .media-settings { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 	:root body .media-settings__content--mobile { flex: 1 1 auto; min-height: 0; display: flex !important; flex-direction: column; }
 	:root body .media-settings__content--mobile > .media-settings__settings { flex: 0 0 auto; }
-	// превью камеры — квадрат, как плитка в звонке (NAS_CLOUD#172; 148 px сплющивало лицо, Андрей 10.11): высота — остаток столбика, ширина по ней
-	:root body .media-settings__content--mobile .media-settings__preview { flex: 1 1 0 !important; min-height: 80px; height: auto !important; width: auto !important; max-width: 100%; aspect-ratio: 1 / 1 !important; align-self: center; }
+	// превью камеры — квадрат, как плитка в звонке (NAS_CLOUD#172; 148 px сплющивало лицо, Андрей 10.11): высота — остаток столбика, ширина по ней; не меньше 120 (по нему проверяют картинку)
+	:root body .media-settings__content--mobile .media-settings__preview { flex: 1 1 0 !important; min-height: 120px; height: auto !important; width: auto !important; max-width: 100%; aspect-ratio: 1 / 1 !important; align-self: center; }
 	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }
@@ -335,11 +335,18 @@ $glass: blur(24px) saturate(180%);
 	:root body .media-settings .media-devices-selector .media-devices-speaker-test-button { top: 4px; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
 	:root body .media-settings { padding: 14px 16px max(12px, env(safe-area-inset-bottom, 0px)) !important; height: auto !important; }
 	:root body .media-settings__title { font-size: 20px; margin-bottom: 8px; }
-	:root body .media-settings__content--mobile { gap: 8px !important; }
+	:root body .media-settings__content--mobile { gap: 6px !important; }
 	:root body .media-settings__preview { margin-inline: auto !important; }
 	:root body .media-settings .media-settings__settings { max-width: none; }
 	:root body .media-settings .tab-panel > .button-vue { display: none !important; }
-	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 3px 0; }
+	:root body .media-settings :is(.media-devices-selector, .face-frame) { margin: 2px 0; }
+	// гость: «Придумать имя» — кнопкой-кубиком в строке с полем, «Есть учётная запись? Войти» и «Введите имя» — по одной мелкой строке: высота уходит превью
+	:root body .media-settings .username-form { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 4px; }
+	:root body .media-settings .username-form__display-name { margin: 0; }
+	:root:root body .media-settings .username-form__dice { margin: 0 !important; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; }
+	:root body .media-settings .username-form__dice .button-vue__text { display: none; }
+	:root body .media-settings .login-info { grid-column: 1 / -1; margin: 0; padding: 2px 0 0; font-size: 12px; line-height: 16px; text-align: center; white-space: nowrap; }
+	:root body .media-settings .k4-join-hint { margin: 0; font-size: 12px; line-height: 16px; }
 	:root body .media-settings :is(.media-devices-selector__icon, .face-frame__icon) { top: 22px; }
 	:root body .media-settings .button-vue.join-call, :root body .media-settings .action-button { position: sticky !important; inset: auto 0 12px 0 !important; z-index: 2; width: 100% !important; min-width: 0 !important; margin: 8px 0 0 !important; box-shadow: 0 0 0 10px var(--k7-bg2), 0 14px 0 10px var(--k7-bg2) !important; }
 }
