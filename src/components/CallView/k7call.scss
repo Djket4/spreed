@@ -325,7 +325,7 @@ $glass: blur(24px) saturate(180%);
 	:root body .media-settings__content--mobile { flex: 1 1 auto; min-height: 0; display: flex !important; flex-direction: column; }
 	:root body .media-settings__content--mobile > .media-settings__settings { flex: 0 0 auto; }
 	// превью камеры — квадрат, как плитка в звонке (NAS_CLOUD#172; 148 px сплющивало лицо, Андрей 10.11): высота — остаток столбика, ширина по ней
-	:root body .media-settings__content--mobile .media-settings__preview { flex: 1 1 0 !important; min-height: 96px; height: auto !important; width: auto !important; max-width: 100%; aspect-ratio: 1 / 1 !important; align-self: center; }
+	:root body .media-settings__content--mobile .media-settings__preview { flex: 1 1 0 !important; min-height: 80px; height: auto !important; width: auto !important; max-width: 100%; aspect-ratio: 1 / 1 !important; align-self: center; }
 	// шторка стоит над панелью Safari — запас под «домой» не нужен; недоступная «Начать вызов» без прозрачности (сквозь неё просвечивал список)
 	html.k7-ios-bar body .media-settings { padding-bottom: 14px !important; }
 	:root body .media-settings__preview .preview__novideo .avatar-wrapper { transform: scale(.7); }

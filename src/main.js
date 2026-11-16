@@ -77,6 +77,7 @@ document.documentElement.classList.add('k7f')
 	}
 	setInterval(update, 500)
 	window.addEventListener('resize', update)
+	window.addEventListener('k7-layout', update) // CallView: остался один — меряем сразу, а не через до 500 мс (плитка прыгала дважды)
 }
 // ket4tec: шторки не уходят под нижнюю панель Safari. --k7-vv-gap — сколько низа страницы закрыто (visualViewport),
 // html.k7-ios-bar — iPhone в Safari (не на экране «Домой»). Развёрнутая панель iOS 26 стоит под страницей (вьюпорт кончается над ней),

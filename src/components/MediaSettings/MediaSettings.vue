@@ -54,9 +54,13 @@
 						v-show="showVideo"
 						ref="video"
 						class="preview__video"
-						:class="{ 'preview__video--mirrored': isMirrored }"
+						:class="{ 'preview__video--mirrored': isMirrored, 'preview__video--in': pvIn }"
 						disablePictureInPicture
-						tabindex="-1" />
+						tabindex="-1"
+						@playing="pvIn = showVideo"
+						@loadeddata="pvIn = showVideo" />
+					<!-- ket4tec (NAS_CLOUD#172): копия последнего кадра гаснет при выключении камеры, под ней уже живое облако -->
+					<canvas ref="pvSnap" class="preview__video preview__snap" aria-hidden="true" />
 					<NcButton
 						v-if="showVideo"
 						variant="secondary"
@@ -68,10 +72,9 @@
 							<IconReflectHorizontal :size="20" />
 						</template>
 					</NcButton>
-					<div
-						v-show="!showVideo"
-						class="preview__novideo">
-						<!-- ket4tec (NAS_CLOUD#172, Андрей 16.11): без камеры — то же облако, что на плитке в звонке -->
+					<div class="preview__novideo">
+						<!-- ket4tec (NAS_CLOUD#172, Андрей 16.11): без камеры — то же облако, что на плитке в звонке.
+							Всегда под видео (не v-show): при выключении камеры облако уже собрано и крутится, без пустого кадра -->
 						<K4Face
 							:stream="audioStream"
 							:on="!!audioOn"
@@ -432,6 +435,7 @@ export default {
 			skipBlurVirtualBackground: false,
 			mediaLoading: false,
 			isDeviceCheck: false,
+			pvIn: false, // ket4tec: видео превью проявлено (по первому кадру)
 		}
 	},
 
@@ -647,6 +651,24 @@ export default {
 	},
 
 	watch: {
+		// ket4tec (NAS_CLOUD#172): sync — снимок кадра до того, как useDevices отцепит поток
+		showVideo: {
+			flush: 'sync',
+			handler(v) {
+				if (!v) {
+					this.pvIn = false
+					this.snapOut()
+					return
+				}
+				// поток в превью живёт и при выключенной кнопке — «playing» второй раз не придёт, проявляем по уже идущему кадру
+				requestAnimationFrame(() => {
+					if (this.$refs.video?.readyState >= 2) {
+						this.pvIn = this.showVideo
+					}
+				})
+			},
+		},
+
 		show(newValue) {
 			if (newValue) {
 				this.k4NameEmpty = !this.guestNameStore.guestUserName.length
@@ -760,6 +782,26 @@ export default {
 
 	methods: {
 		t,
+		snapOut() {
+			const v = this.$refs.video
+			const c = this.$refs.pvSnap
+			if (!v || !c || !v.videoWidth) {
+				return
+			}
+			c.width = v.videoWidth
+			c.height = v.videoHeight
+			try {
+				c.getContext('2d').drawImage(v, 0, 0)
+			} catch (e) {
+				return
+			}
+			c.style.transition = 'none'
+			c.style.opacity = '1'
+			c.getBoundingClientRect()
+			c.style.transition = 'opacity .7s ease'
+			c.style.opacity = '0'
+		},
+
 		handleDialogClose() {
 			if (this.isBeforeJoinCall && this.isVoiceRoom && !this.isGuest) {
 				this.$router?.push({ name: 'root' })
@@ -1057,6 +1099,7 @@ export default {
 		background-color: var(--color-loading-dark);
 		aspect-ratio: 1/1; // ket4tec (NAS_CLOUD#172): превью — квадрат, как плитка в звонке
 		margin-inline-end: var(--default-grid-baseline);
+		isolation: isolate; // ket4tec: облако (z-index -1) под видео, но над фоном превью
 	}
 
 	&__preview > &__preview-mirror {
@@ -1127,8 +1170,21 @@ export default {
 		}
 	}
 
+	// ket4tec: видео проявляется по первому кадру, копия кадра гаснет (snapOut); облако под ними (z-index -1 в изолированном превью)
+	&__video {
+		opacity: 0;
+		transition: opacity .7s ease;
+		&--in { opacity: 1; }
+	}
+	&__snap {
+		pointer-events: none;
+		transition: none;
+	}
+
 	&__novideo {
-		position: relative;
+		position: absolute;
+		inset: 0;
+		z-index: -1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
