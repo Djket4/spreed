@@ -553,6 +553,12 @@ html.k7f body {
 		:is(.input-field__icon--trailing, .input-field__trailing-button) { inset-block-start: 6px !important; }
 	}
 	.input-field:not(.input-field--leading-icon) .input-field__main-wrapper:has(> .input-field__label) .input-field__input { padding-inline-start: 20px !important; }
+	// NAS_CLOUD#264: список с подписью внутри (NcSelect inputLabel, «Срок жизни сообщений»). Выбранное — не текст поля: поле пустое,
+	// подпись стояла по центру поверх значения. Есть значение — подпись вверху, как у заполненного поля, значение ниже неё.
+	.v-select.vs--single:has(.vs__selected):has(.input-field__label) {
+		.input-field__main-wrapper .input-field__label { inset-block-start: 8px !important; transform: none; font-size: 12px !important; line-height: 16px !important; }
+		.vs__selected { padding-top: 16px !important; padding-inline-start: 22px !important; } // значение под началом подписи
+	}
 
 	.textarea__main-wrapper:has(> .textarea__label) {
 		.textarea__input {

@@ -744,6 +744,7 @@ export default {
 	},
 
 	created() {
+		this.k4handToasts = {} // ket4tec (NAS_CLOUD#264): sessionId → плашка «подняла руку», не реактивно
 		// Ensure that data is properly initialized before mounting the
 		// subviews.
 		this.updateDataFromCallParticipantModels(this.callParticipantModels)
@@ -795,6 +796,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		Object.keys(this.k4handToasts).forEach(this.k4hideHandToast) // ket4tec (NAS_CLOUD#264): звонок кончился — плашки «подняла руку» не висят
 		this.k4lowMq?.removeEventListener?.('change', this.k4lowFn)
 		window.removeEventListener('online', this.k4netFn)
 		window.removeEventListener('offline', this.k4netFn)
@@ -962,15 +964,14 @@ export default {
 
 		_handleParticipantRaisedHand(callParticipantModel, raisedHand) {
 			const nickName = callParticipantModel.attributes.name || callParticipantModel.attributes.userId
-			// sometimes the nick name is not available yet...
-			if (nickName) {
-				if (raisedHand?.state) {
-					showMessage(t('spreed', '{nickName} raised their hand.', { nickName }))
-				}
-			} else {
-				if (raisedHand?.state) {
-					showMessage(t('spreed', 'A participant raised their hand.'))
-				}
+			// ket4tec (NAS_CLOUD#264): плашка «подняла руку» уходит, когда рука опущена, участник вышел или звонок кончился
+			const sid = callParticipantModel.attributes.nextcloudSessionId
+			this.k4hideHandToast(sid)
+			if (raisedHand?.state) {
+				// sometimes the nick name is not available yet...
+				this.k4handToasts[sid] = nickName
+					? showMessage(t('spreed', '{nickName} raised their hand.', { nickName }))
+					: showMessage(t('spreed', 'A participant raised their hand.'))
 			}
 
 			this.participantActivityStore.setParticipantHandRaised({
@@ -979,7 +980,13 @@ export default {
 			})
 		},
 
+		k4hideHandToast(sid) {
+			this.k4handToasts[sid]?.hideToast()
+			delete this.k4handToasts[sid]
+		},
+
 		_lowerHandWhenParticipantLeaves(callParticipantCollection, callParticipantModel) {
+			this.k4hideHandToast(callParticipantModel.attributes.nextcloudSessionId)
 			this.participantActivityStore.setParticipantHandRaised({
 				sessionId: callParticipantModel.attributes.nextcloudSessionId,
 				raisedHand: false,
