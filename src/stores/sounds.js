@@ -106,6 +106,11 @@ export const useSoundsStore = defineStore('sounds', {
 				this.audioObjectsPromises[key] = null
 				audio.currentTime = 0
 			})
+			// ket4tec (NAS_CLOUD#286): Safari в конце не шлёт 'pause' — без этого кнопка проверки залипает в «Воспроизводится…»
+			audio.addEventListener('ended', () => {
+				this.audioObjectsPromises[key] = null
+				audio.currentTime = 0
+			})
 
 			audio.addEventListener('ended', () => {
 				this.audioObjectsPromises[key] = null
