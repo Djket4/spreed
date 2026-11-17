@@ -19,9 +19,9 @@
 				class="media-settings__title nc-dialog-alike-header">
 				{{ t('spreed', 'Check devices') }}
 			</h2>
-			<!-- Recording warning -->
+			<!-- Recording warning. ket4tec (NAS_CLOUD#289): только когда нужно согласие — без него войти нельзя; просто «записывается» не показываем -->
 			<NcNoteCard
-				v-if="showRecordingWarning"
+				v-if="showRecordingWarning && isRecordingConsentRequired"
 				:class="{ 'media-settings__recording-warning--mobile': isMobile }"
 				type="warning">
 				<p v-if="isCurrentlyRecording">
@@ -41,11 +41,6 @@
 						{{ t('spreed', 'Give consent to the recording of this call') }}
 					</NcCheckboxRadioSwitch>
 				</template>
-			</NcNoteCard>
-			<NcNoteCard
-				v-if="isBeforeJoinCall && isVoiceRoom"
-				type="info">
-				{{ t('spreed', 'You can only join a voice room via a call.') }}
 			</NcNoteCard>
 			<div class="media-settings__content" :class="{ 'media-settings__content--mobile': isMobile }">
 				<!-- Preview -->
