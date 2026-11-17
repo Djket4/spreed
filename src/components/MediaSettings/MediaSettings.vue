@@ -949,16 +949,16 @@ export default {
 
 		closeModalAndApplySettings() {
 			// ket4tec NAS_CLOUD#172: вход из проверки — шторка держится, пока звонок не откроется под ней
-			// (иначе ~0,4 с мелькает гостевая страница с «Соединение…»). Настройки до входа не применяются, как и раньше.
+			// (иначе ~0,4 с мелькает гостевая страница с «Соединение…»). Фон, выбранный до входа, применяется сразу.
+			if (this.updatedBackground) {
+				this.handleUpdateBackground(this.updatedBackground)
+			}
+
 			if (this.show && this.isBeforeJoinCall) {
 				this.k4CloseOnJoin = true
 				clearTimeout(this.k4CloseTimer)
 				this.k4CloseTimer = setTimeout(() => this.k4CloseOnJoin && this.close(), 20000) // ponytail: страховка, если вход повис
 				return
-			}
-
-			if (this.updatedBackground) {
-				this.handleUpdateBackground(this.updatedBackground)
 			}
 
 			if (this.audioDeviceStateChanged && this.isInCall) {

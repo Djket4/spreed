@@ -970,6 +970,31 @@ describe('MediaDevicesSource', () => {
 		})
 	})
 
+	// NAS_CLOUD#279: перезахват после ended не кладёт дорожку в уже остановленный источник
+	test('перезахват видео после stop() гасит новую дорожку', async () => {
+		const firstTrack = newMediaStreamTrackMock('video', 'video')
+		getUserMediaVideoTrack = firstTrack
+		await mediaDevicesSource.start(retryNoVideoCallback)
+
+		const lateTrack = newMediaStreamTrackMock('video', 'video')
+		let answer
+		mediaDevicesManager.getUserMedia.mockImplementationOnce(() => new Promise((resolve) => {
+			answer = () => {
+				const stream = newMediaStreamMock('late')
+				stream._tracks.push(lateTrack)
+				resolve(stream)
+			}
+		}))
+
+		firstTrack._endedEventHandlers.forEach((handler) => handler())
+		mediaDevicesSource.stop()
+		answer()
+		await new Promise((resolve) => setTimeout(resolve))
+
+		expect(lateTrack.stop).toHaveBeenCalledTimes(1)
+		expect(mediaDevicesSource.getOutputTrack('video')).toBe(null)
+	})
+
 	// NAS_CLOUD#239: вне Chromium камера сразу открывается в размере качества HIGH, без второго скачка
 	test('стартовые ограничения видео вне Chromium = HIGH без нижних границ', () => {
 		const constraints = { audio: true, video: true }
