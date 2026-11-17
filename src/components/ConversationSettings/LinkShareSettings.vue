@@ -302,5 +302,15 @@ export default {
 	& > button {
 		flex-basis: 50%;
 	}
+
+	// ket4tec (NAS_CLOUD#279): на узком экране кнопки друг под другом на всю ширину, подписи не обрезаются
+	@media (max-width: 512px) {
+		flex-direction: column;
+
+		& > button {
+			flex-basis: auto;
+			width: 100%;
+		}
+	}
 }
 </style>
