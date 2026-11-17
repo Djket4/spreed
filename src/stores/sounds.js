@@ -79,6 +79,8 @@ export const useSoundsStore = defineStore('sounds', {
 			}
 			this.audioObjectsPromises[key] = this.audioObjects[key].play()
 			this.audioObjectsPromises[key].catch((error) => {
+				// ket4tec (NAS_CLOUD#286): отказ play() (автозапуск в Safari) не должен оставлять «Воспроизводится…»
+				this.audioObjectsPromises[key] = null
 				console.error(error)
 			})
 		},
