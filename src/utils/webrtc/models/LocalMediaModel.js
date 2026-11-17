@@ -29,6 +29,7 @@ export function LocalMediaModel() {
 		volumeThreshold: -100,
 		videoAvailable: false,
 		videoEnabled: false,
+		k4videoLeaving: false, // ket4tec (NAS_CLOUD#271): камера вот-вот выключится, плитка уже гаснет
 		virtualBackgroundAvailable: false,
 		virtualBackgroundEnabled: false,
 		virtualBackgroundType: null,
@@ -364,6 +365,11 @@ LocalMediaModel.prototype = {
 
 		BrowserStorage.removeItem('videoDisabled_' + this.get('token'))
 
+		// ket4tec (NAS_CLOUD#271): включили, пока выключение ещё не дошло до трека — отменить его
+		if (this._k4leave) {
+			this._k4leave = null
+			this.set('k4videoLeaving', false)
+		}
 		this._webRtc.resumeVideo()
 	},
 
@@ -374,7 +380,25 @@ LocalMediaModel.prototype = {
 
 		BrowserStorage.setItem('videoDisabled_' + this.get('token'), 'true')
 
-		this._webRtc.pauseVideo()
+		// ket4tec (NAS_CLOUD#271): iOS Safari гасит выключенный трек на экране сразу, а наш снимок кадра появляется
+		// только со следующей отрисовкой — между ними чёрный/белый кадр (замер в симуляторе). Сначала плитка
+		// замирает и начинает гаснуть (k4videoLeaving), трек выключается после отрисовки: 2 кадра, в фоне — 150 мс.
+		const go = () => {
+			if (this._k4leave !== go) {
+				return
+			}
+			this._k4leave = null
+			this._webRtc.pauseVideo()
+			this.set('k4videoLeaving', false)
+		}
+		this._k4leave = go
+		this.set('k4videoLeaving', true)
+		// собеседникам «камера выкл» тоже сразу: иначе чёрные кадры выключенного трека иногда обгоняют сигнал и чужая плитка
+		// ~0,1 с показывает чёрный прямоугольник (3 из 6 выкл на test2 до правки, 0 из 8 с ней). Повтор при pauseVideo безвреден,
+		// отмена (enableVideo → resumeVideo) шлёт «камера вкл»
+		this._webRtc.emit?.('videoOff')
+		requestAnimationFrame(() => requestAnimationFrame(go))
+		setTimeout(go, 150)
 	},
 
 	enableNoiseSuppression() {

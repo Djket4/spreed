@@ -71,3 +71,39 @@ test('NAS_CLOUD#271: кадр поменьше посередине прозра
 	// тёмный фон, но лицо посередине и светлые места у каждого края — целый кадр
 	expect(check(px((x, y) => (x > 2 && x < 5) || y === 3))).toBe(true)
 })
+
+test('NAS_CLOUD#271: повторный выкл (сигнал «скоро выкл», затем сам выкл) не начинает угасание заново; видео под снимком скрыто', async () => {
+	vi.useFakeTimers()
+	const vproto = window.HTMLVideoElement.prototype
+	vi.spyOn(vproto, 'videoWidth', 'get').mockReturnValue(640)
+	vi.spyOn(vproto, 'videoHeight', 'get').mockReturnValue(360)
+	vi.spyOn(vproto, 'readyState', 'get').mockReturnValue(4)
+	vproto.play = () => Promise.resolve()
+	vproto.pause = () => {}
+	const draws = []
+	vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: () => draws.push(1), getImageData: () => ({ data: new Array(256).fill(200) }) })
+	const box = document.createElement('div')
+	const v = document.createElement('video')
+	box.append(v)
+	const fade = useK4VideoFade()
+	const get = () => v
+	fade.set(true, get)
+	await vi.advanceTimersByTimeAsync(FADE_MS + 100)
+	// копия кадра обновляется, пока камера показана (без rVFC — раз в 300 мс)
+	const n = draws.length
+	await vi.advanceTimersByTimeAsync(700)
+	expect(draws.length).toBeGreaterThan(n)
+
+	fade.set(false, get)
+	expect(v.style.visibility).toBe('hidden')
+	const snap = box.querySelector('.k4-vsnap')
+	expect(snap.style.opacity).toBe('1')
+	const frozen = draws.length
+	await vi.advanceTimersByTimeAsync(600)
+	fade.set(false, get) // сам выкл через 0,6 с после сигнала
+	expect(draws.length).toBe(frozen) // снимок не переснят с выключенного трека
+	await vi.advanceTimersByTimeAsync(FADE_MS - 600 + 50)
+	expect(fade.state.shown).toBe(false) // угасание кончилось через 1 с от первого сигнала
+	expect(snap.style.opacity).toBe('0')
+	expect(v.style.visibility).toBe('')
+})

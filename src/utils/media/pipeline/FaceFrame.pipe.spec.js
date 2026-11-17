@@ -142,7 +142,7 @@ describe('FaceFrame в цепочке превью', () => {
 		showWarning.mockClear()
 		setFaceFrameLevel('auto')
 		const ff = new FaceFrame()
-		const track = { id: 'vp', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
+		const track = { id: 'vp', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {}, getSettings: () => ({ width: 720, height: 1280 }) }
 		beforeStart(ff)
 		ff._setInputTrack('default', track)
 		const restore = () => {
@@ -180,6 +180,8 @@ describe('FaceFrame в цепочке превью', () => {
 		const { ff, track, restore } = setup(out, true, (f) => f.on('outputTrackSet', (s, id, t) => seen.push(t)))
 		try {
 			expect(seen).toEqual([out]) // ни разу не исходная камера
+			// выход сразу итоговым квадратом, не 300×150 по умолчанию: иначе Safari первые кадры показывал маленьким квадратом посередине плитки
+			expect([ff._digital.canvas.width, ff._digital.canvas.height]).toEqual([720, 720])
 			expect(ff.getOutputTrack()).toBe(out)
 			Object.assign(ff._digital, { placed: true, lastFace: 1, win: { cx: 0.3, cy: 0.6, zoom: 1.6 } })
 			ff._handleInputTrackEnabled('default', false)
