@@ -54,7 +54,7 @@ export default {
 
 	computed: {
 		isPlayingTestSound() {
-			return this.soundsStore.audioObjectsPromises.wait !== null
+			return this.soundsStore.audioObjectsPromises.test !== null
 		},
 
 		buttonLabel() {
@@ -76,7 +76,7 @@ export default {
 	},
 
 	beforeUnmount() {
-		this.soundsStore.pauseAudio('wait')
+		this.soundsStore.pauseAudio('test')
 	},
 
 	methods: {
@@ -84,9 +84,9 @@ export default {
 
 		playTestSound() {
 			if (this.isPlayingTestSound) {
-				this.soundsStore.pauseAudio('wait')
+				this.soundsStore.pauseAudio('test')
 			} else {
-				this.soundsStore.playAudio('wait')
+				this.soundsStore.playAudio('test')
 			}
 		},
 	},

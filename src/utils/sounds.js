@@ -106,11 +106,8 @@ export const Sounds = {
 			console.debug('Playing join sound')
 		}
 
-		if (playWaitingSound) {
-			await this.playWaiting()
-		} else {
-			soundsStore.playAudio('join')
-		}
+		// ket4tec (NAS_CLOUD#286): одному в звонке — без повторяющегося звука ожидания, только короткий звук входа
+		soundsStore.playAudio('join')
 	},
 
 	async playLeave(force, playWaitingSound) {
@@ -140,10 +137,7 @@ export const Sounds = {
 		}
 		this.lastPlayedLeave = currentTime
 
+		// ket4tec (NAS_CLOUD#286): остался один — звук ожидания не включается
 		soundsStore.playAudio('leave')
-
-		if (playWaitingSound) {
-			this.playWaiting()
-		}
 	},
 }

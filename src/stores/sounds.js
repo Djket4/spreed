@@ -51,11 +51,13 @@ export const useSoundsStore = defineStore('sounds', {
 			join: null,
 			leave: null,
 			wait: null,
+			test: null,
 		},
 		audioObjectsPromises: {
 			join: null,
 			leave: null,
 			wait: null,
+			test: null,
 		},
 		audioOutputDeviceId: undefined,
 	}),
@@ -77,6 +79,8 @@ export const useSoundsStore = defineStore('sounds', {
 			}
 			this.audioObjectsPromises[key] = this.audioObjects[key].play()
 			this.audioObjectsPromises[key].catch((error) => {
+				// ket4tec (NAS_CLOUD#286): отказ play() (автозапуск в Safari) не должен оставлять «Воспроизводится…»
+				this.audioObjectsPromises[key] = null
 				console.error(error)
 			})
 		},
@@ -104,6 +108,11 @@ export const useSoundsStore = defineStore('sounds', {
 				this.audioObjectsPromises[key] = null
 				audio.currentTime = 0
 			})
+			// ket4tec (NAS_CLOUD#286): Safari в конце не шлёт 'pause' — без этого кнопка проверки залипает в «Воспроизводится…»
+			audio.addEventListener('ended', () => {
+				this.audioObjectsPromises[key] = null
+				audio.currentTime = 0
+			})
 
 			audio.addEventListener('ended', () => {
 				this.audioObjectsPromises[key] = null
@@ -123,6 +132,8 @@ export const useSoundsStore = defineStore('sounds', {
 			this.createAudioObject('join', 'join_call', 0.75)
 			this.createAudioObject('leave', 'leave_call', 0.75)
 			this.createAudioObject('wait', 'LibremPhoneCall', 0.5)
+			// ket4tec (NAS_CLOUD#286): свой звук проверки динамика
+			this.createAudioObject('test', 'speaker_test', 0.6)
 			this.audioObjectsCreated = true
 		},
 
