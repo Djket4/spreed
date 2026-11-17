@@ -51,11 +51,13 @@ export const useSoundsStore = defineStore('sounds', {
 			join: null,
 			leave: null,
 			wait: null,
+			test: null,
 		},
 		audioObjectsPromises: {
 			join: null,
 			leave: null,
 			wait: null,
+			test: null,
 		},
 		audioOutputDeviceId: undefined,
 	}),
@@ -123,6 +125,8 @@ export const useSoundsStore = defineStore('sounds', {
 			this.createAudioObject('join', 'join_call', 0.75)
 			this.createAudioObject('leave', 'leave_call', 0.75)
 			this.createAudioObject('wait', 'LibremPhoneCall', 0.5)
+			// ket4tec (NAS_CLOUD#286): свой звук проверки динамика
+			this.createAudioObject('test', 'speaker_test', 0.6)
 			this.audioObjectsCreated = true
 		},
 

@@ -34,6 +34,7 @@ d=$(date +%F-%H%M)
 n "sudo -n cp -a $R/js $BASE/spreed-js.bak-$d && sudo -n cp -a $R/css $BASE/spreed-css.bak-$d && sudo -n cp -a $R/lib $BASE/spreed-lib.bak-$d && sudo -n cp -a $R/appinfo $BASE/spreed-appinfo.bak-$d && sudo -n cp -a $R/l10n $BASE/spreed-l10n.bak-$d"
 rsync -rtz --chmod=F644 --chown=33:33 --rsync-path="sudo -n rsync" js css "$H:$R/"
 rsync -rt --chmod=F644,D755 --chown=33:33 --rsync-path="sudo -n rsync" img/k4stk/ "$H:$R/img/k4stk/"   # k4stk: медиа гифок/стикеров
+rsync -rt --chmod=F644 --chown=33:33 --rsync-path="sudo -n rsync" img/speaker_test.ogg img/speaker_test.flac "$H:$R/img/"   # звук проверки динамика (NAS_CLOUD#286)
 # PHP форка (k4draw, снимок): lib/ и appinfo/; атрибутные маршруты кэшируются — сбросить кэш opcache graceful-ом apache
 rsync -rtz --chmod=F644,D755 --chown=33:33 --rsync-path="sudo -n rsync" lib appinfo l10n "$H:$R/"   # l10n: русские строки форка (без неё новые подписи по-английски)
 n "docker exec $APP sh -c 'kill -USR1 1'"
