@@ -27,7 +27,8 @@ const HOLD_MS = 1500
 const MIN_FPS = 15
 const LOW_FPS_MS = 2000
 const STATS_LOG_MS = 5000
-const LOST_AFTER_MS = 2000
+// ket4tec (NAS_CLOUD#271): было 2000 — рука у лица или контровой свет на 2+ с уводили окно в общий план и обратно (скачок общий↔крупный)
+const LOST_AFTER_MS = 8000
 // Подстройка «Авто» (рамка детектора — лоб..подбородок, без макушки и шеи):
 const AUTO_MAX_ZOOM = 3 // потолок приближения (#232: было 2.2, «Ближе» упиралось в него)
 const AUTO_FACE_TIGHT_W = 1.8 // «ближе» до упора: окно по ширине = ширина рамки * это
@@ -296,6 +297,12 @@ export default class FaceFrame extends TrackSinkSource {
 		video.srcObject = new MediaStream([input])
 		document.body.appendChild(video)
 		const canvas = document.createElement('canvas')
+		// ket4tec (NAS_CLOUD#271): сразу итоговый квадрат. Канвас по умолчанию 300×150 и до первой отрисовки уходит
+		// в captureStream таким: Safari показывал на плитке квадрат поменьше посередине ~0,3 с, потом скачок во всю плитку
+		const { width: sw, height: sh } = input.getSettings?.() || {}
+		if (sw && sh) {
+			canvas.width = canvas.height = Math.min(sw, sh)
+		}
 		// Safari (предположение): captureStream отложенного от DOM канваса может отдавать чёрные кадры
 		canvas.style.cssText = video.style.cssText
 		document.body.appendChild(canvas)

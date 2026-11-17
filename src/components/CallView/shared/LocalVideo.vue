@@ -45,7 +45,8 @@
 				:size="avatarSize / 2"
 				class="video-loading" />
 		</div>
-		<div v-if="!screenshotModeUrl && !fade.state.full && !isSidebar" class="avatar-container">
+		<!-- ket4tec (NAS_CLOUD#271): облако смонтировано всегда (v-show), при выкл оно уже под снимком кадра -->
+		<div v-if="!screenshotModeUrl && !isSidebar" v-show="!fade.state.full" class="avatar-container">
 			<VideoBackground v-if="isGrid || isStripe" />
 			<!-- ket4tec: облако во всех видах (сетка, полоса, докладчик, крупно), не только в сетке -->
 			<K4Face
@@ -313,6 +314,17 @@ export default {
 			flush: 'sync',
 			handler(on) {
 				this.fade.set(!!on, () => this.$refs.video)
+			},
+		},
+
+		// ket4tec (NAS_CLOUD#271): выключение началось — гаснуть сразу, пока трек ещё живой; отменили — проявиться обратно
+		'localMediaModel.attributes.k4videoLeaving': {
+			flush: 'sync',
+			handler(leaving) {
+				const on = !leaving && this.localMediaModel.attributes.videoEnabled
+				if (leaving || on) {
+					this.fade.set(on, () => this.$refs.video)
+				}
 			},
 		},
 

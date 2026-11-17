@@ -8,6 +8,9 @@
  * iOS Safari (запись владельца 16.11): любая перестройка слоя в момент перехода — смена position у обёртки, новый канвас
  * в DOM — давала 1–2 пустых кадра (белый/чёрный). Поэтому обёртка всё время в одном слое (k7call.scss, .k4-vf),
  * копия кадра — постоянный канвас поверх видео: на переходах меняется только opacity.
+ * Выкл (замер в симуляторе 17.11): кадры MediaStream идут на экран мимо главного потока, а наши стили — только со следующей
+ * отрисовкой, главный поток после выкл занят до 0,1–0,7 с. Поэтому копия обновляется каждый кадр, при выкл видео
+ * прячется в том же шаге, что проявляется копия, а сам трек гасится позже (LocalMediaModel.disableVideo, k4videoLeaving).
  */
 import { onBeforeUnmount, reactive } from 'vue'
 
@@ -47,15 +50,35 @@ export function useK4VideoFade() {
 	const state = reactive({ shown: false, opaque: false, full: false })
 	let tok = 0
 	let timer = 0
-	// пока камера показана, раз в 300 мс копия кадра в постоянный канвас: к сигналу «выкл» трек уже подменён
-	// и видео отдаёт чёрное 2×2 (замер на test2), снимать в этот момент поздно
+	// пока камера показана, копия каждого кадра (rVFC; без него раз в 300 мс) в постоянный канвас: к сигналу «выкл»
+	// трек может быть уже подменён и видео отдаёт чёрное 2×2 (замер на test2), снимать в этот момент поздно
 	let keeper = 0
+	let live = 0
+	let leaving = false
 	const snap = document.createElement('canvas')
 	snap.style.opacity = '0'
 	let hasSnap = false
 	const stopKeep = () => {
 		clearInterval(keeper)
 		keeper = 0
+		live++
+	}
+	const startKeep = (getVideo) => {
+		stopKeep()
+		const v = getVideo()
+		keep(v)
+		if (!v?.requestVideoFrameCallback) {
+			keeper = setInterval(() => keep(getVideo()), 300)
+			return
+		}
+		const id = live
+		const f = () => {
+			if (id === live) {
+				keep(v)
+				v.requestVideoFrameCallback(f)
+			}
+		}
+		v.requestVideoFrameCallback(f)
 	}
 
 	/**
@@ -103,29 +126,43 @@ export function useK4VideoFade() {
 	 * @param {() => HTMLVideoElement} getVideo
 	 */
 	function set(on, getVideo) {
+		// уже гаснет (сигнал «скоро выкл», затем сам выкл) — не начинать заново
+		if (!on && (!state.shown || leaving)) {
+			return
+		}
 		const t = ++tok
 		clearTimeout(timer)
 		if (!on) {
-			if (!state.shown) {
-				return
-			}
+			leaving = true
 			stopKeep()
 			const v = getVideo()
 			v?.pause()
-			// гаснет последний настоящий кадр, а не чёрное
-			keep(v)
+			// гаснет последний настоящий кадр, а не чёрное; живое видео под копией не просвечивает
 			snap.style.opacity = hasSnap ? '1' : '0'
+			if (v && hasSnap) {
+				v.style.visibility = 'hidden'
+			}
 			state.opaque = false
 			state.full = false
 			later(t, () => {
+				leaving = false
 				snap.style.opacity = '0'
 				state.shown = false
-				getVideo()?.play()?.catch(() => {})
+				const v = getVideo()
+				if (v) {
+					v.style.visibility = ''
+				}
+				v?.play()?.catch(() => {})
 			})
 			return
 		}
+		leaving = false
 		snap.style.opacity = '0'
 		hasSnap = false
+		const v0 = getVideo()
+		if (v0) {
+			v0.style.visibility = ''
+		}
 		state.shown = true
 		state.full = false
 		state.opaque = false
@@ -149,9 +186,7 @@ export function useK4VideoFade() {
 				later(t, () => {
 					state.full = true
 				})
-				stopKeep()
-				keep(v)
-				keeper = setInterval(() => keep(getVideo()), 300)
+				startKeep(getVideo)
 				return
 			}
 			timer = setTimeout(poll, 50)
