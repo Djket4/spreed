@@ -995,6 +995,25 @@ describe('MediaDevicesSource', () => {
 		expect(mediaDevicesSource.getOutputTrack('video')).toBe(null)
 	})
 
+	// NAS_CLOUD#279 п.5: после 3 перезахватов за 10 с больше не перезахватываем, даже когда окно сдвинулось
+	test('ограничитель перезахвата не скользящий: после 3 — стоп до start()', async () => {
+		vi.useFakeTimers()
+		const track = newMediaStreamTrackMock('video', 'video')
+		getUserMediaVideoTrack = track
+		await mediaDevicesSource.start(retryNoVideoCallback)
+		const handler = vi.spyOn(mediaDevicesSource, '_handleVideoInputIdChangedBound').mockImplementation(() => {})
+		const end = () => {
+			mediaDevicesSource._setOutputTrack('video', track)
+			mediaDevicesSource._removeTrackWhenEnded(track)
+		}
+		end(); end(); end(); end()
+		expect(handler).toHaveBeenCalledTimes(3)
+		vi.advanceTimersByTime(11000)
+		end()
+		expect(handler).toHaveBeenCalledTimes(3)
+		vi.useRealTimers()
+	})
+
 	// NAS_CLOUD#239: вне Chromium камера сразу открывается в размере качества HIGH, без второго скачка
 	test('стартовые ограничения видео вне Chromium = HIGH без нижних границ', () => {
 		const constraints = { audio: true, video: true }
