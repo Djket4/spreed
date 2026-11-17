@@ -34,9 +34,12 @@ export function hasPicture(v) {
 		x.drawImage(v, 0, 0, 8, 8)
 		const p = x.getImageData(0, 0, 8, 8).data
 		const lit = (cx, cy) => p[(cy * 8 + cx) * 4] > 16 || p[(cy * 8 + cx) * 4 + 1] > 16 || p[(cy * 8 + cx) * 4 + 2] > 16
+		// у края достаточно непрозрачного пикселя: поле вокруг маленького кадра iOS прозрачное, а тёмная комната — нет
+		// (NAS_CLOUD#279 п.4: иначе в темноте включение камеры ждало 5 с)
+		const edge = (cx, cy) => p[(cy * 8 + cx) * 4 + 3] > 0 || lit(cx, cy)
 		const any = (f) => [0, 1, 2, 3, 4, 5, 6, 7].some(f)
 		return (lit(3, 3) || lit(4, 4) || lit(3, 4) || lit(4, 3))
-			&& any((i) => lit(i, 0)) && any((i) => lit(i, 7)) && any((i) => lit(0, i)) && any((i) => lit(7, i))
+			&& any((i) => edge(i, 0)) && any((i) => edge(i, 7)) && any((i) => edge(0, i)) && any((i) => edge(7, i))
 	} catch (e) {
 		return true
 	}
@@ -170,6 +173,7 @@ export function useK4VideoFade() {
 		const t0 = performance.now()
 		// новый кадр после включения: прошлый замерший кадр (или кадр до подмены трека) не в счёт
 		let fresh = null
+		let ct0 = 0
 		const poll = () => {
 			if (t !== tok) {
 				return
@@ -177,9 +181,12 @@ export function useK4VideoFade() {
 			const v = getVideo()
 			if (v && fresh === null) {
 				fresh = !v.requestVideoFrameCallback
+				ct0 = v.currentTime
 				v.requestVideoFrameCallback?.(() => {
 					fresh = true
 				})
+			} else if (v && !fresh && v.currentTime !== ct0) {
+				fresh = true // NAS_CLOUD#279 п.3: rVFC молчит (iOS, прозрачная плитка) — новый кадр видно по ходу времени
 			}
 			if ((fresh && v.readyState >= 2 && v.videoWidth && hasPicture(v)) || performance.now() - t0 > WAIT_MS) {
 				state.opaque = true

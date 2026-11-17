@@ -70,6 +70,12 @@ test('NAS_CLOUD#271: кадр поменьше посередине прозра
 	expect(check(px(() => false))).toBe(false)
 	// тёмный фон, но лицо посередине и светлые места у каждого края — целый кадр
 	expect(check(px((x, y) => (x > 2 && x < 5) || y === 3))).toBe(true)
+	// NAS_CLOUD#279 п.4: тёмная комната — края почти чёрные, но непрозрачные, лицо посередине — целый кадр
+	const dark = new Array(256).fill(0).map((_, i) => (i % 4 === 3 ? 255 : 5))
+	;[[3, 3], [4, 4]].forEach(([x, y]) => dark.fill(90, (y * 8 + x) * 4, (y * 8 + x) * 4 + 3))
+	expect(check(dark)).toBe(true)
+	// а тот же кадр с прозрачным полем вокруг — нет
+	expect(check(dark.map((c, i) => (i % 4 === 3 ? 0 : c)))).toBe(false)
 })
 
 test('NAS_CLOUD#271: повторный выкл (сигнал «скоро выкл», затем сам выкл) не начинает угасание заново; видео под снимком скрыто', async () => {
@@ -106,4 +112,27 @@ test('NAS_CLOUD#271: повторный выкл (сигнал «скоро вы
 	expect(fade.state.shown).toBe(false) // угасание кончилось через 1 с от первого сигнала
 	expect(snap.style.opacity).toBe('0')
 	expect(v.style.visibility).toBe('')
+})
+
+test('NAS_CLOUD#279 п.3: rVFC не стреляет — плитка проявляется по ходу currentTime, а не через 5 с', async () => {
+	vi.useFakeTimers()
+	const vproto = window.HTMLVideoElement.prototype
+	vi.spyOn(vproto, 'videoWidth', 'get').mockReturnValue(640)
+	vi.spyOn(vproto, 'videoHeight', 'get').mockReturnValue(360)
+	vi.spyOn(vproto, 'readyState', 'get').mockReturnValue(4)
+	let ct = 0
+	vi.spyOn(vproto, 'currentTime', 'get').mockImplementation(() => ct)
+	vproto.play = () => Promise.resolve()
+	vproto.requestVideoFrameCallback = () => 0 // молчит
+	vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage() {}, getImageData: () => ({ data: new Array(256).fill(200) }) })
+	const v = document.createElement('video')
+	document.createElement('div').append(v)
+	const fade = useK4VideoFade()
+	fade.set(true, () => v)
+	await vi.advanceTimersByTimeAsync(200)
+	expect(fade.state.opaque).toBe(false) // время стоит — кадр старый
+	ct = 0.1
+	await vi.advanceTimersByTimeAsync(100)
+	expect(fade.state.opaque).toBe(true)
+	delete vproto.requestVideoFrameCallback
 })

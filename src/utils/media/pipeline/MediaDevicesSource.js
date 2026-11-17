@@ -118,6 +118,8 @@ export default class MediaDevicesSource extends TrackSource {
 
 	async start(retryNoVideoCallback) {
 		this._active = true
+		this._reacquireOff = false
+		this._reacquiredAt = []
 
 		// Try to get the devices list before getting user media.
 		mediaDevicesManager.enableDeviceEvents()
@@ -238,10 +240,12 @@ export default class MediaDevicesSource extends TrackSource {
 		if (!kind || !this._active) {
 			return
 		}
-		// ponytail: не больше 3 перезахватов за 10 с, чтобы два захвата не отнимали устройство друг у друга без конца
+		// ponytail: 3 перезахвата за 10 с — и больше не перезахватываем до следующего start(): две вкладки звонка
+		// иначе отнимают устройство друг у друга без конца (NAS_CLOUD#279 п.5)
 		const now = Date.now()
 		this._reacquiredAt = (this._reacquiredAt || []).filter((at) => now - at < 10000)
-		if (this._reacquiredAt.length >= 3) {
+		if (this._reacquireOff || this._reacquiredAt.length >= 3) {
+			this._reacquireOff = true
 			return
 		}
 		this._reacquiredAt.push(now)
