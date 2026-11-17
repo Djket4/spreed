@@ -393,6 +393,10 @@ LocalMediaModel.prototype = {
 		}
 		this._k4leave = go
 		this.set('k4videoLeaving', true)
+		// собеседникам «камера выкл» тоже сразу: иначе чёрные кадры выключенного трека иногда обгоняют сигнал и чужая плитка
+		// ~0,1 с показывает чёрный прямоугольник (3 из 6 выкл на test2 до правки, 0 из 8 с ней). Повтор при pauseVideo безвреден,
+		// отмена (enableVideo → resumeVideo) шлёт «камера вкл»
+		this._webRtc.emit?.('videoOff')
 		requestAnimationFrame(() => requestAnimationFrame(go))
 		setTimeout(go, 150)
 	},

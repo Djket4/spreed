@@ -13,7 +13,7 @@ afterEach(() => {
 const setup = () => {
 	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] })
 	const m = new LocalMediaModel()
-	m._webRtc = { pauseVideo: vi.fn(), resumeVideo: vi.fn() }
+	m._webRtc = { pauseVideo: vi.fn(), resumeVideo: vi.fn(), emit: vi.fn() }
 	return m
 }
 
@@ -21,6 +21,7 @@ test('NAS_CLOUD#271: выкл камеры — сначала k4videoLeaving (п
 	const m = setup()
 	m.disableVideo()
 	expect(m.get('k4videoLeaving')).toBe(true)
+	expect(m._webRtc.emit).toHaveBeenCalledWith('videoOff') // собеседники гаснут до чёрных кадров
 	expect(m._webRtc.pauseVideo).not.toHaveBeenCalled()
 	vi.advanceTimersToNextFrame()
 	vi.advanceTimersToNextFrame()
