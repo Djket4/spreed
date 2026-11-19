@@ -9,6 +9,7 @@ import { generateOcsUrl } from '@nextcloud/router'
 
 const MAX_BUF = 500
 const MAX_POST = 300 // сервер принимает до 300 событий за запрос (K4DrawController::log)
+const MAX_BYTES = 64 * 1024 // сервер отвечает 413 на тело больше 96 КБ (K4DrawController::log), берём запас
 const FLUSH_MS = 4000
 const tab = Math.random().toString(36).slice(2, 8)
 
@@ -38,18 +39,66 @@ function url() {
 }
 
 /**
+ * Размер события как его считает сервер: json_encode экранирует не-ASCII в \uXXXX (6 байт).
+ *
+ * @param {object} e событие
+ */
+function size(e) {
+	return JSON.stringify(e).replace(/[^ -~]/g, '\\u0000').length
+}
+
+/**
+ * Делит пачку на части меньше MAX_BYTES (в каждой минимум одно событие).
+ *
+ * @param {Array} ev события
+ */
+export function _k4split(ev) {
+	const parts = []
+	let cur = []
+	let bytes = 0
+	for (const e of ev) {
+		const n = size(e) + 1
+		if (cur.length && bytes + n > MAX_BYTES) {
+			parts.push(cur)
+			cur = []
+			bytes = 0
+		}
+		cur.push(e)
+		bytes += n
+	}
+	cur.length && parts.push(cur)
+	return parts
+}
+
+/**
+ * Отправка одной части; отклонённая сервером часть не теряется молча: в журнал идёт cl_batch_lost.
+ *
+ * @param {Array} ev события
+ * @param {string} room токен комнаты
+ */
+function send(ev, room) {
+	axios.post(url(), { s: tab, ev }).catch((e) => {
+		if (room !== token) {
+			return // в событиях имена участников: в журнал другой комнаты не пишем
+		}
+		if (!e.response) {
+			// обрыв сети: вернуть в очередь
+			buf = ev.concat(buf).slice(-MAX_BUF)
+			return
+		}
+		push({ t: Date.now(), k: 'cl_batch_lost', d: { n: ev.length, bytes: size(ev), code: e.response.status } })
+	})
+}
+
+/**
  *
  */
 function flush() {
 	if (!token || !buf.length) {
 		return
 	}
-	const ev = buf.splice(0, MAX_POST)
 	const room = token
-	axios.post(url(), { s: tab, ev }).catch((e) => {
-		// вернуть в очередь — только при обрыве сети и только в ту же комнату (в событиях имена участников)
-		!e.response && room === token && (buf = ev.concat(buf).slice(-MAX_BUF))
-	})
+	_k4split(buf.splice(0, MAX_POST)).forEach((part) => send(part, room))
 }
 
 /**
@@ -62,12 +111,12 @@ function flushBeacon() {
 	// весь буфер пачками по MAX_POST, свежие первыми (у keepalive-запросов общий предел ~64 КБ: если не влезет, пропадут старые)
 	for (let ev; (ev = buf.splice(-MAX_POST)).length;) {
 		try {
-			fetch(url(), {
+			_k4split(ev).reverse().forEach((part) => fetch(url(), {
 				method: 'POST',
 				keepalive: true,
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', requesttoken: getRequestToken() },
-				body: JSON.stringify({ s: tab, ev }),
-			}).catch(() => {})
+				body: JSON.stringify({ s: tab, ev: part }),
+			}).catch(() => {}))
 		} catch (e) {
 			// ignore
 		}

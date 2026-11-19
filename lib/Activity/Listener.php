@@ -70,7 +70,8 @@ class Listener implements IEventListener {
 		$actor = $event->getActor();
 		$activeSince = $event->getOldValue();
 
-		$duration = ($event->getEndedAt() ?? $this->timeFactory->getTime()) - $activeSince->getTimestamp();
+		$endedAt = $event->getEndedAt() ?? $this->timeFactory->getTime();
+		$duration = $endedAt - $activeSince->getTimestamp();
 		$userIds = $this->participantService->getParticipantUserIds($room, $activeSince);
 		$cloudIds = $this->participantService->getParticipantActorIdsByActorType($room, [Attendee::ACTOR_FEDERATED_USERS], $activeSince);
 		$numGuests = $this->participantService->getActorsCountByType($room, Attendee::ACTOR_GUESTS, $activeSince->getTimestamp());
@@ -115,7 +116,7 @@ class Listener implements IEventListener {
 				->setType('spreed')
 				->setAuthor('')
 				->setObject('room', $room->getId())
-				->setTimestamp($this->timeFactory->getTime())
+				->setTimestamp($endedAt)
 				->setSubject('call', [
 					'room' => $room->getId(),
 					'users' => $userIds,

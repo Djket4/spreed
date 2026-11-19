@@ -121,4 +121,21 @@ class ListenerTest extends TestCase {
 			));
 		$this->listener->handle(new CallEndedEvent($room, null, new \DateTime('@1234567890'), 1234567890 + 10));
 	}
+
+	public function testActivityTimeIsEmptyMoment(): void {
+		// NAS_CLOUD#201: время activity = момент опустения; сообщение call_ended создаётся текущим временем (иначе клиенты пропустят его при поллинге), не тик cron (now = start + 60)
+		$room = $this->createMock(Room::class);
+		$room->method('getAttributes')->willReturn(RoomAttributes::NONE->value);
+		$room->method('isClassified')->willReturn(false);
+		$room->method('getId')->willReturn(42);
+		$this->prepareCall($room);
+
+		$event = $this->createMock(IEvent::class);
+		foreach (['setApp', 'setType', 'setAuthor', 'setObject', 'setSubject'] as $m) {
+			$event->method($m)->willReturnSelf();
+		}
+		$event->expects(self::once())->method('setTimestamp')->with(1234567890 + 10)->willReturnSelf();
+		$this->activityManager->method('generateEvent')->willReturn($event);
+		$this->listener->handle(new CallEndedEvent($room, null, new \DateTime('@1234567890'), 1234567890 + 10));
+	}
 }

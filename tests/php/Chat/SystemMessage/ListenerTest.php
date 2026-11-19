@@ -672,18 +672,20 @@ class ListenerTest extends TestCase {
 	public static function dataCallBegin(): array {
 		return [
 			'новый звонок' => [null, false, 'call_started'],
-			'возврат в отсрочку: active_since ещё стоит' => [new \DateTime('@900'), false, 'call_joined'],
+			'возврат в отсрочку: active_since стоит и есть отметка опустения' => [new \DateTime('@900'), false, 'call_joined', 950],
+			'зависший active_since без отметки: это новый звонок (NAS_CLOUD#201)' => [new \DateTime('@900'), false, 'call_started', 0],
 			'в звонке есть другие' => [null, true, 'call_joined'],
 		];
 	}
 
 	#[DataProvider('dataCallBegin')]
-	public function testCallBeginMessage(?\DateTime $activeSince, bool $othersInCall, string $expected): void {
+	public function testCallBeginMessage(?\DateTime $activeSince, bool $othersInCall, string $expected, int $emptySince = 0): void {
 		$this->mockLoggedInUser('u');
 		$room = $this->createMock(Room::class);
 		$room->method('getAttributes')->willReturn(0);
 		$room->method('getActiveSince')->willReturn($activeSince);
 		$this->participantService->method('hasActiveSessionsInCall')->willReturn($othersInCall);
+		$this->participantService->method('getEmptyCallSince')->willReturn($emptySince);
 		$attendee = new Attendee();
 		$attendee->setActorType(Attendee::ACTOR_USERS);
 		$attendee->setActorId('u');

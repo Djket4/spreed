@@ -289,7 +289,7 @@ class CallController extends AEnvironmentAwareOCSController {
 		$silent = $silent || ($this->room->getAttributes() & RoomAttributes::VOICE_ROOM->value);
 
 		try {
-			$this->endEmptyCallBeforeJoin();
+			$this->roomService->endEmptyCallBeforeJoin($this->room);
 			$this->participantService->changeInCall($this->room, $this->participant, $flags, silent: $silent, lastJoinedCall: $lastJoinedCall->getTimestamp());
 			$this->roomService->setActiveSince($this->room, $this->participant, $lastJoinedCall, $flags, silent: $silent, silentFor: $silentFor);
 			// отметку снимаем только после успешного входа, иначе при исключении звонок завис бы без задачи
@@ -363,6 +363,7 @@ class CallController extends AEnvironmentAwareOCSController {
 		}
 
 		try {
+			$this->roomService->endEmptyCallBeforeJoin($this->room);
 			$this->participantService->changeInCall($this->room, $this->participant, $flags, false, $silent);
 			$this->roomService->setActiveSince($this->room, $this->participant, $this->timeFactory->getDateTime(), $flags, silent: $silent);
 		} catch (\InvalidArgumentException $e) {
@@ -568,24 +569,6 @@ class CallController extends AEnvironmentAwareOCSController {
 	}
 
 	/**
-	 * ket4tec (NAS_CLOUD#129): звонок опустел и ждёт задачу {@see EndEmptyCall}. Если с опустения прошло
-	 * больше GRACE секунд, это новый звонок (завершить старый до setActiveSince, чтобы B получил звонок и push);
-	 * если меньше, это переключение устройства и звонок продолжается.
-	 */
-	private function endEmptyCallBeforeJoin(): void {
-		$key = EndEmptyCall::key($this->room->getId());
-		$emptySince = $this->appConfig->getAppValueInt($key, 0);
-		if ($emptySince <= 0) {
-			return;
-		}
-
-		if ($this->timeFactory->getTime() - $emptySince >= EndEmptyCall::GRACE
-			&& !$this->participantService->hasActiveSessionsInCall($this->room)) {
-			$this->roomService->resetActiveSince($this->room, null, $emptySince);
-		}
-	}
-
-	/**
 	 * Leave a call
 	 *
 	 * @param bool $all whether to also terminate the call for all participants
@@ -664,9 +647,8 @@ class CallController extends AEnvironmentAwareOCSController {
 		}
 
 		$this->participantService->changeInCall($this->room, $this->participant, Participant::FLAG_DISCONNECTED);
-		if (!$this->participantService->hasActiveSessionsInCall($this->room)) {
-			$this->roomService->resetActiveSince($this->room, $this->participant);
-		}
+		// ket4tec (NAS_CLOUD#201): как в leaveCall, пустой звонок завершается с отсрочкой
+		$this->participantService->resetCallStateWhenNeeded($this->room);
 
 		return new DataResponse(null);
 	}

@@ -8,11 +8,11 @@ declare(strict_types=1);
 namespace OCA\Talk\Tests\php\Controller;
 
 use OCA\Talk\Authenticator;
-use OCA\Talk\BackgroundJob\EndEmptyCall;
 use OCA\Talk\Config;
 use OCA\Talk\Controller\CallController;
 use OCA\Talk\Manager;
 use OCA\Talk\Model\PhoneNumberMapper;
+use OCA\Talk\Participant;
 use OCA\Talk\Room;
 use OCA\Talk\Service\ConsentService;
 use OCA\Talk\Service\ParticipantService;
@@ -27,19 +27,21 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Test\TestCase;
 
 /**
- * NAS_CLOUD#129: возврат в звонок до и после отсрочки (endEmptyCallBeforeJoin).
+ * NAS_CLOUD#201: федеративный выход из звонка идёт через отсрочку, вход (в том числе федеративный)
+ * сначала закрывает просроченный пустой звонок.
  */
 class CallControllerEmptyCallTest extends TestCase {
-	private IAppConfig&MockObject $appConfig;
 	private RoomService&MockObject $roomService;
 	private ParticipantService&MockObject $participantService;
 	private CallController $controller;
+	private Room&MockObject $room;
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->appConfig = $this->createMock(IAppConfig::class);
 		$this->roomService = $this->createMock(RoomService::class);
 		$this->participantService = $this->createMock(ParticipantService::class);
+		$auth = $this->createMock(Authenticator::class);
+		$auth->method('isFederationRequest')->willReturn(true);
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('getTime')->willReturn(1000);
 		$this->controller = new CallController(
@@ -53,33 +55,32 @@ class CallControllerEmptyCallTest extends TestCase {
 			$this->createMock(IUserManager::class),
 			$time,
 			$this->createMock(IConfig::class),
-			$this->appConfig,
+			$this->createMock(IAppConfig::class),
 			$this->createMock(Config::class),
-			$this->createMock(Authenticator::class),
+			$auth,
 			$this->createMock(SIPDialOutService::class),
 		);
-		$room = $this->createMock(Room::class);
-		$room->method('getId')->willReturn(42);
-		$this->controller->setRoom($room);
+		$this->room = $this->createMock(Room::class);
+		$this->room->method('getId')->willReturn(42);
+		$this->controller->setRoom($this->room);
+		$this->controller->setParticipant($this->createMock(Participant::class));
 	}
 
-	public function testReturnBeforeGraceKeepsCall(): void {
-		$this->appConfig->method('getAppValueInt')->willReturn(1000 - EndEmptyCall::GRACE + 10);
+	public function testLeaveFederatedCallDefersEmptyCall(): void {
+		$this->participantService->expects($this->once())->method('resetCallStateWhenNeeded')->with($this->room);
 		$this->roomService->expects($this->never())->method('resetActiveSince');
-		self::invokePrivate($this->controller, 'endEmptyCallBeforeJoin');
+		$this->controller->leaveFederatedCall('sess');
 	}
 
-	public function testReturnAfterGraceEndsOldCallAtEmptyMoment(): void {
-		$emptySince = 1000 - EndEmptyCall::GRACE - 5;
-		$this->appConfig->method('getAppValueInt')->willReturn($emptySince);
-		$this->participantService->method('hasActiveSessionsInCall')->willReturn(false);
-		$this->roomService->expects($this->once())->method('resetActiveSince')->with($this->anything(), null, $emptySince);
-		self::invokePrivate($this->controller, 'endEmptyCallBeforeJoin');
-	}
-
-	public function testNoMarkNoAction(): void {
-		$this->appConfig->method('getAppValueInt')->willReturn(0);
-		$this->roomService->expects($this->never())->method('resetActiveSince');
-		self::invokePrivate($this->controller, 'endEmptyCallBeforeJoin');
+	public function testJoinFederatedCallEndsExpiredEmptyCallFirst(): void {
+		$calls = [];
+		$this->roomService->method('endEmptyCallBeforeJoin')->willReturnCallback(function () use (&$calls): void {
+			$calls[] = 'end';
+		});
+		$this->participantService->method('changeInCall')->willReturnCallback(function () use (&$calls): void {
+			$calls[] = 'join';
+		});
+		$this->controller->joinFederatedCall('sess', Participant::FLAG_IN_CALL);
+		$this->assertSame(['end', 'join'], $calls);
 	}
 }

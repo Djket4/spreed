@@ -103,6 +103,12 @@ class ParticipantServiceEmptyCallTest extends TestCase {
 		$service->resetCallStateWhenNeeded($this->room(Participant::FLAG_IN_CALL));
 	}
 
+	public function testGetEmptyCallSinceReadsMark(): void {
+		$service = $this->service(false);
+		$this->appConfig->method('getValueInt')->with('spreed', EndEmptyCall::key(42), 0)->willReturn(950);
+		$this->assertSame(950, $service->getEmptyCallSince($this->room(Participant::FLAG_IN_CALL)));
+	}
+
 	public function testNothingWhenOthersStillInCall(): void {
 		$service = $this->service(true);
 		$service->method('hasActiveSessionsInCall')->willReturn(true);

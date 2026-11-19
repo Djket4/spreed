@@ -958,6 +958,8 @@ class SignalingController extends OCSController {
 				if ($inCall !== null) {
 					$lastJoinedCall = $this->timeFactory->getDateTime();
 					try {
+						// ket4tec (NAS_CLOUD#201): как в joinCall, отметка пустого звонка (changeInCall снимает её сам)
+						$this->roomService->endEmptyCallBeforeJoin($room);
 						$this->participantService->changeInCall($room, $participant, $inCall, lastJoinedCall: $lastJoinedCall->getTimestamp());
 						$this->roomService->setActiveSince($room, $participant, $lastJoinedCall, callFlag: $inCall, silent: false);
 					} catch (ForbiddenException) {
