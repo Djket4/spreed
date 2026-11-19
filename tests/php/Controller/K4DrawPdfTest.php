@@ -19,6 +19,8 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\Comments\IComment;
+use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\ICacheFactory;
 use OCP\IConfig;
@@ -34,12 +36,14 @@ use Test\TestCase;
 class K4DrawPdfTest extends TestCase {
 	private IAppConfig&MockObject $appConfig;
 	private ChatManager&MockObject $chatManager;
+	private IRootFolder&MockObject $rootFolder;
 
 	private function controller(bool $cannotSeeChat): K4DrawController {
 		$this->appConfig = $this->createMock(IAppConfig::class);
 		$this->chatManager = $this->createMock(ChatManager::class);
+		$this->rootFolder = $this->createMock(IRootFolder::class);
 		$c = new K4DrawController(
-			'spreed', $this->createMock(IRequest::class), $this->appConfig, $this->createMock(IRootFolder::class),
+			'spreed', $this->createMock(IRequest::class), $this->appConfig, $this->rootFolder,
 			$this->createMock(ITimeFactory::class), $this->createMock(LoggerInterface::class),
 			$this->chatManager, $this->createMock(IShareManager::class),
 			$this->createMock(IPreview::class), $this->createMock(ILockingProvider::class),
@@ -66,6 +70,19 @@ class K4DrawPdfTest extends TestCase {
 		$this->appConfig->method('getAppValueString')->willReturn('["m5"]');
 		$this->chatManager->method('getComment')->willThrowException(new \Exception('нет такого'));
 		$this->assertSame(Http::STATUS_NOT_FOUND, $ctrl->chatPdf(5)->getStatus());
+	}
+
+	public function testFileIdMessageWithoutShareServesPdf(): void {
+		// NAS_CLOUD#107: новые вложения беседы — file_shared с fileId без share
+		$ctrl = $this->controller(false);
+		$c = $this->createMock(IComment::class);
+		$c->method('getVerb')->willReturn(ChatManager::VERB_OBJECT_SHARED);
+		$c->method('getMessage')->willReturn('{"message":"file_shared","parameters":{"fileId":"17221"}}');
+		$this->chatManager->method('getComment')->willReturn($c);
+		$file = $this->createMock(File::class);
+		$file->method('getMimeType')->willReturn('application/pdf');
+		$this->rootFolder->expects($this->once())->method('getFirstNodeById')->with(17221)->willReturn($file);
+		$this->assertSame(Http::STATUS_OK, $ctrl->chatPdf(5)->getStatus());
 	}
 
 	public function testPdfRouteIsPublicNoCsrf(): void {

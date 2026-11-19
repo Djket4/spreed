@@ -234,14 +234,22 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 				return null;
 			}
 			$m = json_decode($c->getMessage(), true);
-			if (($m['message'] ?? '') !== 'file_shared' || !isset($m['parameters']['share'])) {
+			if (($m['message'] ?? '') !== 'file_shared') {
 				return null;
 			}
-			$share = $this->shareManager->getShareById('ocRoomShare:' . $m['parameters']['share']);
-			if ($share->getSharedWith() !== $this->room->getToken()) {
+			if (isset($m['parameters']['share'])) {
+				$share = $this->shareManager->getShareById('ocRoomShare:' . $m['parameters']['share']);
+				if ($share->getSharedWith() !== $this->room->getToken()) {
+					return null;
+				}
+				$node = $share->getNode();
+			} elseif (isset($m['parameters']['fileId'])) {
+				// ket4tec (NAS_CLOUD#107): новые вложения беседы приходят без share, только fileId (как SystemMessage::getFileFromNodeId).
+				// Сообщение object_shared пишет только сервер, поэтому файл принадлежит этой беседе.
+				$node = $this->rootFolder->getFirstNodeById((int)$m['parameters']['fileId']);
+			} else {
 				return null;
 			}
-			$node = $share->getNode();
 		} catch (\Throwable) {
 			return null;
 		}
