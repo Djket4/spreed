@@ -72,15 +72,19 @@ import { getUserProxyAvatarOcsUrl } from '../../services/avatarService.ts'
 
 // ket4tec (NAS_CLOUD#109 п.4): у кого нет своей картинки — буква на акценте (k7ui.scss), а не блёклая картинка сервера.
 // Где нужно меню контакта (NAS_CLOUD#110 Б5), NcAvatar остаётся «пользователем», букву рисуем поверх его картинки (k4ini + k7ui.scss).
-// ponytail: один запрос на пользователя за жизнь страницы (тот же адрес, что грузит NcAvatar, — из кэша браузера); сменили картинку — видно после перезагрузки, как и у NcAvatar
+// Ответ помним K4_AVATAR_TTL (NAS_CLOUD#110 Б5): сменили картинку — новая плитка/окно узнают через 5 минут, а не после перезагрузки страницы.
+// ponytail: проверка при создании компонента (computed), открытая плитка не опрашивается; нужен немедленный сброс — событие смены аватара.
+const K4_AVATAR_TTL = 5 * 60 * 1000
 const k4own = reactive({}) // userId -> своя картинка есть (true, пока не узнали)
+const k4seen = {} // userId -> когда спрашивали
 /**
  * @param {string} id пользователь
  */
-function k4plainAvatar(id) {
-	if (id && !(id in k4own)) {
-		k4own[id] = true
-		fetch(generateUrl('/avatar/{id}/64', { id })).then((r) => {
+export function k4plainAvatar(id) {
+	if (id && (!(id in k4own) || Date.now() - k4seen[id] > K4_AVATAR_TTL)) {
+		k4seen[id] = Date.now()
+		k4own[id] ??= true
+		fetch(generateUrl('/avatar/{id}/64', { id }), { cache: 'no-cache' }).then((r) => {
 			k4own[id] = r.headers.get('X-NC-IsCustomAvatar') !== '0'
 		}).catch(() => {})
 	}

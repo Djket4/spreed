@@ -229,7 +229,7 @@ export default {
 
 		/** ket4tec (NAS_CLOUD#195 п.1): значок «микрофон выключен» на своей плитке (не на открытых кнопках) */
 		k4MicOff() {
-			return !this.isSidebar && !this.isBig && !this.isPresenterOverlay && (this.isGrid || this.isStripe)
+			return !this.isSidebar && !this.isPresenterOverlay && (this.isBig || this.isGrid || this.isStripe) // NAS_CLOUD#112: и на крупной плитке
 				&& !this.localMediaModel.attributes.audioEnabled && !(this.k4tapOn && this.tap.shown.value)
 		},
 

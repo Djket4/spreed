@@ -42,6 +42,19 @@
 			:value="searchText"
 			@select="addParticipants" />
 
+		<!-- ket4tec (NAS_CLOUD#154): выключить микрофон всем -->
+		<NcButton
+			v-if="canMuteAll && !isSearching"
+			class="k4-mute-all"
+			variant="secondary"
+			wide
+			@click="muteAll">
+			<template #icon>
+				<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="20" />
+			</template>
+			{{ t('spreed', 'Mute all microphones') }}
+		</NcButton>
+
 		<ParticipantsListVirtual
 			v-if="!isSearching"
 			:key="token"
@@ -96,8 +109,11 @@ import { t } from '@nextcloud/l10n'
 import debounce from 'debounce'
 import { ref, useId } from 'vue'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import IconInformationOutline from 'vue-material-design-icons/InformationOutline.vue'
+import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-off-outline.svg?raw'
 import SelectPhoneNumber from '../../SelectPhoneNumber.vue'
 import DialpadPanel from '../../UIShared/DialpadPanel.vue'
 import NavigationHint from '../../UIShared/NavigationHint.vue'
@@ -110,7 +126,7 @@ import { useGetParticipants } from '../../../composables/useGetParticipants.ts'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useIsInCall } from '../../../composables/useIsInCall.js'
 import { useSortParticipants } from '../../../composables/useSortParticipants.js'
-import { ATTENDEE, CONVERSATION } from '../../../constants.ts'
+import { ATTENDEE, CONVERSATION, PARTICIPANT } from '../../../constants.ts'
 import {
 	getTalkConfig,
 	hasTalkFeature,
@@ -121,6 +137,8 @@ import { EventBus } from '../../../services/EventBus.ts'
 import { addParticipant } from '../../../services/participantsService.js'
 import { useSidebarStore } from '../../../stores/sidebar.ts'
 import CancelableRequest from '../../../utils/CancelableRequest.ts'
+import { callParticipantCollection } from '../../../utils/webrtc/index.js'
+import { muteAllOthers } from '../../../utils/webrtc/muteAll.js'
 import { isClassifiedConversation } from '../../../utils/conversation.ts'
 
 const isFederationEnabled = getTalkConfig('local', 'federation', 'enabled')
@@ -128,6 +146,8 @@ const isFederationEnabled = getTalkConfig('local', 'federation', 'enabled')
 export default {
 	name: 'ParticipantsTab',
 	components: {
+		NcButton,
+		NcIconSvgWrapper,
 		NcNoteCard,
 		DialpadPanel,
 		NavigationHint,
@@ -165,6 +185,7 @@ export default {
 		const searchBoxDescription = t('spreed', 'You can search or add participants via name, email, or Federated Cloud ID')
 
 		return {
+			IconMicrophoneOffOutline,
 			searchBoxDescriptionId,
 			searchBoxDescription,
 			initializeNavigation,
@@ -230,6 +251,13 @@ export default {
 
 		conversation() {
 			return this.$store.getters.conversation(this.token) || this.$store.getters.dummyConversation
+		},
+
+		// ket4tec (NAS_CLOUD#154): та же роль, что у «Выключить микрофон» на плитке (владелец и модератор)
+		canMuteAll() {
+			const type = this.conversation.participantType
+			return this.isInCall && !this.isOneToOneConversation
+				&& (type === PARTICIPANT.TYPE.OWNER || type === PARTICIPANT.TYPE.MODERATOR)
 		},
 
 		isOneToOneConversation() {
@@ -298,6 +326,10 @@ export default {
 	},
 
 	methods: {
+		muteAll() {
+			muteAllOthers(callParticipantCollection.callParticipantModels)
+		},
+
 		t,
 
 		handleClose() {
@@ -415,6 +447,11 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.k4-mute-all {
+	margin: 4px 8px 8px;
+	width: calc(100% - 16px);
+}
+
 .wrapper {
 	display: flex;
 	flex-direction: column;

@@ -604,7 +604,7 @@ export default {
 
 		/** ket4tec (NAS_CLOUD#195): значок «микрофон выключен»; без связи и на открытых кнопках не нужен */
 		k4MicOff() {
-			return !this.placeholderForPromoted && !this.isBig && !this.isSidebar && this.model.attributes.audioAvailable === false
+			return !this.placeholderForPromoted && !this.isSidebar && this.model.attributes.audioAvailable === false
 				&& !this.k4Recon && !(this.isStripe && this.tap.shown.value)
 		},
 
