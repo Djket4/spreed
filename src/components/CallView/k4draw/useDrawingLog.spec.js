@@ -1,7 +1,7 @@
 /**
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-// ket4tec (NAS_CLOUD#114): рисунок сохраняется сам при закрытии доски и конце показа
+// ket4tec (NAS_CLOUD#163): события доски в журнале звонка
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sig = vi.hoisted(() => ({ getSessionId: () => 'me', doSend: vi.fn(), on: vi.fn(), off: vi.fn() }))
@@ -18,7 +18,6 @@ vi.mock('../../../utils/webrtc/index.js', () => ({
 	k4drawSignaling: () => sig,
 }))
 
-import { endShow, openBoard, requestCloseBoard, sendSnap, setAutoSnap, startShow, state, strokeEnd, strokeStart } from './useDrawing.js'
 vi.mock('../../../utils/calllog.js', () => ({ calllog: vi.fn() }))
 import { calllog } from '../../../utils/calllog.js'
 import { clearAll, clearMine, endShow, openBoard, requestCloseBoard, sendSnap, state, strokeEnd, strokeStart } from './useDrawing.js'
