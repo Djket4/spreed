@@ -9,7 +9,7 @@ import {
 } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
-import { useResizeObserver } from '@vueuse/core'
+import { useMediaQuery, useResizeObserver } from '@vueuse/core'
 import debounce from 'debounce'
 import { computed, onMounted, onUnmounted, ref, toValue, useTemplateRef, watch } from 'vue'
 import { useStore } from 'vuex'
@@ -65,6 +65,8 @@ const { isSidebar = false } = defineProps<{
 const store = useStore()
 const token = useGetToken()
 const actorStore = useActorStore()
+// ket4tec (NAS_CLOUD#43): «телефон» — тот же порог 768, что в k7call.scss; на телефоне автокадрирование только в шторке настроек
+const isPhone = useMediaQuery('(max-width: 768px)')
 const isFullscreen = !isSidebar && useDocumentFullscreen()
 const callViewStore = useCallViewStore()
 const liveTranscriptionStore = useLiveTranscriptionStore()
@@ -630,7 +632,7 @@ function setCallLayout(layout: CallLayout) {
 			</NcButton>
 
 			<!-- ket4tec (NAS_CLOUD#43): автокадрирование прямо в звонке, тот же переключатель и «Дальность», что в проверке устройств -->
-			<NcPopover v-if="!isSidebar" popupRole="dialog">
+			<NcPopover v-if="!isSidebar && !isPhone" popupRole="dialog">
 				<template #trigger>
 					<NcButton
 						class="k7-call-settings k7-face-btn"

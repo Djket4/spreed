@@ -310,7 +310,7 @@ $glass: blur(24px) saturate(180%);
 	body { --k7-r-tile: 20px; }
 	#content-vue.in-call #call-container { --k7-btn: 56px; }
 	#content-vue #call-container > .bottom-bar { gap: 8px; }
-	// п.5: 7 кнопок капсулы + «покинуть» во всю ширину iPhone (402) без обрезки: кнопка = (ширина − поля) / 8, от 40 до 56
+	// п.5 (NAS_CLOUD#43: кнопка автокадрирования на телефоне убрана, BottomBar.vue isPhone): 7 кнопок капсулы + «покинуть» во всю ширину iPhone (402) без обрезки: кнопка = (ширина − поля) / 8, от 40 до 56
 	#content-vue.in-call #call-container { --k7-btn: clamp(40px, calc((100vw - 52px) / 8), 56px); }
 	#content-vue #call-container > .bottom-bar .bottom-bar-call-controls:has(.buttons-bar) { gap: 2px; padding: 4px; }
 	#content-vue #call-container > .bottom-bar .buttons-bar { gap: 2px !important; }
