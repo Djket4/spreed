@@ -81,6 +81,7 @@ class K4DrawPdfTest extends TestCase {
 		$this->chatManager->method('getComment')->willReturn($c);
 		$file = $this->createMock(File::class);
 		$file->method('getMimeType')->willReturn('application/pdf');
+		$file->method('getMTime')->willReturn(1);
 		$this->rootFolder->expects($this->once())->method('getFirstNodeById')->with(17221)->willReturn($file);
 		$this->assertSame(Http::STATUS_OK, $ctrl->chatPdf(5)->getStatus());
 	}
