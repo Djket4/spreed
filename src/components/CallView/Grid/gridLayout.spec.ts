@@ -15,6 +15,8 @@ import {
 	getMinTileWidth,
 	GRID_GAP,
 	MIN_TILE_SIDE,
+	PHONE_MAX_TILES,
+	PHONE_MIN_TILE_SIDE,
 	STRIPE_HEIGHT,
 	TARGET_ASPECT_RATIO,
 	TILE_COLUMN_SPAN,
@@ -35,6 +37,27 @@ describe('gridLayout', () => {
 		test('fits a compact tile in the stripe', () => {
 			// The grid of the stripe is padded by a gap at its top and bottom
 			expect(getMinTileHeight(true)).toBe(STRIPE_HEIGHT - 2 * GRID_GAP)
+		})
+	})
+
+	// ket4tec (NAS_CLOUD#159): iPhone вертикально, область между шапкой и нижней панелью ~ 440x460
+	describe('phone portrait', () => {
+		const area = { gridWidth: 440, gridHeight: 460, minSide: PHONE_MIN_TILE_SIDE }
+
+		test.each([5, 6])('%i tiles fit one page as 2 columns x 3 rows', (total) => {
+			const { columns, rows } = computeSquareLayout({ ...area, total })
+			expect({ columns, rows }).toEqual({ columns: 2, rows: 3 })
+		})
+
+		test('the default minimum square leaves only two rows (the old bug)', () => {
+			expect(computeSquareLayout({ ...area, minSide: undefined, total: 5 }).rows).toBe(2)
+		})
+
+		test('more than six: four others, you and "+N" are laid out as six cells', () => {
+			// VideosGrid passes at most PHONE_MAX_TILES - 1 remote tiles to the layout
+			const total = Math.min(9, PHONE_MAX_TILES - 1) + 1
+			const { columns, rows } = computeSquareLayout({ ...area, total })
+			expect(columns * rows).toBe(PHONE_MAX_TILES)
 		})
 	})
 

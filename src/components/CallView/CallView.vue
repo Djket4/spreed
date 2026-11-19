@@ -545,7 +545,7 @@ export default {
 
 		// Shows the local video if selected
 		showLocalVideo() {
-			return this.hasLocalVideo && this.selectedVideoPeerId === 'local'
+			return false // ket4tec (NAS_CLOUD#159): своя камера никогда не крупная (и устаревшее закрепление 'local' не показываем)
 		},
 
 		// Show local screen
@@ -1140,23 +1140,7 @@ export default {
 		},
 
 		handleClickLocalVideo() {
-			// DO nothing if no video
-			if (!this.hasLocalVideo || this.isSidebar) {
-				return
-			}
-			if (this.selectedVideoPeerId === 'local') {
-				if (!isTouchDevice()) {
-					this.unpin() // ket4tec (NAS_CLOUD#153)
-				}
-				return
-			}
-			this.callViewStore.setSelectedVideoPeerId('local')
-			this.callViewStore.setCallViewMode({
-				token: this.token,
-				isGrid: false,
-				isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
-				clearLast: false,
-			})
+			// ket4tec (NAS_CLOUD#159): своя камера не закрепляется — иначе она показана дважды (крупно и в ряду «Вы»)
 		},
 
 		async fetchPeers() {
