@@ -15,24 +15,25 @@
 		@update:open="handleHideSettings">
 		<NcAppSettingsSection
 			id="basic-info"
-			:name="t('spreed', 'Basic Info')">
+			:name="'Основное'">
 			<BasicInfo
 				:conversation="conversation"
 				:canFullModerate="canFullModerate" />
 		</NcAppSettingsSection>
 
 		<template v-if="!isBreakoutRoom">
+			<!-- ket4tec (NAS_CLOUD#282): заголовки разделов — по-человечески -->
 			<!-- Notifications settings and devices preview screen -->
 			<NcAppSettingsSection
 				v-if="!isNoteToSelf && !isOneToOneFormer"
 				id="notifications"
-				:name="t('spreed', 'Personal')">
+				:name="'Для меня'">
 				<NotificationsSettings v-if="!isGuest" :conversation="conversation" />
 			</NcAppSettingsSection>
 
 			<NcAppSettingsSection
 				id="conversation-settings"
-				:name="selfIsOwnerOrModerator ? t('spreed', 'Moderation') : t('spreed', 'Setup overview')">
+				:name="selfIsOwnerOrModerator ? 'Управление обсуждением' : 'Об обсуждении'">
 				<ListableSettings v-if="!isNoteToSelf && !isGuest && !isOneToOne && !isClassified" :token="token" :canModerate="canFullModerate" />
 				<MentionsSettings v-if="!isNoteToSelf && !isOneToOne" :token="token" :canModerate="canFullModerate" />
 				<LinkShareSettings v-if="!isNoteToSelf && !isClassified" :token="token" :canModerate="canFullModerate" />
@@ -54,7 +55,7 @@
 			<NcAppSettingsSection
 				v-if="canFullModerate && !isNoteToSelf"
 				id="permissions"
-				:name="t('spreed', 'Permissions')">
+				:name="'Что можно участникам'">
 				<ConversationPermissionsSettings :token="token" />
 			</NcAppSettingsSection>
 
@@ -62,13 +63,13 @@
 			<NcAppSettingsSection
 				v-if="canConfigureLiveTranscription"
 				id="live-transcription"
-				:name="t('spreed', 'Live transcription')">
+				:name="'Субтитры в звонке'">
 				<LiveTranscriptionSettings :token="token" />
 			</NcAppSettingsSection>
 			<NcAppSettingsSection
 				v-else-if="hintLiveTranscription"
 				id="live-transcription"
-				:name="t('spreed', 'Live transcription')">
+				:name="'Субтитры в звонке'">
 				<NcCheckboxRadioSwitch
 					:description="t('spreed', 'Live transcriptions app is not installed')"
 					type="switch"
@@ -81,7 +82,7 @@
 			<NcAppSettingsSection
 				v-if="canConfigureBreakoutRooms"
 				id="breakout-rooms"
-				:name="t('spreed', 'Breakout Rooms')">
+				:name="'Группы в звонке'">
 				<BreakoutRoomsSettings :token="token" />
 			</NcAppSettingsSection>
 
@@ -97,7 +98,7 @@
 			<NcAppSettingsSection
 				v-if="selfIsOwnerOrModerator && supportBotsV1 && !isClassified"
 				id="bots"
-				:name="t('spreed', 'Bots')">
+				:name="'Боты'">
 				<BotsSettings :token="token" />
 			</NcAppSettingsSection>
 
@@ -105,7 +106,7 @@
 			<NcAppSettingsSection
 				v-if="canLeaveConversation || canDeleteConversation || showPreserveConversationSetting"
 				id="dangerzone"
-				:name="t('spreed', 'Danger zone')">
+				:name="'Удаление и выход'">
 				<PreserveConversationSettings v-if="showPreserveConversationSetting" :token="token" />
 				<LockingSettings v-if="canFullModerate && !isNoteToSelf" :token="token" />
 				<template v-if="supportsArchive">
