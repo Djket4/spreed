@@ -258,6 +258,10 @@ const clean = (d) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !=
 async function measure(id, pc, dir, flags) {
 	const e = per[id] || (per[id] = { report: null, st: null, key: null })
 	e.miss = 0
+	if (e.pc !== pc) {
+		e.pc = pc
+		e.report = null // отчёт другого pc: дельта счётчиков была бы мусором
+	}
 	let s = EMPTY // нет pc или getStats упал: «обрыв» всё равно считаем по connectionState
 	if (pc) {
 		try {
@@ -372,6 +376,9 @@ function lagStep() {
  * @param {string} lconn connectionState модели
  */
 function checkSendZero(lpc, lconn) {
+	if ((lpc || null) !== curPc) {
+		return // замер устаревшего pc: не трогает flowed нового соединения
+	}
 	const up = per.local?.last
 	if (up?.vb > 0) {
 		flowed = true

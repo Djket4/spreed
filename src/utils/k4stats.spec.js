@@ -294,6 +294,39 @@ describe('рантайм', () => {
 			expect(ev('send_zero')).toHaveLength(0)
 		})
 
+		it('send_zero: замена pc во время getStats старого не даёт ложного события (гонка tick/lagStep)', async () => {
+			const mkPc = (getStats) => ({ iceConnectionState: 'connected', connectionState: 'connected', addEventListener: vi.fn(), removeEventListener: vi.fn(), getStats })
+			let n = 0
+			let release
+			const hang = new Promise((r) => {
+				release = r
+			})
+			const oldPc = mkPc(vi.fn(() => {
+				n++
+				return n <= 2 ? Promise.resolve(outRep(n, n * 30000)) : hang.then(() => outRep(n, n * 30000))
+			}))
+			let m = 0
+			let newVb = () => 0
+			const newPc = mkPc(vi.fn(async () => outRep(++m, newVb(m))))
+			let cur = oldPc
+			const local = { get: (k) => (k === 'peer' ? { pc: cur } : k === 'connectionState' ? 'connected' : undefined) }
+			const localMedia = { on() {}, off() {}, attributes: { videoEnabled: true, localStream: { getTracks: () => [], getVideoTracks: () => [mkTrack()] } } }
+			startK4stats({ token: 't', local, collection: { callParticipantModels: [] }, localMedia })
+			await vi.advanceTimersByTimeAsync(7000) // 2 замера старого pc: vb>0
+			await vi.advanceTimersByTimeAsync(3000) // замер старого повис
+			cur = newPc
+			await vi.advanceTimersByTimeAsync(1500) // lagStep увидел новый pc
+			release()
+			await vi.advanceTimersByTimeAsync(0)
+			await vi.advanceTimersByTimeAsync(20000) // новый pc: нули при включённой камере
+			expect(newPc.getStats).toHaveBeenCalled()
+			expect(ev('send_zero')).toHaveLength(0)
+			const from = m
+			newVb = (k) => (k <= from + 2 ? k * 30000 : (from + 2) * 30000)
+			await vi.advanceTimersByTimeAsync(20000)
+			expect(ev('send_zero').length).toBeGreaterThanOrEqual(1)
+		})
+
 		it('stall: шаг > 3000 мс; track_state, pc_state, page_state; ключи новых событий валидны', async () => {
 			const { st, pc } = startLocal({ vbAt: (n) => n * 30000 })
 			await vi.advanceTimersByTimeAsync(2000)
