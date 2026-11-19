@@ -618,21 +618,22 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	body:has(#content-vue.in-call) :is(#content, #content-vue) { top: 0 !important; height: 100dvh !important; }
 	#content-vue.in-call {
 		.app-navigation-toggle-wrapper, > .app-sidebar__toggle { display: none; }
+		// ket4tec (NAS_CLOUD#159, 19.11): шапка - одна узкая строка сверху (название с многоточием + таймер), плитки на всю ширину
 		.top-bar--in-call {
-			inset: 12px auto auto #{$L}; width: 184px; height: auto; padding: 0; // высота по содержимому — не перекрывает пилюлю «Камеры»
-			flex-direction: column; justify-content: flex-start; align-items: flex-start; gap: 10px;
+			inset: 6px calc(#{$R} + 60px) auto #{$L}; width: auto; height: 22px; padding: 0;
+			flex-direction: row; justify-content: flex-start; align-items: center; gap: 8px;
 			> .top-bar__icon-wrapper { display: none; }
-			.conversation-header { flex: none; width: 100%; margin: 0; padding: 0 !important; justify-content: flex-start; }
-			.conversation-header__text:has(.k4-shows), .conversation-header__text { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 10px; width: 100%; }
-			.conversation-header .title { font-size: 17px; line-height: 1.2; text-align: start; }
-			.k4-shows { height: 26px; margin: 0; }
-			.top-bar__controls { margin: 0; gap: 6px; }
+			.conversation-header { flex: 1 1 auto; min-width: 0; width: auto; margin: 0; padding: 0 !important; justify-content: flex-start; }
+			.conversation-header__text:has(.k4-shows), .conversation-header__text { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+			.conversation-header .title { flex: 0 1 auto; min-width: 0; font-size: 13px; line-height: 22px; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+			.k4-shows { flex: 0 1 auto; min-width: 0; height: 18px; margin: 0; font-size: 11px; line-height: 14px; }
+			.top-bar__controls { flex: none; margin: 0; gap: 6px; }
 			.top-bar__controls > .button-vue { display: none; } // участники и поиск — в эскизе их нет (список — в портрете)
-			.top-bar__controls :is(.call-time, .button-vue) { height: 36px !important; min-height: 36px !important; }
-			.top-bar__controls .action-item .button-vue { width: 36px !important; min-width: 36px !important; }
+			.top-bar__controls :is(.call-time, .button-vue) { height: 22px !important; min-height: 22px !important; font-size: 12px; }
+			.top-bar__controls .action-item .button-vue { width: 22px !important; min-width: 22px !important; }
 		}
 		#call-container { --k7-btn: 38px; }
-		#call-container > #videos { inset: 12px calc(#{$R} + 60px) 12px calc(#{$L} + 200px) !important; width: auto !important; height: auto !important; }
+		#call-container > #videos { inset: 32px calc(#{$R} + 60px) 12px #{$L} !important; width: auto !important; height: auto !important; }
 		#call-container > .bottom-bar {
 			inset: 0 #{$R} 0 auto !important; width: auto; height: auto; padding: 0 !important;
 			flex-direction: column; justify-content: center; gap: 8px;
@@ -644,18 +645,18 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	}
 	#{$k4s} { --stripe-height: 110px; }
 	// ket4tec (NAS_CLOUD#270 п.2): полосы под уведомления тут нет (main.js её выключает) — стопка вверху по центру показа
-	// (между левой колонкой 200 px и кнопками справа 60 px), поверх плиток, а не на 128 px по умолчанию
+	// (между левым краем и кнопками справа 60 px), поверх плиток, а не на 128 px по умолчанию
 	// NAS_CLOUD#332: плашки вне стопки («Ссылка скопирована») — внизу по центру показа, не поверх «Отправить ссылку» и не на колонке кнопок справа
 	html.k7f.k7f body:has(#content-vue.in-call) .toastify.dialogs {
 		inset-block: auto max(12px, env(safe-area-inset-bottom, 0px)) !important;
-		translate: 70px 0;
-		max-width: calc(100vw - 280px);
+		translate: -28px 0;
+		max-width: calc(100vw - 160px);
 	}
 	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts { // NAS_CLOUD#332: вверху стопка закрывала «Отправить ссылку»
 		top: auto !important;
 		bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
-		translate: 70px 0;
-		max-width: calc(100vw - 280px);
+		translate: -28px 0;
+		max-width: calc(100vw - 160px);
 	}
 }
 
