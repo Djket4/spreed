@@ -136,6 +136,7 @@ export function useK4VideoFade() {
 			return
 		}
 		const t = ++tok
+		cancelSwap()
 		clearTimeout(timer)
 		if (!on) {
 			leaving = true
@@ -210,41 +211,73 @@ export function useK4VideoFade() {
 	 *
 	 * @param {() => HTMLVideoElement} getVideo
 	 */
+	// смена потока: своё поколение, чтобы повторная смена (A -> B -> A) и set() отменяли прежний опрос
+	let swapGen = 0
+	let swapTimer = 0
+	let swapRvfc = 0
+	let swapVideo = null
+	let swapping = false
+	const dropSwapPoll = () => {
+		swapGen++
+		clearTimeout(swapTimer)
+		if (swapRvfc) {
+			swapVideo?.cancelVideoFrameCallback?.(swapRvfc)
+			swapRvfc = 0
+		}
+	}
+	const cancelSwap = () => {
+		dropSwapPoll()
+		swapping = false
+	}
+
 	function swap(getVideo) {
 		const v = getVideo()
-		if (!v || leaving || !state.opaque || !keep(v)) {
+		if (!v || leaving || !state.opaque) {
 			return
 		}
-		stopKeep()
-		snap.style.opacity = '1'
-		const t = tok
+		if (swapping) {
+			// повторная смена, пока держится прежний снимок: он остаётся как есть (не переснимаем пустое поле), ждём заново
+			dropSwapPoll()
+		} else {
+			if (!keep(v)) {
+				return
+			}
+			stopKeep()
+			snap.style.opacity = '1'
+			swapping = true
+		}
+		swapVideo = v
+		const g = swapGen
 		const t0 = performance.now()
 		let fresh = false
 		let ct0 = -1
 		const poll = () => {
-			if (t !== tok) {
-				return // сам set() (вкл/выкл) взял снимок на себя
+			if (g !== swapGen) {
+				return
 			}
 			if (ct0 < 0) {
 				ct0 = v.currentTime
-				v.requestVideoFrameCallback?.(() => {
+				swapRvfc = v.requestVideoFrameCallback?.(() => {
+					swapRvfc = 0
 					fresh = true
-				})
-			} else if (!v.requestVideoFrameCallback && v.currentTime !== ct0) {
-				fresh = true
+				}) || 0
+			} else if (v.currentTime !== ct0) {
+				fresh = true // как в set(): rVFC мог промолчать на подмене srcObject (Safari) - новый кадр видно по ходу времени
 			}
 			if ((fresh && v.readyState >= 2 && v.videoWidth && hasPicture(v)) || performance.now() - t0 > SWAP_WAIT_MS) {
+				cancelSwap()
 				snap.style.opacity = '0'
 				startKeep(getVideo)
 				return
 			}
-			setTimeout(poll, 30)
+			swapTimer = setTimeout(poll, 30)
 		}
 		// подмена идёт сразу после вызова: первый опрос - после неё
-		setTimeout(poll, 0)
+		swapTimer = setTimeout(poll, 0)
 	}
 
 	onBeforeUnmount(() => {
+		cancelSwap()
 		tok++
 		clearTimeout(timer)
 		stopKeep()

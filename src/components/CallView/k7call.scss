@@ -756,7 +756,7 @@ $k4pc: #{'min(100cqw, calc(100cqh - #{$k4cp} - 8px))'};
 			> .video__promoted { width: #{$k4pc}; height: #{$k4pc}; }
 			> .grid-main-wrapper:not(.is-grid) {
 				height: $k4cp; --stripe-height: #{$k4cp} !important;
-				.stripe-controls-position--collapsed { top: 3px; inset-inline-start: 0; inset-inline-end: auto; }
+				.stripe-controls-position--collapsed { position: absolute; inset-block: 3px auto; inset-inline: 0 auto; }
 			}
 		}
 	}
@@ -771,7 +771,7 @@ $k4pc: #{'min(100cqw, calc(100cqh - #{$k4cp} - 8px))'};
 			// «Скрыть» не нужна, столбец не сворачивается; уже свёрнутую (в портрете) ленту раскрывает кнопка-капсула в углу столбца
 			.stripe-controls-position:not(.stripe-controls-position--collapsed) { display: none; }
 			// position: absolute перебивает fixed телефонной раскладки: капсула - в углу столбца, не над названием комнаты
-			.stripe-controls-position--collapsed { display: block; position: absolute; top: 0; inset-inline-start: 0; inset-inline-end: auto; max-width: 100%; }
+			.stripe-controls-position--collapsed { display: block; position: absolute; inset-block: 0 auto; inset-inline: 0 auto; max-width: 100%; }
 			.videos-wrapper--stripe { height: 100% !important; margin: 0 !important; }
 			.stripe-wrapper { padding: 0; }
 			.grid { display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-content: normal !important; overflow-x: hidden !important; overflow-y: auto !important; row-gap: 30px !important; column-gap: 0 !important; scrollbar-width: thin; overscroll-behavior-y: contain; }

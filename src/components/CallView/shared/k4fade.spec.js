@@ -199,3 +199,99 @@ test('NAS_CLOUD#159: поток не пришёл - старый кадр не �
 	await vi.advanceTimersByTimeAsync(900)
 	expect(snap.style.opacity).toBe('0')
 })
+
+// ket4tec (NAS_CLOUD#159, ревью #78): поколения смены потока и запасной путь по currentTime
+function swapRig() {
+	vi.useFakeTimers()
+	const vproto = window.HTMLVideoElement.prototype
+	vi.spyOn(vproto, 'videoWidth', 'get').mockReturnValue(640)
+	vi.spyOn(vproto, 'videoHeight', 'get').mockReturnValue(360)
+	const rig = { ready: 4, ct: 0, cbs: new Map(), id: 0, cancelled: [], draws: 0 }
+	vi.spyOn(vproto, 'readyState', 'get').mockImplementation(() => rig.ready)
+	vi.spyOn(vproto, 'currentTime', 'get').mockImplementation(() => rig.ct)
+	vproto.play = () => Promise.resolve()
+	vproto.pause = () => {}
+	vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: () => rig.draws++, getImageData: () => ({ data: new Array(256).fill(200) }) })
+	const box = document.createElement('div')
+	const v = document.createElement('video')
+	v.requestVideoFrameCallback = (f) => {
+		rig.cbs.set(++rig.id, f)
+		return rig.id
+	}
+	v.cancelVideoFrameCallback = (id) => {
+		rig.cancelled.push(id)
+		rig.cbs.delete(id)
+	}
+	box.append(v)
+	const fade = useK4VideoFade()
+	const get = () => v
+	// следующий кадр: все ожидающие rVFC срабатывают
+	rig.fire = () => {
+		const all = [...rig.cbs.values()]
+		rig.cbs.clear()
+		all.forEach((f) => f())
+	}
+	return { rig, fade, get, snap: () => box.querySelector('.k4-vsnap') }
+}
+
+test('NAS_CLOUD#159 (#78 п.1): A->B->A быстрее 0,8 с - прежний опрос отменён, снимок не снимается раньше времени и не переснимается пустым', async () => {
+	const { rig, fade, get, snap } = swapRig()
+	fade.set(true, get)
+	await vi.advanceTimersByTimeAsync(10)
+	rig.fire()
+	await vi.advanceTimersByTimeAsync(FADE_MS + 100)
+	expect(fade.state.opaque).toBe(true)
+
+	fade.swap(get) // A -> B
+	await vi.advanceTimersByTimeAsync(20) // первый опрос поставил rVFC поколения 1
+	expect(snap().style.opacity).toBe('1')
+	const first = [...rig.cbs.keys()].pop()
+
+	rig.ready = 0 // подмена: пустое поле, кадра нет
+	await vi.advanceTimersByTimeAsync(300)
+	const drawn = rig.draws
+	fade.swap(get) // B -> A: keep() уже не получится (кадра нет) - снимок всё равно держится
+	expect(snap().style.opacity).toBe('1')
+	expect(rig.cancelled).toContain(first) // rVFC первого поколения отменён
+	expect(rig.draws).toBe(drawn) // пустое поле в снимок не рисовали
+
+	rig.ready = 4
+	rig.fire() // кадр пришёл до того, как поставлен rVFC второго поколения
+	await vi.advanceTimersByTimeAsync(20)
+	expect(snap().style.opacity).toBe('1') // прежний опрос не снял снимок: нужен кадр после второй смены
+	rig.fire()
+	await vi.advanceTimersByTimeAsync(60)
+	expect(snap().style.opacity).toBe('0')
+})
+
+test('NAS_CLOUD#159 (#78 п.2): rVFC есть, но молчит (Safari на подмене srcObject) - новый кадр виден по currentTime, снимок не висит 0,8 с', async () => {
+	const { rig, fade, get, snap } = swapRig()
+	fade.set(true, get)
+	await vi.advanceTimersByTimeAsync(10)
+	rig.fire()
+	await vi.advanceTimersByTimeAsync(FADE_MS + 100)
+	fade.swap(get)
+	await vi.advanceTimersByTimeAsync(20)
+	expect(snap().style.opacity).toBe('1')
+	await vi.advanceTimersByTimeAsync(200)
+	expect(snap().style.opacity).toBe('1') // время стоит - кадра нет
+	rig.ct = 0.04 // время пошло, rVFC так и не сработал
+	await vi.advanceTimersByTimeAsync(100)
+	expect(snap().style.opacity).toBe('0')
+	expect(rig.cancelled.length).toBeGreaterThan(0) // ожидавший rVFC отменён при завершении
+})
+
+test('NAS_CLOUD#159 (#78): set() и размонтирование отменяют смену потока', async () => {
+	const { rig, fade, get, snap } = swapRig()
+	fade.set(true, get)
+	await vi.advanceTimersByTimeAsync(10)
+	rig.fire()
+	await vi.advanceTimersByTimeAsync(FADE_MS + 100)
+	fade.swap(get)
+	await vi.advanceTimersByTimeAsync(20)
+	const pending = [...rig.cbs.keys()].pop()
+	fade.set(false, get)
+	expect(rig.cancelled).toContain(pending)
+	await vi.advanceTimersByTimeAsync(50)
+	expect(snap().style.opacity).toBe('1') // угасание ведёт set(), старый опрос его не сбил
+})
