@@ -210,6 +210,10 @@ function getDetector() {
 
 const round1 = (v) => Math.round(v * 10) / 10
 
+// ket4tec (NAS_CLOUD#160): сервер журнала принимает ключи /^[a-z]{1,12}$/, до 12 на событие, значения скалярные —
+// поэтому ключи без «_» и заглавных, а null/undefined не отправляем вовсе
+const logEv = (name, fields) => calllog(name, Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== null && v !== undefined)))
+
 /**
  * Среднее и 95-й перцентиль времени детекции по последним замерам, мс.
  *
@@ -262,7 +266,7 @@ export default class FaceFrame extends TrackSinkSource {
 		this.path = mode
 		if (mode !== this._mode) {
 			this._mode = mode
-			calllog('framing_mode', { inst: this._inst, mode, why })
+			logEv('framing_mode', { inst: this._inst, mode, why })
 		}
 	}
 
@@ -394,13 +398,16 @@ export default class FaceFrame extends TrackSinkSource {
 			lastLog: t0,
 			frozen: !!this._frozen, // слежение остановлено: окно стоит, детекций нет
 			inTotal: 0, // кадров на входе (totalVideoFrames исходного video) на прошлом замере fps
-			inFps: null, // fps входа; null — не измерить
+			inFps: null, // fps входа; null — не измерить или счётчик входа ещё ни разу не вырос (тогда порог прежний, MIN_FPS)
+			inSeen: false,
+			qSeen: false, // счётчик кадров пробы хоть раз вырос
+			qLast: 0,
 			lastCb: 0,
 			gapMax: 0, // макс. разрыв между колбэками кадра за интервал журнала, мс
-			st: { t: t0, in: 0, draw: 0, out: 0 }, // отметки прошлой записи framing_stats
+			st: { t: t0, in: 0, draw: 0, out: 0, outq: 0 }, // отметки прошлой записи framing_stats
 		}
 		this._digital = d
-		calllog('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, in_fps_cfg: input.getSettings?.().frameRate ?? 0, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen })
+		logEv('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, cfgfps: input.getSettings?.().frameRate, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen })
 		// выход — сразу канвас: до первой отрисовки кадров нет, на плитках держится облако
 		d.output = canvas.captureStream().getVideoTracks()[0]
 		if (!d.output) {
@@ -481,9 +488,17 @@ export default class FaceFrame extends TrackSinkSource {
 		// независимо от нашего rVFC/rAF). Счётчик наших отрисовок для этого не годится: rVFC при перегрузке сам теряет кадры,
 		// и «камера даёт мало» не отличить от «мы не успеваем рисовать». Нет getVideoPlaybackQuality — inFps остаётся null.
 		const inNow = d.video.getVideoPlaybackQuality?.()?.totalVideoFrames
+		// счётчик кадров пробы: пригоден для сторожа выхода только после первого роста (бывает вечным нулём)
+		const pq = d.probe?.getVideoPlaybackQuality?.()?.totalVideoFrames
+		if (typeof pq === 'number') {
+			d.qSeen = d.qSeen || pq > d.qLast
+			d.qLast = pq
+		}
 		if (now - d.fpsT >= 1000) {
 			if (typeof inNow === 'number') {
-				d.inFps = (inNow - d.inTotal) * 1000 / (now - d.fpsT)
+				// счётчик входа считаем измеренным только после первого роста: вечный 0 дал бы нулевой порог
+				d.inSeen = d.inSeen || inNow > d.inTotal
+				d.inFps = d.inSeen ? (inNow - d.inTotal) * 1000 / (now - d.fpsT) : null
 				d.inTotal = inNow
 			}
 			d.fps = d.fpsFrames * 1000 / (now - d.fpsT)
@@ -511,19 +526,20 @@ export default class FaceFrame extends TrackSinkSource {
 		// ket4tec (NAS_CLOUD#160): сводка раз в 10 с в журнал звонка — разбор «не кадрирует» без догадок
 		if (now - d.st.t >= STATS_CALLLOG_MS) {
 			const sec = (now - d.st.t) / 1000
-			const outNow = d.outFrames ?? d.probe?.getVideoPlaybackQuality?.()?.totalVideoFrames
 			const rate = (cur, prev) => (typeof cur === 'number' ? round1((cur - prev) / sec) : null)
-			calllog('framing_stats', {
+			// выход: оба счётчика (rVFC пробы и playback quality), в журнал — больший прирост
+			const outRates = [rate(d.outFrames || 0, d.st.out), rate(pq, d.st.outq)].filter((v) => v !== null)
+			logEv('framing_stats', {
 				inst: this._inst,
-				in_fps: rate(inNow, d.st.in),
-				draw_fps: rate(d.frames, d.st.draw),
-				out_fps: rate(outNow, d.st.out),
-				detAvg,
-				detP95,
-				gapMax: Math.round(d.gapMax),
+				infps: rate(inNow, d.st.in),
+				drawfps: rate(d.frames, d.st.draw),
+				outfps: outRates.length ? Math.max(...outRates) : null,
+				detavg: detAvg,
+				detp: detP95,
+				gapmax: Math.round(d.gapMax),
 				hidden: document.hidden,
 			})
-			d.st = { t: now, in: inNow ?? 0, draw: d.frames, out: outNow ?? 0 }
+			d.st = { t: now, in: inNow ?? 0, draw: d.frames, out: d.outFrames || 0, outq: pq ?? 0 }
 			d.gapMax = 0
 		}
 
@@ -547,10 +563,9 @@ export default class FaceFrame extends TrackSinkSource {
 		// ket4tec (NAS_CLOUD#160): постоянный сторож выхода. Прогресс пробы: кадры rVFC / счётчик кадров — любой сдвиг считается живым.
 		// currentTime у MediaStream растёт и без кадров, поэтому он — только последний запасной вариант, когда счётчиков кадров нет.
 		// Исходная камера должна быть живой и включённой, иначе откат не поможет.
-		const p = d.probe
-		const q = p?.getVideoPlaybackQuality?.()
-		const hasCounter = !!d.outFrames || typeof q?.totalVideoFrames === 'number'
-		const mark = `${d.outFrames || 0}|${q?.totalVideoFrames ?? ''}|${hasCounter ? '' : p?.currentTime ?? ''}`
+		// Счётчик годится, только если хоть раз вырос: вечный 0 (проба без rVFC) не должен исключать currentTime.
+		const hasCounter = !!d.outFrames || d.qSeen
+		const mark = `${d.outFrames || 0}|${pq ?? ''}|${hasCounter ? '' : d.probe?.currentTime ?? ''}`
 		if (mark !== d.outMark) {
 			d.outMark = mark
 			d.outAt = now
@@ -576,13 +591,13 @@ export default class FaceFrame extends TrackSinkSource {
 		if (d.stopped) {
 			return
 		}
-		calllog('framing_error', {
+		logEv('framing_error', {
 			reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100),
 			inst: this._inst,
 			kind,
-			in_fps: (d.inFps ?? null) === null ? null : round1(d.inFps),
-			draw_fps: round1(d.fps || 0),
-			detP95: detStats(d).detP95,
+			infps: (d.inFps ?? null) === null ? null : round1(d.inFps),
+			drawfps: round1(d.fps || 0),
+			detp: detStats(d).detP95,
 		})
 		console.error('FaceFrame: кадр по лицу —', reason)
 		// ket4tec (NAS_CLOUD#271): нет детектора или мощности — остаёмся на канвасе с текущим кадром, без слежения.
