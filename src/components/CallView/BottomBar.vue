@@ -18,8 +18,10 @@ import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+import NcPopover from '@nextcloud/vue/components/NcPopover' // ket4tec (NAS_CLOUD#43): автокадрирование в звонке
 import IconChevronUp from 'vue-material-design-icons/ChevronUp.vue'
 import IconCogOutline from 'vue-material-design-icons/CogOutline.vue' // ket4tec v7: настройки звонка
+import IconFaceRecognition from 'vue-material-design-icons/FaceRecognition.vue' // ket4tec (NAS_CLOUD#43)
 import IconFullscreen from 'vue-material-design-icons/Fullscreen.vue'
 import IconFullscreenExit from 'vue-material-design-icons/FullscreenExit.vue'
 import IconPencil from 'vue-material-design-icons/Pencil.vue' // ket4tec: k4draw
@@ -27,6 +29,7 @@ import IconSubtitles from 'vue-material-design-icons/Subtitles.vue'
 import IconSubtitlesOutline from 'vue-material-design-icons/SubtitlesOutline.vue'
 import IconViewGalleryOutline from 'vue-material-design-icons/ViewGalleryOutline.vue'
 import IconViewGridOutline from 'vue-material-design-icons/ViewGridOutline.vue'
+import FaceFrameSelector from '../MediaSettings/FaceFrameSelector.vue' // ket4tec (NAS_CLOUD#43)
 import ReactionMenu from '../TopBar/ReactionMenu.vue'
 import TopBarMediaControls from '../TopBar/TopBarMediaControls.vue'
 import CallEndLeaveButton from './CallEndLeaveButton.vue'
@@ -48,6 +51,7 @@ import { useCallViewStore } from '../../stores/callView.ts'
 import { useLiveTranscriptionStore } from '../../stores/liveTranscription.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { useSidebarStore } from '../../stores/sidebar.ts' // ket4tec: k4stk
+import { isIOS, isSafari } from '../../utils/browserCheck.ts' // ket4tec (NAS_CLOUD#43)
 import { isClassifiedConversation } from '../../utils/conversation.ts'
 import { localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
 import { appPost, inApp, openMacReady } from './k4draw/macBridge.js' // ket4tec: k4draw, звонок в приложении (NAS_CLOUD#177)
@@ -73,6 +77,11 @@ const callButtonWithActions = useTemplateRef('callButtonWithActions')
 const conversation = computed(() => {
 	return store.getters.conversation(token.value) || store.getters.dummyConversation
 })
+// ket4tec (NAS_CLOUD#43): автокадрирование в звонке; без видеодорожки кнопка неактивна. Настройка общая с «Проверкой устройств»
+const k4FaceHasVideo = computed(() => !!localMediaModel.attributes.videoAvailable)
+const k4FaceTitle = computed(() => k4FaceHasVideo.value ? 'Автокадрирование' : 'Камера выключена')
+const k4FaceAppleHint = isIOS || isSafari
+
 // ket4tec: k4draw. Одна кнопка «Рисовать» на всех устройствах (решение владельца 10.11, NAS_CLOUD#103 п.48–50):
 // идёт показ экрана — рисуем поверх показа, иначе открывается доска; всё с одного касания
 const k4Share = computed(() => !!k4draw.big && !!k4draw.keys[k4draw.big] && canDraw())
@@ -620,6 +629,28 @@ function setCallLayout(layout: CallLayout) {
 				</template>
 			</NcButton>
 
+			<!-- ket4tec (NAS_CLOUD#43): автокадрирование прямо в звонке, тот же переключатель и «Дальность», что в проверке устройств -->
+			<NcPopover v-if="!isSidebar" popupRole="dialog">
+				<template #trigger>
+					<NcButton
+						class="k7-call-settings k7-face-btn"
+						variant="tertiary"
+						:disabled="!k4FaceHasVideo"
+						:title="k4FaceTitle"
+						:aria-label="k4FaceTitle">
+						<template #icon>
+							<IconFaceRecognition :size="22" />
+						</template>
+					</NcButton>
+				</template>
+				<div class="k4-face-pop">
+					<FaceFrameSelector />
+					<p v-if="k4FaceAppleHint" class="k4-face-pop__hint">
+						На iPhone и iPad можно включить системный «Центр внимания»: Пункт управления → Видеоэффекты → Центр внимания
+					</p>
+				</div>
+			</NcPopover>
+
 			<!-- ket4tec v7: настройки во время звонка — та же шторка устройств: микрофон, камера, динамик, кадр по лицу, фон.
 				Стрелки-меню у микрофона и камеры не показываем (k7call.scss) -->
 			<NcButton
@@ -835,6 +866,10 @@ function setCallLayout(layout: CallLayout) {
 </template>
 
 <style lang="scss" scoped>
+
+// ket4tec (NAS_CLOUD#43): всплывашка автокадрирования (попап телепортируется, поэтому :global)
+:global(.k4-face-pop) { width: 280px; max-width: 80vw; padding: 8px 12px; }
+:global(.k4-face-pop__hint) { margin: 4px 0 0; color: var(--color-text-maxcontrast); font-size: var(--font-size-small, 13px); }
 
 // ket4tec: k4stk. Кольцо таймера на кнопке
 .bottom-bar .k4stk-btn.button-vue { position: relative; }
