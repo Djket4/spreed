@@ -190,26 +190,21 @@ describe('gridLayout', () => {
 		})
 
 		test('shifts a row by a half column when it leaves an odd number of columns empty', () => {
-			// 7 tiles over 2 rows of a 4 columns grid: 3 and 4 tiles
+			// 7 tiles in a 4 columns grid: full row on top, 3 tiles last and centered
 			expect(computeTilePlacements({ ...grid, rows: 2, totalTiles: 7 })).toEqual([
-				{ row: 1, column: 2 },
-				{ row: 1, column: 4 },
-				{ row: 1, column: 6 },
-				{ row: 2, column: 1 },
-				{ row: 2, column: 3 },
-				{ row: 2, column: 5 },
-				{ row: 2, column: 7 },
+				{ row: 1, column: 1 },
+				{ row: 1, column: 3 },
+				{ row: 1, column: 5 },
+				{ row: 1, column: 7 },
+				{ row: 2, column: 2 },
+				{ row: 2, column: 4 },
+				{ row: 2, column: 6 },
 			])
 		})
 
 		test('centers a row leaving an even number of columns empty', () => {
-			// 7 tiles over 3 rows of a 4 columns grid: 2, 3 and 2 tiles
-			expect(computeTilePlacements({ ...grid, rows: 3, totalTiles: 7 })).toEqual([
-				{ row: 1, column: 3 },
-				{ row: 1, column: 5 },
-				{ row: 2, column: 2 },
-				{ row: 2, column: 4 },
-				{ row: 2, column: 6 },
+			// 10 tiles in a 4 columns grid: 4, 4 and 2 tiles
+			expect(computeTilePlacements({ columns: 4, rows: 3, totalTiles: 10 }).slice(8)).toEqual([
 				{ row: 3, column: 3 },
 				{ row: 3, column: 5 },
 			])
@@ -234,7 +229,8 @@ describe('gridLayout', () => {
 						const placements = computeTilePlacements({ columns, rows, totalTiles })
 						expect(placements.length).toBe(totalTiles)
 
-						const distribution = computeRowDistribution({ totalTiles, rows })
+						// полные ряды сверху, неполный последний
+						const distribution = Array.from({ length: Math.ceil(totalTiles / columns) }, (_, r) => Math.min(columns, totalTiles - r * columns))
 						for (const [index, rowSize] of distribution.entries()) {
 							const row = placements.filter((placement) => placement.row === index + 1)
 							expect(row.length).toBe(rowSize)
@@ -256,6 +252,60 @@ describe('gridLayout', () => {
 					}
 				}
 			}
+		})
+	})
+
+	describe('rows of the square layout (NAS_CLOUD#159)', () => {
+		// страница вмещает columns*rows мест; в неё попадает не больше мест, чем плиток (иначе - листание)
+		const rowsOf = (width: number, height: number, total: number) => {
+			const { columns, rows: layoutRows, side } = computeSquareLayout({ gridWidth: width, gridHeight: height, total })
+			const shown = Math.min(total, columns * layoutRows)
+			const placements = computeTilePlacements({ totalTiles: shown, rows: layoutRows, columns })
+			const rows: number[] = []
+			for (const { row } of placements) {
+				rows[row - 1] = (rows[row - 1] ?? 0) + 1
+			}
+			return { columns, layoutRows, shown, side, rows, placements }
+		}
+
+		test.each([[1512, 800], [1180, 820], [820, 1180], [390, 700]])('%ix%i: side is the best of all column counts, last row is the incomplete one', (w, h) => {
+			for (let n = 1; n <= 12; n++) {
+				const { columns, layoutRows, shown, side, rows, placements } = rowsOf(w, h, n)
+				let best = 0
+				for (let c = 1; c <= n; c++) {
+					best = Math.max(best, Math.floor(Math.min((w - 8 * (c - 1)) / c, (h - 8 * (Math.ceil(n / c) - 1)) / Math.ceil(n / c))))
+				}
+				if (best >= 150) {
+					// все плитки на одной странице, сторона максимальна
+					expect(side).toBe(best)
+					expect(shown).toBe(n)
+				} else {
+					// ниже minSide включается листание: страница заполнена не больше, чем вмещает
+					expect(shown).toBeLessThanOrEqual(columns * layoutRows)
+				}
+				// сетка помещается в область
+				expect(side * columns + 8 * (columns - 1)).toBeLessThanOrEqual(w)
+				expect(side * layoutRows + 8 * (layoutRows - 1)).toBeLessThanOrEqual(h)
+				expect(placements.length).toBe(shown)
+				expect(rows.reduce((a, b) => a + b, 0)).toBe(shown)
+				expect(rows.length).toBeLessThanOrEqual(layoutRows)
+				expect(rows.slice(0, -1).every((r) => r === columns)).toBe(true)
+			}
+		})
+
+		test('390x700, 9 tiles: 4 rows of the page, the rest is paged', () => {
+			const { columns, layoutRows, shown } = rowsOf(390, 700, 9)
+			expect([columns, layoutRows, shown]).toEqual([2, 4, 8])
+		})
+
+		test('5 tiles: 3 on top, 2 below', () => {
+			expect(rowsOf(1512, 800, 5).rows).toEqual([3, 2])
+			expect(rowsOf(1180, 820, 5).rows).toEqual([3, 2])
+		})
+
+		test('7 tiles are 4+3 and 8 tiles are 4+4 in a wide window', () => {
+			expect(rowsOf(1512, 800, 7).rows).toEqual([4, 3])
+			expect(rowsOf(1512, 800, 8).rows).toEqual([4, 4])
 		})
 	})
 
