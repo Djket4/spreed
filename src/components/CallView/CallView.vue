@@ -240,6 +240,8 @@ const serverVersion = loadState('core', 'config', {}).version ?? '29.0.0.0'
 
 const isTouchDevice = () => window.matchMedia?.('(hover: none)').matches // ket4tec (NAS_CLOUD#153)
 
+const K4_GRID_HIGH_MAX = 4 // ket4tec (NAS_CLOUD#375)
+
 export default {
 	name: 'CallView',
 
@@ -656,6 +658,8 @@ export default {
 
 		callParticipantModels(models) {
 			this.updateDataFromCallParticipantModels(models)
+			// ket4tec (NAS_CLOUD#375): число участников меняет выбор слоя в сетке
+			this.adjustSimulcastQuality()
 		},
 
 		isGrid() {
@@ -1179,7 +1183,12 @@ export default {
 			// Always use the high temporal layer, as a low frame rate can look
 			// bad specially with a low number of participants.
 			if (this.isGrid) {
-				callParticipantModel.setSimulcastVideoQuality(SIMULCAST.MEDIUM, SIMULCAST.HIGH)
+				// ket4tec (NAS_CLOUD#375): MEDIUM = 960x540 при камере 1080p. В сетке из <= K4_GRID_HIGH_MAX плиток
+				// плитка крупная (>= 1000 физ. px по ширине), берём верхний слой. Размеры плиток внутри VideosGrid
+				// наружу не отдаются, поэтому правило по числу участников (все плитки, не только с видео).
+				// ponytail: порог по числу, не по реальной ширине плитки; точнее - отдать ширину из VideosGrid.
+				const big = this.callParticipantModels.length <= K4_GRID_HIGH_MAX
+				callParticipantModel.setSimulcastVideoQuality(big ? SIMULCAST.HIGH : SIMULCAST.MEDIUM, SIMULCAST.HIGH)
 			} else if (this.sharedDatas[callParticipantModel.attributes.peerId]?.promoted
 				|| this.selectedVideoPeerId === callParticipantModel.attributes.peerId
 				|| this.promotedSpeakerPeerIds.has(callParticipantModel.attributes.peerId)) {

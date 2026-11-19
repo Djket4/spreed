@@ -9,7 +9,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import CallView from './CallView.vue'
 import { useCallViewStore } from '../../stores/callView.ts'
-import { localMediaModel } from '../../utils/webrtc/index.js'
+import { callParticipantCollection, localMediaModel } from '../../utils/webrtc/index.js'
 
 vi.mock('@nextcloud/event-bus', () => ({
 	EventBus: {
@@ -87,6 +87,20 @@ describe('CallView.vue', () => {
 		const unpinVideo = vi.spyOn(wrapper.vm.callViewStore, 'unpinVideo').mockImplementation(() => {})
 		handler()
 		expect(unpinVideo).toHaveBeenCalledWith(TOKEN, false)
+	})
+
+	test('grid: верхний слой simulcast при <= 4 участников, средний при большем числе (NAS_CLOUD#375)', async () => {
+		useCallViewStore().setCallViewMode({ token: TOKEN, isGrid: true })
+		const m = () => ({ attributes: { peerId: 'p' }, setSimulcastVideoQuality: vi.fn() })
+		for (const [n, spatial] of [[4, 2], [5, 1]]) {
+			callParticipantCollection.callParticipantModels = Array.from({ length: n }, m)
+			wrapper = mountCallView()
+			const model = callParticipantCollection.callParticipantModels[0]
+			wrapper.vm.adjustSimulcastQualityForParticipant(model)
+			expect(model.setSimulcastVideoQuality).toHaveBeenLastCalledWith(spatial, 2)
+			wrapper.unmount()
+		}
+		callParticipantCollection.callParticipantModels = []
 	})
 
 	test('pin, unpin via k4-unpin-video event: pin is cleared and the view is restored', async () => {

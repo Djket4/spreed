@@ -43,6 +43,13 @@ describe('sample', () => {
 		expect(s.loss).toBeNull()
 	})
 
+	it('out: верхний активный слой simulcast и число слоёв (NAS_CLOUD#375)', () => {
+		const L = (w, h, fps) => ({ type: 'outbound-rtp', kind: 'video', timestamp: 1, bytesSent: 1, frameWidth: w, frameHeight: h, framesPerSecond: fps })
+		const r = new Map([['q', L(480, 270, 30)], ['h', L(1920, 1080, 30)], ['m', L(960, 540, 30)], ['off', L(0, 0, 0)]])
+		expect(sample(null, r, 'out').out).toBe('1920x1080@30 ×3')
+		expect(sample(null, rep(1), 'out').out).toBeNull()
+	})
+
 	it('путь: relay сильнее srflx и host', () => {
 		expect(sample(null, rep(1, { lt: 'host', rt: 'relay' })).path).toBe('relay')
 		expect(sample(null, rep(1, { lt: 'host', rt: 'host' })).path).toBe('host')
