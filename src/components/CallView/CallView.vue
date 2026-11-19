@@ -132,6 +132,7 @@
 					:showVideoOverlay="showVideoOverlay"
 					:sharedDatas="sharedDatas"
 					v-bind="$attrs"
+					@tileSize="k4OnTileSize"
 					@selectVideo="handleSelectVideo"
 					@clickLocalVideo="handleClickLocalVideo" />
 
@@ -239,6 +240,13 @@ import { useWakeLock } from './useWakeLock.ts'
 const serverVersion = loadState('core', 'config', {}).version ?? '29.0.0.0'
 
 const isTouchDevice = () => window.matchMedia?.('(hover: none)').matches // ket4tec (NAS_CLOUD#153)
+
+// ket4tec (NAS_CLOUD#375): верхний слой simulcast в сетке, если плиток <= K4_GRID_HIGH_MAX (считая свою) и сторона плитки
+// в физ. px больше K4_HIGH_MIN_PX. Плитка квадратная, видео в ней object-fit: cover, масштаб идёт по ВЫСОТЕ кадра:
+// MEDIUM = 540 по высоте (при кадрировании по лицу 540x540), +запас; гистерезис 5 % в каждую сторону против дёрганья
+const K4_GRID_HIGH_MAX = 4
+const K4_HIGH_MIN_PX = 600
+const K4_HYSTERESIS = 0.05
 
 export default {
 	name: 'CallView',
@@ -353,6 +361,9 @@ export default {
 			// Timer for the videos bottom bar
 			showVideoOverlayTimer: null,
 			debounceHandleMovement: () => {},
+			k4TileCssW: 0, // ket4tec (NAS_CLOUD#375): CSS-ширина плитки сетки из VideosGrid
+			k4TileBig: false,
+			k4TileDebounced: () => {},
 		}
 	},
 
@@ -656,6 +667,8 @@ export default {
 
 		callParticipantModels(models) {
 			this.updateDataFromCallParticipantModels(models)
+			// ket4tec (NAS_CLOUD#375): число участников меняет выбор слоя в сетке
+			this.adjustSimulcastQuality()
 		},
 
 		isGrid() {
@@ -753,6 +766,7 @@ export default {
 	},
 
 	mounted() {
+		this.k4WatchDpr() // ket4tec (NAS_CLOUD#375)
 		this.k4WatchStack() // ket4tec (NAS_CLOUD#270 п.1)
 		// ket4tec (NAS_CLOUD#108): поворот в альбом во время показа — полосу сворачиваем (слушатель в одном месте: CSS не знает про состояние стора и оставил бы дыру 150 px)
 		this.k4lowMq = window.matchMedia?.(LOW_SCREEN)
@@ -799,6 +813,8 @@ export default {
 	},
 
 	beforeUnmount() {
+		this.k4TileDebounced.clear?.()
+		this.k4DprMq?.removeEventListener('change', this.k4DprFn)
 		this.k4StackObs?.disconnect() // ket4tec (NAS_CLOUD#270 п.1)
 		Object.keys(this.k4handToasts).forEach(this.k4hideHandToast) // ket4tec (NAS_CLOUD#264): звонок кончился — плашки «подняла руку» не висят
 		this.k4lowMq?.removeEventListener?.('change', this.k4lowFn)
@@ -1169,6 +1185,35 @@ export default {
 			}
 		},
 
+		// ket4tec (NAS_CLOUD#375): перенос окна на монитор с другим DPR не меняет CSS-сторону плитки (tileSize не придёт):
+		// слушаем смену resolution и пересчитываем тем же дебаунсом, затем подписываемся на новый DPR
+		k4WatchDpr() {
+			this.k4DprMq?.removeEventListener('change', this.k4DprFn)
+			this.k4DprMq = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+			this.k4DprFn = () => {
+				this.k4OnTileSize(this.k4TileCssW)
+				this.k4WatchDpr()
+			}
+			this.k4DprMq?.addEventListener('change', this.k4DprFn)
+		},
+
+		// ket4tec (NAS_CLOUD#375): ширина плитки из VideosGrid; пересчёт слоя с дебаунсом и гистерезисом
+		k4OnTileSize(width) {
+			this.k4TileCssW = width
+			if (!this.k4TileDebounced.clear) {
+				this.k4TileDebounced = debounce(() => {
+					const phys = this.k4TileCssW * (window.devicePixelRatio || 1)
+					const limit = K4_HIGH_MIN_PX * (this.k4TileBig ? 1 - K4_HYSTERESIS : 1 + K4_HYSTERESIS)
+					const big = phys > limit
+					if (big !== this.k4TileBig) {
+						this.k4TileBig = big
+						this.adjustSimulcastQuality()
+					}
+				}, 300)
+			}
+			this.k4TileDebounced()
+		},
+
 		adjustSimulcastQuality() {
 			this.callParticipantModels.forEach((callParticipantModel) => {
 				this.adjustSimulcastQualityForParticipant(callParticipantModel)
@@ -1179,7 +1224,11 @@ export default {
 			// Always use the high temporal layer, as a low frame rate can look
 			// bad specially with a low number of participants.
 			if (this.isGrid) {
-				callParticipantModel.setSimulcastVideoQuality(SIMULCAST.MEDIUM, SIMULCAST.HIGH)
+				// ket4tec (NAS_CLOUD#375): MEDIUM = 960x540 при камере 1080p. HIGH, если плиток <= K4_GRID_HIGH_MAX
+				// (считая свою; в записи её нет, как в VideosGrid) и плитка крупнее среднего слоя в физ. px
+				const tiles = this.callParticipantModels.length + (this.isRecording ? 0 : 1)
+				const big = tiles <= K4_GRID_HIGH_MAX && this.k4TileBig
+				callParticipantModel.setSimulcastVideoQuality(big ? SIMULCAST.HIGH : SIMULCAST.MEDIUM, SIMULCAST.HIGH)
 			} else if (this.sharedDatas[callParticipantModel.attributes.peerId]?.promoted
 				|| this.selectedVideoPeerId === callParticipantModel.attributes.peerId
 				|| this.promotedSpeakerPeerIds.has(callParticipantModel.attributes.peerId)) {

@@ -64,7 +64,7 @@ const round = (v, n = 0) => (v === null ? null : Math.round(v * 10 ** n) / 10 **
  * @param {'in'|'out'} dir входящий pc (чужой участник) или исходящий (свой)
  */
 function read(report, dir) {
-	const r = { ts: 0, bytes: 0, pkts: 0, lost: 0, ab: 0, vb: 0, jit: null, fps: null, rtt: null, lt: null, rt: null, proto: null }
+	const r = { ts: 0, bytes: 0, pkts: 0, lost: 0, ab: 0, vb: 0, jit: null, fps: null, rtt: null, lt: null, rt: null, proto: null, top: null, layers: 0 }
 	let rirRtt = null
 	report.forEach((s) => {
 		r.ts = Math.max(r.ts, num(s.timestamp) || 0)
@@ -83,6 +83,13 @@ function read(report, dir) {
 		} else if (s.type === 'outbound-rtp' && dir === 'out') {
 			r.bytes += s.bytesSent || 0
 			r.pkts += s.packetsSent || 0
+			// ket4tec (NAS_CLOUD#375): разрешение и кадры/с отправки: верхний активный слой simulcast (самый широкий) и число слоёв
+			if (kind === 'video' && s.frameWidth > 0 && s.active !== false && s.framesPerSecond > 0) {
+				r.layers++
+				if (!r.top || s.frameWidth > r.top.w) {
+					r.top = { w: s.frameWidth, h: s.frameHeight, fps: num(s.framesPerSecond) }
+				}
+			}
 		} else if (s.type === 'remote-inbound-rtp' && dir === 'out') {
 			r.lost += Math.max(0, s.packetsLost || 0)
 			rirRtt = num(s.roundTripTime) === null ? rirRtt : s.roundTripTime * 1000
@@ -107,7 +114,7 @@ function read(report, dir) {
  * @param {Map|object|null} prevReport прошлый getStats (null = первый замер)
  * @param {Map|object} report текущий getStats
  * @param {'in'|'out'} [dir] направление
- * @return {{kbps: number|null, loss: number|null, rtt: number|null, jit: number|null, fps: number|null,
+ * @return {{kbps: number|null, loss: number|null, rtt: number|null, jit: number|null, fps: number|null, out: string|null,
  *   path: string|null, proto: string|null, lt: string|null, rt: string|null, ab: number|null, vb: number|null}}
  *   ab/vb: байт аудио/видео за окно (для classify)
  */
@@ -126,6 +133,7 @@ export function sample(prevReport, report, dir = 'in') {
 		rtt: round(c.rtt),
 		jit: round(c.jit),
 		fps: round(c.fps),
+		out: c.top ? `${c.top.w}x${c.top.h}${c.top.fps === null ? '' : '@' + Math.round(c.top.fps)} ×${c.layers}` : null,
 		path,
 		proto: c.proto,
 		lt: c.lt,
@@ -210,7 +218,7 @@ let busy = false
 let stopWatch = []
 const per = {} // id -> { report, st, key, last }
 
-const EMPTY = { kbps: null, loss: null, rtt: null, jit: null, fps: null, path: null, proto: null, lt: null, rt: null, ab: null, vb: null }
+const EMPTY = { kbps: null, loss: null, rtt: null, jit: null, fps: null, out: null, path: null, proto: null, lt: null, rt: null, ab: null, vb: null }
 const lvlOf = (q) => (q >= 4 ? 'red' : q === 3 ? 'yellow' : null)
 const clean = (d) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !== null && v !== undefined))
 
@@ -270,6 +278,7 @@ function logStats() {
 	calllog('rtc_stats', clean({
 		up: up?.kbps,
 		upl: up?.loss,
+		out: up?.out, // ket4tec (NAS_CLOUD#375): например '1920x1080@30 ×3'
 		rtt: up?.rtt ?? (rtts.length ? Math.max(...rtts) : null),
 		dn: vals('kbps').length ? Math.round(sum('kbps')) : null,
 		dnl: dnl.length ? Math.round(dnl.reduce((a, b) => a + b, 0) / dnl.length * 10) / 10 : null,
