@@ -627,8 +627,8 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	#{$k4s} { --stripe-height: 110px; }
 	// ket4tec (NAS_CLOUD#270 п.2): полосы под уведомления тут нет (main.js её выключает) — стопка вверху по центру показа
 	// (между левой колонкой 200 px и кнопками справа 60 px), поверх плиток, а не на 128 px по умолчанию
-	html.k7f body:has(#content-vue.in-call) .toastify.dialogs { inset-block-start: max(12px, env(safe-area-inset-top, 0px)) !important; } // то же для плашек вне стопки (NAS_CLOUD#162)
-	html.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts {
+	html.k7f.k7f body:has(#content-vue.in-call) .toastify.dialogs { inset-block-start: max(12px, env(safe-area-inset-top, 0px)) !important; } // то же для плашек вне стопки (NAS_CLOUD#162)
+	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts {
 		top: max(12px, env(safe-area-inset-top, 0px)) !important;
 		translate: 70px 0;
 		max-width: calc(100vw - 280px);
