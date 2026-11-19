@@ -61,4 +61,26 @@ describe('speakerHold (NAS_CLOUD#159)', () => {
 		expect(hold.current()).toBeNull()
 		expect(onChange).toHaveBeenLastCalledWith(null)
 	})
+
+	test('b interrupts for the hold time, then stops while a keeps talking: a is large again at once', () => {
+		hold.setSpeaking('a', true)
+		vi.advanceTimersByTime(SPEAKER_HOLD_MS)
+		expect(hold.current()).toBe('a')
+		hold.setSpeaking('b', true)
+		vi.advanceTimersByTime(SPEAKER_HOLD_MS)
+		expect(hold.current()).toBe('b')
+		hold.setSpeaking('b', false) // a never stopped: no new "true" from it will come
+		expect(hold.current()).toBe('a')
+	})
+
+	test('the new large one stops, the other started only now: he still has to hold', () => {
+		hold.setSpeaking('a', true)
+		vi.advanceTimersByTime(SPEAKER_HOLD_MS)
+		hold.setSpeaking('a', false)
+		hold.setSpeaking('b', true)
+		vi.advanceTimersByTime(SPEAKER_HOLD_MS - 100)
+		expect(hold.current()).toBe('a')
+		vi.advanceTimersByTime(100)
+		expect(hold.current()).toBe('b')
+	})
 })

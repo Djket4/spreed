@@ -392,7 +392,7 @@ export default {
 		// вид «есть кадр / нет кадра»: там нужен новый элемент, чтобы не держать чужой замерший кадр.
 		promotedVideoKey() {
 			const a = this.promotedParticipantModel?.attributes
-			return `autopilot-${a?.videoAvailable && !a?.videoBlocked && typeof a?.stream === 'object' ? 'video' : 'avatar'}`
+			return `autopilot-${a?.videoAvailable && !a?.videoBlocked && a?.stream ? 'video' : 'avatar'}`
 		},
 
 		// The speakers currently sharing the main area, in the order they became
@@ -1074,6 +1074,9 @@ export default {
 			} else if (this.heldSpeakerId) {
 				// ket4tec (NAS_CLOUD#159): не speakers[0] - тот прыгал на любой короткий звук (_setSpeaking); тут говорящий 2 с подряд, затем последний говоривший
 				promotedPeerIds = [this.heldSpeakerId]
+			} else if (this.callParticipantModels.length) {
+				// пока никто не прошёл удержание, крупно первый (promotedParticipantModel) - ему же флаг и качество HIGH
+				promotedPeerIds = [this.callParticipantModels[0].attributes.peerId]
 			}
 
 			promotedPeerIds = promotedPeerIds.filter((peerId) => this.sharedDatas[peerId])
@@ -1235,6 +1238,7 @@ export default {
 				const big = tiles <= K4_GRID_HIGH_MAX && this.k4TileBig
 				callParticipantModel.setSimulcastVideoQuality(big ? SIMULCAST.HIGH : SIMULCAST.MEDIUM, SIMULCAST.HIGH)
 			} else if (this.sharedDatas[callParticipantModel.attributes.peerId]?.promoted
+				|| callParticipantModel === this.promotedParticipantModel // ket4tec (NAS_CLOUD#159): одна точка истины - кто показан крупно
 				|| this.selectedVideoPeerId === callParticipantModel.attributes.peerId
 				|| this.promotedSpeakerPeerIds.has(callParticipantModel.attributes.peerId)) {
 				callParticipantModel.setSimulcastVideoQuality(SIMULCAST.HIGH, SIMULCAST.HIGH)

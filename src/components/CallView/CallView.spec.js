@@ -9,6 +9,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { defineComponent, h, onMounted, reactive } from 'vue'
 import CallView from './CallView.vue'
+import { SIMULCAST } from '../../constants.ts'
 import { useCallViewStore } from '../../stores/callView.ts'
 import { callParticipantCollection, localMediaModel } from '../../utils/webrtc/index.js'
 
@@ -300,6 +301,13 @@ describe('CallView.vue', () => {
 			models.splice(1, 1)
 			await flushPromises()
 			expect(models.map((x) => x.attributes.peerId)).toContain(bigPeer())
+		})
+
+		test('до первой речи крупно первый участник - ему HIGH, остальным LOW (одна точка истины)', async () => {
+			await flushPromises()
+			expect(bigPeer()).toBe(models[0].attributes.peerId)
+			expect(models[0].setSimulcastVideoQuality.mock.lastCall[0]).toBe(SIMULCAST.HIGH)
+			expect(models[1].setSimulcastVideoQuality.mock.lastCall[0]).toBe(SIMULCAST.LOW)
 		})
 
 		test('нажатие на свою плитку ничего не закрепляет', async () => {

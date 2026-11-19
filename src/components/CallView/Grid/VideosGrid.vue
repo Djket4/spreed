@@ -198,6 +198,7 @@ import {
 import { placeholderImage, placeholderModel, placeholderName, placeholderSharedData } from './gridPlaceholders.ts'
 import { useGridDimensions } from './useGridDimensions.ts'
 import { usePagination } from './usePagination.ts'
+import { usePhoneShown } from './usePhoneShown.ts'
 import { useTileOrdering } from './useTileOrdering.ts'
 
 // Max number of videos per page. `0`, the default value, means no cap
@@ -378,7 +379,20 @@ export default {
 		} = usePagination(videosCount, slots)
 
 		// The window of the ordered videos shown on the current page
-		const displayedVideos = computed(() => orderedVideos.value.slice(...currentPageBounds.value))
+		// ket4tec (NAS_CLOUD#159): телефон вертикально, 7+ участников - 4 собеседника без страниц, говорящий всегда среди них
+		const phoneMore = computed(() => phoneGrid.value && !noLocalVideoReserve.value && !devMode.value && orderedVideos.value.length > PHONE_MAX_TILES - 1)
+		const phoneShown = usePhoneShown(
+			computed(() => (devMode.value ? [] : orderedVideos.value)),
+			computed(() => orderedVideos.value.find((model) => props.sharedDatas[model.attributes?.peerId]?.promoted)?.attributes.peerId ?? null),
+			PHONE_MAX_TILES - 2,
+		)
+		watch(phoneMore, (on) => {
+			if (on) {
+				currentPage.value = 0
+			}
+		}, { immediate: true })
+
+		const displayedVideos = computed(() => (phoneMore.value ? phoneShown.value : orderedVideos.value.slice(...currentPageBounds.value)))
 
 		// Reset current page when switching between stripe and full grid,
 		// as the previous page is meaningless in the new mode.
@@ -396,6 +410,7 @@ export default {
 			hasPreviousPage,
 			next,
 			previous,
+			phoneMore,
 			devMode,
 			dummies,
 			screenshotMode,
@@ -473,7 +488,7 @@ export default {
 			}
 			if (!this.isStripe) {
 				// сетка: «Вы» + все собеседники > 6 (в записи своей плитки нет)
-				return !this.noLocalVideoReserve && !this.devMode && this.orderedVideos.length > PHONE_MAX_TILES - 1 ? this.orderedVideos.length - (PHONE_MAX_TILES - 2) : 0
+				return this.phoneMore ? this.orderedVideos.length - (PHONE_MAX_TILES - 2) : 0
 			}
 			// ket4tec (NAS_CLOUD#159): без показа экрана полоса - один ряд с прокруткой, «+N» не нужен
 			return this.screens.length && this.totalTiles > 6 ? this.totalTiles - 5 : 0
@@ -591,6 +606,10 @@ export default {
 			if (this.isStripe) {
 				this.grid.scrollLeft += event.deltaY // ket4tec (NAS_CLOUD#159): колесо листает полосу
 				return
+			}
+
+			if (this.phoneMore) {
+				return // ket4tec (NAS_CLOUD#159): без страниц
 			}
 
 			if (event.deltaY < 0 && this.hasPreviousPage) {
