@@ -183,6 +183,7 @@ export default {
 <style lang="scss">
 .k4ts--right:has(~ .k4-micoff) {
 	right: 34px;
-	width: calc(100% - 82px);
+	width: auto; // фиксированная ширина на узкой плитке (111 px) выталкивала текст под значок
+	max-width: calc(100% - 38px);
 }
 </style>
