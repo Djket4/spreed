@@ -8,6 +8,7 @@ import { reactive } from 'vue'
 import store from '../../../store/index.js'
 import { useActorStore } from '../../../stores/actor.ts'
 import { useTokenStore } from '../../../stores/token.ts'
+import { calllog } from '../../../utils/calllog.js'
 import { k4log } from '../../../utils/k4log.js'
 import { beforeLeaveCall, callParticipantCollection, k4drawSignaling } from '../../../utils/webrtc/index.js'
 
@@ -1194,6 +1195,10 @@ export function strokeStart(show, tool, p, pr) {
 	const id = rid()
 	local(show, { op: 's', id, tool, ttl: tool === 'laser' ? state.ft : 0, ...(state.col ? { c: state.col } : {}), ...(state.sz > 1 ? { w: state.sz } : {}) })
 	const m = show.marks.get(me() + '/' + id)
+	if (!show.sl && tool !== 'laser') { // первый штрих на этой доске: одна строка, без потока штрихов
+		show.sl = 1
+		calllog('board_stroke', { tool })
+	}
 	strokePoint(show, m, p, pr)
 	return m
 }
@@ -1322,7 +1327,7 @@ export function undo(show = showOf(state.big)) {
  */
 export function clearMine() {
 	const show = showOf(state.big)
-	show && local(show, { op: 'X' })
+	show && (calllog('board_clear', { all: 0 }), local(show, { op: 'X' }))
 }
 
 /**
@@ -1331,7 +1336,7 @@ export function clearMine() {
  * @param show
  */
 export function clearAll(show = showOf(state.big)) {
-	show && canClearAll(show) && local(show, { op: 'Z' })
+	show && canClearAll(show) && (calllog('board_clear', { all: 1 }), local(show, { op: 'Z' }))
 }
 
 /**
@@ -1746,6 +1751,7 @@ export function sendSnap(n) {
 	if (show) {
 		show.dirty = false // снимок сохранён
 		closeFailed = false
+		calllog('board_snap', { n })
 		local(show, { op: 'S', n })
 	}
 }
