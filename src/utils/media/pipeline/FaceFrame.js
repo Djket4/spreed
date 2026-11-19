@@ -158,6 +158,45 @@ export function computeTarget(faces, r = range) {
 
 export { stepWindow }
 
+// ket4tec (NAS_CLOUD#160): iPad, мелкое лицо — рамка детектора дрожит, а цель масштаба шла в окно как есть («дышит зумом»).
+// Масштаб держим, пока размер лица (zoom = zMax^range) не ушёл больше чем на ZOOM_HOLD_FACE по сырому замеру дольше ZOOM_HOLD_MS;
+// разворот направления — не чаще ZOOM_FLIP_MS. Сдвиг окна идёт отдельно и этим не ограничен.
+const ZOOM_HOLD_FACE = 1.25
+const ZOOM_HOLD_MS = 500
+const ZOOM_FLIP_MS = 2000
+
+/**
+ * @param {object} d состояние конвейера (поле zs хранит принятый масштаб)
+ * @param {number} zoom сырой масштаб из замера
+ * @param {number} now время, мс
+ * @param {number} [r] дальность 0..1
+ * @return {number} масштаб для цели
+ */
+export function holdZoom(d, zoom, now, r = range) {
+	const s = d.zs
+	if (!s) {
+		d.zs = { z: zoom, pend: 0, dir: 0, at: -Infinity }
+		return zoom
+	}
+	const err = Math.log(zoom / s.z)
+	const dir = Math.sign(err)
+	if (Math.abs(err) <= r * Math.log(ZOOM_HOLD_FACE) + 1e-9) {
+		s.pend = 0
+		return s.z
+	}
+	if (!s.pend || s.pdir !== dir) {
+		s.pend = now
+		s.pdir = dir
+	}
+	if (now - s.pend >= ZOOM_HOLD_MS && (dir === s.dir || now - s.at >= ZOOM_FLIP_MS)) {
+		s.z = zoom
+		s.pend = 0
+		s.dir = dir
+		s.at = now
+	}
+	return s.z
+}
+
 // Резервный проход для далёких лиц: если в полном кадре лиц нет, по очереди
 // (одна плитка за детекцию) прогоняется центр, 4 угловых плитки 60% и сетка 3×3 по 40% с перекрытием.
 export const TILES = [
@@ -620,7 +659,19 @@ export default class FaceFrame extends TrackSinkSource {
 				detp: detP95,
 				gapmax: Math.round(d.gapMax),
 				hidden: document.hidden,
+				zoom: Math.round((d.win?.zoom || 1) * 100) / 100,
+				zflips: d.zflips || 0,
 			})
+			// ket4tec (NAS_CLOUD#160): что видит детектор — разбор «кадр не держится на лице» (доля ширины кадра, пропуски, плитки)
+			if (d.dm) {
+				logEv('framing_face', {
+					inst: this._inst,
+					facew: d.fn ? Math.round(d.fw / d.fn * 1000) / 1000 : null,
+					miss: Math.round(d.dmiss / d.dm * 100) / 100,
+					tiles: Math.round(d.dtile / d.dm * 100) / 100,
+				})
+			}
+			d.fw = d.fn = d.dm = d.dmiss = d.dtile = d.zflips = 0
 			d.st = { t: now, src: d.inSrc, in: inCnt ?? 0, draw: d.frames, cb: d.cbs, out: d.outFrames || 0, outq: pq ?? 0 }
 			d.gapMax = 0
 		}
@@ -772,9 +823,15 @@ export default class FaceFrame extends TrackSinkSource {
 					// ket4tec (NAS_CLOUD#172): лицо у края — квадрат сужается (до 1.5×), чтобы оно встало в центр плитки
 					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
 				}
+				target.zoom = holdZoom(d, target.zoom, now)
 				d.target = target
 				d.lastFace = now
+				d.fw = (d.fw || 0) + Math.max(...faces.map((f) => f.x + f.w)) - Math.min(...faces.map((f) => f.x))
+				d.fn = (d.fn || 0) + 1
 			}
+			d.dm = (d.dm || 0) + 1
+			d.dmiss = (d.dmiss || 0) + (faces.length ? 0 : 1)
+			d.dtile = (d.dtile || 0) + (tile ? 1 : 0)
 		} catch (e) { /* пропускаем детекцию */ }
 		const dur = performance.now() - t
 		d.detCount++
@@ -787,6 +844,22 @@ export default class FaceFrame extends TrackSinkSource {
 		} else {
 			d.nextTileAt = now + TILE_INTERVAL_MS
 			d.nextDetectAt = Math.max(d.nextDetectAt, now + (dur > SLOW_DETECT_MS ? dur * 4 : 0))
+		}
+	}
+
+	// ket4tec (NAS_CLOUD#160): смены направления масштаба (размах > 1% от крайней точки) — для журнала
+	_trackFlips(d) {
+		const z = d.win.zoom
+		const t = d.zt ||= { ext: z, dir: 0 }
+		if (z > t.ext * 1.01 || z < t.ext / 1.01) {
+			const dir = z > t.ext ? 1 : -1
+			if (t.dir && dir !== t.dir) {
+				d.zflips = (d.zflips || 0) + 1
+			}
+			t.dir = dir
+			t.ext = z
+		} else if ((t.dir === 1 && z > t.ext) || (t.dir === -1 && z < t.ext)) {
+			t.ext = z
 		}
 	}
 
@@ -823,6 +896,7 @@ export default class FaceFrame extends TrackSinkSource {
 		d.lastTick = now
 		d.win = stepWindow(d.win, clampTarget(d.target, W, H), dt, { W, H })
 		this.window = d.win
+		this._trackFlips(d)
 
 		const { sx, sy, side: ss } = squareRect(d.win, W, H)
 		ctx.drawImage(video, sx, sy, ss, ss, 0, 0, side, side)
