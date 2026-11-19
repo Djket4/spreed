@@ -64,7 +64,7 @@ const round = (v, n = 0) => (v === null ? null : Math.round(v * 10 ** n) / 10 **
  * @param {'in'|'out'} dir входящий pc (чужой участник) или исходящий (свой)
  */
 function read(report, dir) {
-	const r = { ts: 0, bytes: 0, pkts: 0, lost: 0, ab: 0, vb: 0, jit: null, fps: null, rtt: null, lt: null, rt: null, proto: null, top: null, layers: 0 }
+	const r = { ts: 0, bytes: 0, pkts: 0, lost: 0, ab: 0, vb: 0, jit: null, fps: null, rtt: null, lt: null, rt: null, proto: null, top: null, layers: 0, hv: false, qlim: null, qw: -1, encfps: 0 }
 	let rirRtt = null
 	report.forEach((s) => {
 		r.ts = Math.max(r.ts, num(s.timestamp) || 0)
@@ -83,6 +83,18 @@ function read(report, dir) {
 		} else if (s.type === 'outbound-rtp' && dir === 'out') {
 			r.bytes += s.bytesSent || 0
 			r.pkts += s.packetsSent || 0
+			// ket4tec (NAS_CLOUD#160): видеобитрейт отправки отдельно, причина ограничения широкого слоя, кадры/с кодера
+			if (kind === 'video') {
+				r.hv = true
+				r.vb += s.bytesSent || 0
+				r.encfps += num(s.framesPerSecond) || 0
+				if (s.active !== false && (s.frameWidth || 0) > r.qw) {
+					r.qw = s.frameWidth || 0
+					r.qlim = s.qualityLimitationReason || null
+				}
+			} else if (kind === 'audio') {
+				r.ab += s.bytesSent || 0
+			}
 			// ket4tec (NAS_CLOUD#375): разрешение и кадры/с отправки: верхний активный слой simulcast (самый широкий) и число слоёв
 			if (kind === 'video' && s.frameWidth > 0 && s.active !== false && s.framesPerSecond > 0) {
 				r.layers++
@@ -140,6 +152,9 @@ export function sample(prevReport, report, dir = 'in') {
 		rt: c.rt,
 		ab: ok && c.ab >= p.ab ? c.ab - p.ab : null,
 		vb: ok && c.vb >= p.vb ? c.vb - p.vb : null,
+		hv: dir === 'out' ? c.hv : null, // есть ли исходящий видео-RTP в отчёте
+		qlim: c.qlim,
+		encfps: dir === 'out' && c.qw >= 0 ? round(c.encfps) : null,
 	}
 }
 
@@ -216,9 +231,19 @@ let timer = null
 let tickN = 0
 let busy = false
 let stopWatch = []
+let lagTimer = null
+let lagLast = 0
+let lagMax = 0 // макс. отклонение шага 1 с за интервал rtc_stats, мс
+let zeroTick = -1000
+const LAG_MS = 1000
+const STALL_MS = 3000
+const hidden = () => (typeof document !== 'undefined' && document.hidden ? 1 : 0)
+const subs = new Map() // дорожка/pc -> снять подписки
+let curPc = null
+let flowed = false // в этом соединении видео уже уходило (vb > 0)
 const per = {} // id -> { report, st, key, last }
 
-const EMPTY = { kbps: null, loss: null, rtt: null, jit: null, fps: null, out: null, path: null, proto: null, lt: null, rt: null, ab: null, vb: null }
+const EMPTY = { kbps: null, loss: null, rtt: null, jit: null, fps: null, out: null, path: null, proto: null, lt: null, rt: null, ab: null, vb: null, hv: null, qlim: null, encfps: null }
 const lvlOf = (q) => (q >= 4 ? 'red' : q === 3 ? 'yellow' : null)
 const clean = (d) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !== null && v !== undefined))
 
@@ -233,6 +258,10 @@ const clean = (d) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !=
 async function measure(id, pc, dir, flags) {
 	const e = per[id] || (per[id] = { report: null, st: null, key: null })
 	e.miss = 0
+	if (e.pc !== pc) {
+		e.pc = pc
+		e.report = null // отчёт другого pc: дельта счётчиков была бы мусором
+	}
 	let s = EMPTY // нет pc или getStats упал: «обрыв» всё равно считаем по connectionState
 	if (pc) {
 		try {
@@ -289,6 +318,78 @@ function logStats() {
 		qa: peers.filter((e) => e.last?.ab > 0).length, // сколько участников, от кого сейчас идёт звук
 		qv: peers.filter((e) => e.last?.vb > 0).length, // и видео
 	}))
+	// ket4tec (NAS_CLOUD#160): rtc_stats уже на 12 ключах, новое отдельной строкой
+	calllog('rtc_health', clean({ lag: Math.round(lagMax), qlim: up?.qlim, encfps: up?.encfps, hidden: hidden() }))
+	lagMax = 0
+}
+
+const localVideo = () => ctx?.localMedia?.attributes?.localStream?.getVideoTracks?.()[0]
+
+/** Раз в шаг 1 с: подписаться на новые локальные дорожки и исходящий pc; ловит провал цикла событий. */
+function lagStep() {
+	const now = performance.now() // не Date.now: перевод системных часов не должен давать ложный stall
+	const step = now - lagLast
+	lagLast = now
+	lagMax = Math.max(lagMax, step - LAG_MS, 0)
+	if (step > STALL_MS) {
+		calllog('stall', { ms: Math.round(step), hidden: hidden() })
+	}
+	try {
+		const tracks = ctx?.localMedia?.attributes?.localStream?.getTracks?.() || []
+		const pc = ctx?.local?.get('peer')?.pc || null
+		// снять подписки с дорожек и pc, которых больше нет
+		for (const [o, off] of subs) {
+			if (o !== pc && !tracks.includes(o)) {
+				off()
+				subs.delete(o)
+			}
+		}
+		for (const t of tracks) {
+			if (!subs.has(t)) {
+				const offs = ['mute', 'unmute', 'ended'].map((ev) => {
+					const fn = () => calllog('track_state', { kind: t.kind, st: ev })
+					t.addEventListener(ev, fn)
+					return () => t.removeEventListener(ev, fn)
+				})
+				subs.set(t, () => offs.forEach((f) => f()))
+			}
+		}
+		if (pc !== curPc) {
+			curPc = pc
+			flowed = false
+		}
+		if (pc && !subs.has(pc)) {
+			const fn = () => calllog('pc_state', clean({ ice: pc.iceConnectionState, conn: pc.connectionState }))
+			const evs = ['iceconnectionstatechange', 'connectionstatechange']
+			evs.forEach((ev) => pc.addEventListener(ev, fn))
+			subs.set(pc, () => evs.forEach((ev) => pc.removeEventListener(ev, fn)))
+		}
+	} catch (e) {
+		// журнал не должен влиять на звонок
+	}
+}
+
+/**
+ * Нулевая отправка видео при включённой камере: не чаще раза за интервал rtc_stats.
+ *
+ * @param {object} lpc исходящий RTCPeerConnection
+ * @param {string} lconn connectionState модели
+ */
+function checkSendZero(lpc, lconn) {
+	if ((lpc || null) !== curPc) {
+		return // замер устаревшего pc: не трогает flowed нового соединения
+	}
+	const up = per.local?.last
+	if (up?.vb > 0) {
+		flowed = true
+	}
+	if (!flowed || !up?.hv || up.vb !== 0 || !ctx?.localMedia?.attributes?.videoEnabled || tickN - zeroTick < LOG_EVERY) {
+		return
+	}
+	zeroTick = tickN
+	const t = localVideo()
+	const b = (v) => (v === undefined ? undefined : v ? 1 : 0)
+	calllog('send_zero', clean({ qlim: up.qlim, lag: Math.round(lagMax), trk: t?.readyState, muted: b(t?.muted), enabled: b(t?.enabled), ice: lpc?.iceConnectionState, conn: lpc?.connectionState || lconn, hidden: hidden() }))
 }
 
 /** Шаг сбора раз в 3 с. */
@@ -323,6 +424,7 @@ async function tick() {
 			}
 		}
 		await Promise.allSettled(jobs)
+		ctx && checkSendZero(lpc, lconn)
 		if (ctx && ++tickN % LOG_EVERY === 0) {
 			logStats()
 		}
@@ -347,6 +449,15 @@ export function startK4stats(c) {
 	stopK4stats()
 	ctx = c
 	timer = setInterval(tick, STEP_MS)
+	lagLast = performance.now()
+	lagTimer = setInterval(lagStep, LAG_MS)
+	if (typeof document !== 'undefined') {
+		for (const [target, ev, name] of [[document, 'visibilitychange'], [document, 'freeze', 'freeze'], [document, 'resume', 'resume']]) {
+			const fn = () => calllog('page_state', { st: name || (document.hidden ? 'hidden' : 'visible') })
+			target.addEventListener(ev, fn)
+			stopWatch.push(() => target.removeEventListener(ev, fn))
+		}
+	}
 	for (const [kind, key] of [['a', 'audioEnabled'], ['v', 'videoEnabled']]) {
 		const fn = (_m, on) => { // первым аргументом идёт модель (EmitterMixin)
 			if (!on && kind === 'a' && Date.now() - k4stats.hostMute < 1000) {
@@ -385,7 +496,14 @@ export function startK4stats(c) {
  */
 export function stopK4stats() {
 	clearInterval(timer)
-	timer = ctx = null
+	clearInterval(lagTimer)
+	timer = ctx = lagTimer = null
+	lagMax = 0
+	zeroTick = -1000
+	subs.forEach((off) => off())
+	subs.clear()
+	curPc = null
+	flowed = false
 	tickN = 0
 	busy = false
 	stopWatch.forEach((f) => f())

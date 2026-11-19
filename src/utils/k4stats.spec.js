@@ -223,4 +223,149 @@ describe('рантайм', () => {
 		start()
 		expect(axios.get).toHaveBeenCalledTimes(1)
 	})
+
+	describe('NAS_CLOUD#160', () => {
+		const outRep = (n, vb, video = true) => new Map(video
+			? [['o', { type: 'outbound-rtp', kind: 'video', timestamp: n * 3000, bytesSent: vb, packetsSent: n, frameWidth: 1280, frameHeight: 720, framesPerSecond: 25, qualityLimitationReason: 'cpu' }]]
+			: [['a', { type: 'outbound-rtp', kind: 'audio', timestamp: n * 3000, bytesSent: n * 100, packetsSent: n }]])
+		const mkTrack = () => ({ kind: 'video', readyState: 'live', muted: false, enabled: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+		// vbAt(n): байт видео в n-м замере; null = в отчёте нет видео-RTP
+		function startLocal({ videoEnabled = true, vbAt = () => 0 } = {}) {
+			let n = 0
+			const st = { tracks: [mkTrack()] }
+			const pc = { iceConnectionState: 'connected', connectionState: 'connected', addEventListener: vi.fn(), removeEventListener: vi.fn(), getStats: vi.fn(async () => {
+				n++
+				const vb = vbAt(n)
+				return outRep(n, vb, vb !== null)
+			}) }
+			const local = { get: (k) => (k === 'peer' ? { pc } : k === 'connectionState' ? 'connected' : undefined) }
+			const localMedia = { on() {}, off() {}, attributes: { videoEnabled, localStream: { getTracks: () => st.tracks, getVideoTracks: () => st.tracks } } }
+			startK4stats({ token: 't', local, collection: { callParticipantModels: [] }, localMedia })
+			return { st, pc }
+		}
+		const ev = (k) => calllog.mock.calls.filter((c) => c[0] === k)
+		let skew = 0
+		beforeEach(() => {
+			skew = 0
+			const orig = performance.now.bind(performance)
+			vi.spyOn(performance, 'now').mockImplementation(() => orig() + skew)
+		})
+		afterEach(() => vi.restoreAllMocks())
+
+		it('lag: макс. отклонение шага за интервал, сбрасывается после rtc_health', async () => {
+			startLocal({ vbAt: (n) => n * 30000 })
+			await vi.advanceTimersByTimeAsync(5000)
+			skew = 700 // шаг стал ~1700
+			await vi.advanceTimersByTimeAsync(10500)
+			const h = ev('rtc_health')
+			expect(h).toHaveLength(1)
+			expect(h[0][1].lag).toBe(700)
+			expect(h[0][1]).toMatchObject({ qlim: 'cpu', encfps: 25, hidden: 0 })
+			await vi.advanceTimersByTimeAsync(15000)
+			expect(ev('rtc_health')[1][1].lag).toBe(0)
+		})
+
+		it('lag/stall не зависят от системных часов', async () => {
+			startLocal({ vbAt: (n) => n * 30000 })
+			vi.setSystemTime(Date.now() + 3600000)
+			await vi.advanceTimersByTimeAsync(5000)
+			expect(ev('stall')).toHaveLength(0)
+		})
+
+		it('send_zero: не до первого vb>0; после него при нуле раз в интервал; без видео-RTP и при выключенной камере нет', async () => {
+			startLocal({ vbAt: () => 0 }) // старт: байт нет
+			await vi.advanceTimersByTimeAsync(31000)
+			expect(ev('send_zero')).toHaveLength(0)
+			stopK4stats()
+			startLocal({ vbAt: (n) => (n <= 2 ? n * 30000 : 60000) }) // шло, потом встало
+			await vi.advanceTimersByTimeAsync(31000)
+			const z = ev('send_zero')
+			expect(z.length).toBeGreaterThanOrEqual(2)
+			expect(z.length).toBeLessThanOrEqual(3)
+			expect(z[0][1]).toEqual({ qlim: 'cpu', lag: 0, trk: 'live', muted: 0, enabled: 1, ice: 'connected', conn: 'connected', hidden: 0 })
+			stopK4stats()
+			calllog.mockClear()
+			startLocal({ vbAt: (n) => (n <= 2 ? n * 30000 : null) }) // видео-RTP пропал из отчёта: не ноль
+			await vi.advanceTimersByTimeAsync(31000)
+			expect(ev('send_zero')).toHaveLength(0)
+			stopK4stats()
+			startLocal({ videoEnabled: false, vbAt: (n) => (n <= 2 ? n * 30000 : 60000) })
+			await vi.advanceTimersByTimeAsync(31000)
+			expect(ev('send_zero')).toHaveLength(0)
+		})
+
+		it('send_zero: замена pc во время getStats старого не даёт ложного события (гонка tick/lagStep)', async () => {
+			const mkPc = (getStats) => ({ iceConnectionState: 'connected', connectionState: 'connected', addEventListener: vi.fn(), removeEventListener: vi.fn(), getStats })
+			let n = 0
+			let release
+			const hang = new Promise((r) => {
+				release = r
+			})
+			const oldPc = mkPc(vi.fn(() => {
+				n++
+				return n <= 2 ? Promise.resolve(outRep(n, n * 30000)) : hang.then(() => outRep(n, n * 30000))
+			}))
+			let m = 0
+			let newVb = () => 0
+			const newPc = mkPc(vi.fn(async () => outRep(++m, newVb(m))))
+			let cur = oldPc
+			const local = { get: (k) => (k === 'peer' ? { pc: cur } : k === 'connectionState' ? 'connected' : undefined) }
+			const localMedia = { on() {}, off() {}, attributes: { videoEnabled: true, localStream: { getTracks: () => [], getVideoTracks: () => [mkTrack()] } } }
+			startK4stats({ token: 't', local, collection: { callParticipantModels: [] }, localMedia })
+			await vi.advanceTimersByTimeAsync(7000) // 2 замера старого pc: vb>0
+			await vi.advanceTimersByTimeAsync(3000) // замер старого повис
+			cur = newPc
+			await vi.advanceTimersByTimeAsync(1500) // lagStep увидел новый pc
+			release()
+			await vi.advanceTimersByTimeAsync(0)
+			await vi.advanceTimersByTimeAsync(20000) // новый pc: нули при включённой камере
+			expect(newPc.getStats).toHaveBeenCalled()
+			expect(ev('send_zero')).toHaveLength(0)
+			const from = m
+			newVb = (k) => (k <= from + 2 ? k * 30000 : (from + 2) * 30000)
+			await vi.advanceTimersByTimeAsync(20000)
+			expect(ev('send_zero').length).toBeGreaterThanOrEqual(1)
+		})
+
+		it('stall: шаг > 3000 мс; track_state, pc_state, page_state; ключи новых событий валидны', async () => {
+			const { st, pc } = startLocal({ vbAt: (n) => n * 30000 })
+			await vi.advanceTimersByTimeAsync(2000)
+			skew = 4000
+			await vi.advanceTimersByTimeAsync(1000)
+			expect(ev('stall')[0][1]).toEqual({ ms: 5000, hidden: 0 })
+			const fire = (m, name) => m.mock.calls.find((c) => c[0] === name)[1]()
+			fire(st.tracks[0].addEventListener, 'mute')
+			fire(pc.addEventListener, 'connectionstatechange')
+			expect(ev('track_state')[0][1]).toEqual({ kind: 'video', st: 'mute' })
+			expect(ev('pc_state')[0][1]).toEqual({ ice: 'connected', conn: 'connected' })
+			document.dispatchEvent(new Event('freeze'))
+			window.dispatchEvent(new Event('pagehide'))
+			expect(ev('page_state')).toHaveLength(1)
+			expect(ev('page_state')[0][1]).toEqual({ st: 'freeze' })
+			await vi.advanceTimersByTimeAsync(15000)
+			for (const k of ['rtc_health', 'stall', 'track_state', 'pc_state', 'page_state']) {
+				for (const [, d] of ev(k)) {
+					expect(Object.keys(d).length).toBeLessThanOrEqual(12)
+					Object.keys(d).forEach((x) => {
+						expect(x).toMatch(/^[a-z]{1,12}$/)
+						expect(['ev', 'room', 't', 'dt', 'sess', 'ty']).not.toContain(x) // их выбрасывает parse_client на сервере
+					})
+				}
+			}
+		})
+
+		it('замена дорожки: со старой подписки сняты, событие со старой не пишется; stop снимает всё', async () => {
+			const { st, pc } = startLocal({ vbAt: (n) => n * 30000 })
+			await vi.advanceTimersByTimeAsync(1500)
+			const old = st.tracks[0]
+			const oldFn = old.addEventListener.mock.calls[0][1]
+			st.tracks = [mkTrack()]
+			await vi.advanceTimersByTimeAsync(1000)
+			expect(old.removeEventListener).toHaveBeenCalledWith('mute', oldFn)
+			expect(st.tracks[0].addEventListener).toHaveBeenCalledTimes(3)
+			stopK4stats()
+			expect(st.tracks[0].removeEventListener).toHaveBeenCalledTimes(3)
+			expect(pc.removeEventListener).toHaveBeenCalledTimes(2)
+		})
+	})
 })
