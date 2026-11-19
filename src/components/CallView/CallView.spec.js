@@ -113,7 +113,7 @@ describe('CallView.vue', () => {
 			const models = reactive([m(), m()]) // 2 удалённых + своя = 3 плитки
 			callParticipantCollection.callParticipantModels = models
 			wrapper = mountCallView()
-			await tileSize(1500)
+			await tileSize(700)
 			expect(spatials(models)).toEqual([2, 2])
 
 			models.push(m()) // 4 плитки
@@ -133,7 +133,7 @@ describe('CallView.vue', () => {
 			const models = reactive([m(), m(), m(), m()])
 			callParticipantCollection.callParticipantModels = models
 			wrapper = mountCallView({ isRecording: true })
-			await tileSize(1500)
+			await tileSize(700)
 			expect(spatials(models)).toEqual([2, 2, 2, 2])
 		})
 
@@ -141,17 +141,17 @@ describe('CallView.vue', () => {
 			const models = reactive([m()])
 			callParticipantCollection.callParticipantModels = models
 			wrapper = mountCallView()
-			await tileSize(500)
+			await tileSize(400)
 			expect(spatials(models)).toEqual([1])
 
-			await tileSize(1020) // выше 1000, но внутри гистерезиса (< 1050)
+			await tileSize(620) // выше 600, но внутри гистерезиса (< 630)
 			expect(spatials(models)).toEqual([1])
-			await tileSize(1100)
+			await tileSize(700)
 			expect(spatials(models)).toEqual([2])
 
-			await tileSize(980) // выше нижней границы 950: слой держится
+			await tileSize(580) // выше нижней границы 570: слой держится
 			expect(spatials(models)).toEqual([2])
-			await tileSize(900)
+			await tileSize(540)
 			expect(spatials(models)).toEqual([1])
 		})
 
@@ -160,7 +160,7 @@ describe('CallView.vue', () => {
 			const models = reactive([m()])
 			callParticipantCollection.callParticipantModels = models
 			wrapper = mountCallView()
-			await tileSize(600) // 1200 физ. px
+			await tileSize(320) // 640 физ. px
 			expect(spatials(models)).toEqual([2])
 		})
 	})
