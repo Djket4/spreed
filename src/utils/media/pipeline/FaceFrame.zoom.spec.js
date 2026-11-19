@@ -138,7 +138,6 @@ test('мигающая вторая рамка (люстра, 400 мс вкл/в
 	}
 	const cxs = tail.map((p) => p.cx)
 	const drift = Math.max(...cxs) - Math.min(...cxs)
-	console.log('flicker: drift', drift.toFixed(4), 'margin', minMargin.toFixed(4))
 	expect(minMargin).toBeGreaterThan(0)
 	expect(drift).toBeLessThanOrEqual(0.02)
 })
