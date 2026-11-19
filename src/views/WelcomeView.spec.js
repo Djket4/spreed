@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { showSuccess } from '@nextcloud/dialogs'
+import { showError, showSuccess } from '@nextcloud/dialogs'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -22,10 +22,10 @@ describe('WelcomeView.vue (ket4tec NAS_CLOUD#332: четыре кнопки)', (
 	/**
 	 * @param {string} link ссылка «Мой звонок» ('' — приложение «Стол» ссылку не дало)
 	 */
-	async function mountView(link) {
+	async function mountView(link, createGroupConversation = vi.fn()) {
 		globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ call: link }) })
 		const wrapper = mount(WelcomeView, {
-			global: { plugins: [router, createStore({ getters: { getConversationForUser: () => () => null } })] },
+			global: { plugins: [router, createStore({ getters: { getConversationForUser: () => () => null }, actions: { createGroupConversation } })] },
 		})
 		await flushPromises()
 		return wrapper
@@ -64,5 +64,21 @@ describe('WelcomeView.vue (ket4tec NAS_CLOUD#332: четыре кнопки)', (
 		await flushPromises()
 		expect(writeText).toHaveBeenCalledWith(LINK)
 		expect(showSuccess).toHaveBeenCalled()
+	})
+
+	test('ошибка создания встречи: показана ошибка, необработанных отклонений нет', async () => {
+		const unhandled = vi.fn()
+		process.on('unhandledRejection', unhandled)
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const wrapper = await mountView(LINK, vi.fn().mockRejectedValue(new Error('boom')))
+		await wrapper.find('.talk-dashboard__action').trigger('click')
+		await flushPromises()
+		await document.querySelector('.k7-meet__btn--primary').click()
+		await flushPromises()
+		await new Promise((resolve) => setTimeout(resolve, 20))
+		process.off('unhandledRejection', unhandled)
+		expect(showError).toHaveBeenCalled()
+		expect(unhandled).not.toHaveBeenCalled()
+		wrapper.unmount()
 	})
 })

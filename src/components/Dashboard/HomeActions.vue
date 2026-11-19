@@ -135,6 +135,7 @@ async function startMeeting() {
 		resolveText = resolve
 		rejectText = reject
 	})
+	textPromise.catch(() => {}) // без ClipboardItem обработчика нет — не плодим unhandledrejection
 	let clipboardWrite: Promise<void> | null = null
 	try {
 		if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
