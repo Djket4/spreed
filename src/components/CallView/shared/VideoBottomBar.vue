@@ -324,6 +324,11 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+// ket4tec (NAS_CLOUD#270): у не-модератора кнопка микрофона disabled и лишь дублирует угловой значок .k4-micoff — скрыта
+.audioIndicator:disabled {
+	display: none;
+}
+
 .wrapper {
 	display: flex;
 	align-items: center;

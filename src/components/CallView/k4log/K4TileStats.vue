@@ -177,3 +177,12 @@ export default {
 	background: rgba(200, 30, 30, 0.9);
 }
 </style>
+
+<!-- ket4tec (NAS_CLOUD#270): справа плитки стоит значок «микрофон выключен» (.k4-micoff, 24px + 6px) — строка замеров сдвигается левее него.
+Без scoped: сестринский значок живёт в родителе -->
+<style lang="scss">
+.k4ts--right:has(~ .k4-micoff) {
+	right: 34px;
+	width: calc(100% - 82px);
+}
+</style>
