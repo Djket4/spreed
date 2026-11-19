@@ -4,11 +4,11 @@
  */
 
 import { expect, test } from 'vitest'
-import FaceFrame, { holdZoom, TILES } from './FaceFrame.js'
+import FaceFrame, { holdZoom, stableFaces, TILES } from './FaceFrame.js'
 
 // NAS_CLOUD#160: iPad, сверхширокая камера 1920x1080, лицо мелкое. Прогон настоящего _renderFrame,
 // детекции из сценария: size(t) — ширина рамки (доля ширины кадра), jit — дрожание размера, miss — пропуск замеров.
-function run({ size, jit = 0.15, miss = (n) => n % 3 === 2, tileK = 1, secs = 20, seed = 3, extra = null }) {
+function run({ size, jit = 0.15, miss = (n) => n % 3 === 2, tileK = 1, secs = 20, seed = 3, extra = null, fx = () => 0.5 }) {
 	let r = seed
 	const rnd = () => ((r = (r * 1103515245 + 12345) % 2147483648) / 2147483648) * 2 - 1
 	const ff = new FaceFrame()
@@ -27,7 +27,7 @@ function run({ size, jit = 0.15, miss = (n) => n % 3 === 2, tileK = 1, secs = 20
 			const wt = w * tileK
 			return [{ x: (0.5 - tl.x) / tl.w - wt / tl.w / 2, y: (0.4 - tl.y) / tl.h, w: wt / tl.w, h: h / tl.h }]
 		}
-		return [{ x: 0.5 - w / 2, y: 0.4, w, h }, ...(extra?.(t) ? [extra(t)] : [])]
+		return [{ x: fx(t / 1000) - w / 2, y: 0.4, w, h }, ...(extra?.(t) ? [extra(t)] : [])]
 	}
 	const d = {
 		video: { videoWidth: W, videoHeight: H },
@@ -149,4 +149,44 @@ test('смена «Дальности» сбрасывает удержание 
 	expect(holdZoom(d, 1.5 * 1.1, 100, 0.5)).toBe(1.5) // дрожание внутри окна допуска — держим
 	expect(holdZoom(d, 1.79, 200, 0.6)).toBe(1.79) // другой range — цель сразу
 	expect(holdZoom(d, 1, 300, 0)).toBe(1) // range=0 — без задержки 500 мс
+})
+
+// лицо w=0.05 едет по x от 0.3 до 0.7 со скоростью v (ширин кадра/с), детекция 8 Гц: время вне окна (лицо не целиком) и глубина
+function drive(v) {
+	const fx = (s) => Math.min(0.7, Math.max(0.3, 0.3 + (s - 2) * v))
+	const { zoom } = run({ size: () => 0.05, jit: 0.02, miss: () => false, fx, secs: 2 + 0.4 / v + 3 })
+	let out = 0
+	let depth = 0
+	for (const p of zoom.filter((q) => q.t > 3000)) {
+		const [l, r] = edges(p)
+		const c = fx(p.t / 1000)
+		const o = Math.max(l - (c - 0.025), c + 0.025 - r, 0)
+		if (o > 0) {
+			out += 1000 / 30
+		}
+		depth = Math.max(depth, o)
+	}
+	return { out: Math.round(out), depth: Math.round(depth * 1000) / 1000 }
+}
+
+test('мелкое лицо едет 0.5 и 1.0 ширины/с — время вне окна и глубина не хуже базы', () => {
+	const a = drive(0.5)
+	const b = drive(1)
+	expect(a.out).toBeLessThanOrEqual(250)
+	expect(a.depth).toBeLessThanOrEqual(0.1)
+	expect(b.out).toBeLessThanOrEqual(100)
+	expect(b.depth).toBeLessThanOrEqual(0.05)
+})
+
+test('детекции раз в 700 мс: мигающая рамка не в охвате, настоящее лицо устойчиво', () => {
+	const d = {}
+	const real = { x: 0.35, y: 0.4, w: 0.1, h: 0.2 }
+	const lamp = { x: 0.85, y: 0.3, w: 0.1, h: 0.2 }
+	let r
+	for (let i = 0; i < 12; i++) {
+		r = stableFaces(d, i % 2 ? [real] : [real, lamp], 1000 + i * 700)
+	}
+	expect(r.stable).toBe(1)
+	expect(r.cover).toHaveLength(1)
+	expect(r.cover[0].x).toBe(0.35)
 })

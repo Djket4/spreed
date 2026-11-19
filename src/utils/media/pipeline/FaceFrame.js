@@ -202,32 +202,52 @@ export function holdZoom(d, zoom, now, r = range) {
 // детекциями по близости центров; в охват входит рамка, державшаяся подряд >= STABLE_MS, и выходит через STABLE_MS после
 // последнего появления. Пока устойчивых нет (первые 600 мс) — охват по текущим рамкам.
 const STABLE_MS = 600
+const TRACK_SPEED = 1 // допустимая скорость лица для сопоставления, ширин кадра в секунду
 
 /**
- * @param {object} d состояние конвейера (поле tr хранит треки)
+ * @param {object} d состояние конвейера (поля tr и dts хранят треки и времена детекций)
  * @param {Array<{x: number, y: number, w: number, h: number}>} faces рамки текущей детекции
  * @param {number} now время, мс
  * @return {{cover: Array, stable: number}} рамки для охвата и число устойчивых
  */
 export function stableFaces(d, faces, now) {
-	const tr = (d.tr = (d.tr || []).filter((t) => now - t.last <= STABLE_MS))
+	// срок жизни и «устойчивости» — не меньше 2.5 средних интервалов детекции (в режиме плиток они реже 600 мс)
+	const ts = (d.dts = [...(d.dts || []), now].slice(-6))
+	const hold = Math.max(STABLE_MS, ts.length > 1 ? 2.5 * (now - ts[0]) / (ts.length - 1) : 0)
+	const tr = (d.tr = (d.tr || []).filter((t) => now - t.last <= hold))
 	if (faces.length) {
 		const used = new Set()
+		const fresh = []
 		for (const f of faces) {
-			const t = tr.find((c) => !used.has(c) && Math.abs(c.x + c.w / 2 - f.x - f.w / 2) < Math.max(c.w, f.w) && Math.abs(c.y + c.h / 2 - f.y - f.h / 2) < Math.max(c.h, f.h))
+			// ближайший трек; допуск — ширина рамки, а для давно не виденного — путь, который лицо успело пройти
+			const dist = (c) => Math.hypot(c.x + c.w / 2 - f.x - f.w / 2, c.y + c.h / 2 - f.y - f.h / 2)
+			const tol = (c) => Math.max(c.w, f.w, TRACK_SPEED * (now - c.last) / 1000)
+			const t = tr.filter((c) => !used.has(c) && Math.abs(c.x + c.w / 2 - f.x - f.w / 2) < tol(c) && Math.abs(c.y + c.h / 2 - f.y - f.h / 2) < Math.max(c.h, f.h, tol(c))).sort((p, q) => dist(p) - dist(q))[0]
 			if (t) {
 				used.add(t)
 				Object.assign(t, f, { last: now, since: t.since ?? now })
-				t.stable ||= now - t.since >= STABLE_MS
+				t.stable ||= now - t.since >= hold
 			} else {
-				tr.push({ ...f, last: now, since: now, stable: false })
-				used.add(tr[tr.length - 1])
+				const n = { ...f, last: now, since: now, stable: false }
+				tr.push(n)
+				used.add(n)
+				fresh.push(n)
 			}
 		}
-		for (const t of tr) {
-			if (!used.has(t)) {
-				t.since = null // пропал при живой детекции — серия прервалась
+		const lost = tr.filter((t) => !used.has(t))
+		// быстрое лицо ушло дальше допуска: ни один устойчивый трек не сопоставился, один пропал, одна новая рамка того же размера — трек переезжает
+		const lostStable = lost.filter((t) => t.stable)
+		if (lostStable.length === 1 && fresh.length === 1 && ![...used].some((t) => t.stable)) {
+			const [o] = lostStable
+			const ratio = fresh[0].w / o.w
+			if (ratio >= 0.6 && ratio <= 1.6) {
+				Object.assign(o, fresh[0], { last: now, since: now, stable: true })
+				tr.splice(tr.indexOf(fresh[0]), 1)
+				lost.splice(lost.indexOf(o), 1)
 			}
+		}
+		for (const t of lost) {
+			t.since = null // пропал при живой детекции — серия прервалась
 		}
 	}
 	const st = tr.filter((t) => t.stable)
@@ -886,6 +906,8 @@ export default class FaceFrame extends TrackSinkSource {
 					target.zoom = raw
 					d.zs.z = raw
 					d.zs.pend = 0
+					d.zs.dir = -1
+					d.zs.at = now
 				}
 				d.target = target
 				d.lastFace = now
