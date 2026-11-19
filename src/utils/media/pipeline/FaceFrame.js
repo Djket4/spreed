@@ -30,6 +30,7 @@ const HOLD_MS = 1500
 const LOW_FPS_RATIO = 0.7 // отрисовка < 70 % входа
 const LOW_FPS_MS = 2000
 const MIN_FPS = 15 // вход не измерить (нет getVideoPlaybackQuality) — прежнее правило: отрисовка < 15 к/с
+const REDRAW_MAX_MS = 250 // вход не меняется дольше — всё равно перерисовываем (метаданные кадра могут не отражать смену кадра)
 const STATS_LOG_MS = 5000
 const STATS_CALLLOG_MS = 10000 // framing_stats в журнал звонка
 // ket4tec (NAS_CLOUD#160): детектор MediaPipe на CPU не должен видеть полный кадр 1080p — рисуем в канвас постоянного размера (длинная сторона, px).
@@ -402,6 +403,15 @@ export default class FaceFrame extends TrackSinkSource {
 			inSeen: false,
 			qSeen: false, // счётчик кадров пробы хоть раз вырос
 			qLast: 0,
+			// ket4tec (NAS_CLOUD#160): счёт кадров входа по метаданным rVFC исходного video (Safari: totalVideoFrames стоит на 0)
+			inRv: 0, // новых кадров входа по rVFC
+			rvOk: false, // метаданные rVFC несут presentedFrames/mediaTime — счёт осмыслен
+			lastPF: null,
+			lastMT: null,
+			lastQ: 0,
+			lastDraw: 0,
+			qinLast: 0,
+			inSrc: 'none', // источник частоты входа: quality | rvfc | settings | none
 			lastCb: 0,
 			gapMax: 0, // макс. разрыв между колбэками кадра за интервал журнала, мс
 			st: { t: t0, in: 0, draw: 0, out: 0, outq: 0 }, // отметки прошлой записи framing_stats
@@ -444,7 +454,7 @@ export default class FaceFrame extends TrackSinkSource {
 
 		const schedule = () => {
 			const id = ++d.sid // устаревшие колбэки (rVFC после перехода на rAF) игнорируются
-			const run = (now) => {
+			const run = (now, meta) => {
 				if (d.stopped || id !== d.sid) {
 					return
 				}
@@ -453,7 +463,12 @@ export default class FaceFrame extends TrackSinkSource {
 				d.gapMax = Math.max(d.gapMax, d.lastCb ? cb - d.lastCb : 0)
 				d.lastCb = cb
 				try {
-					this._renderFrame(d, performance.now())
+					// ket4tec (NAS_CLOUD#160): было — рисовали на каждый колбэк (Safari: rVFC и rAF идут с частотой экрана, 57–60 к/с
+					// при камере 30); теперь рисуем только на новый кадр входа
+					if (this._isNewFrame(d, d.useRaf ? undefined : meta, cb)) {
+						d.lastDraw = cb
+						this._renderFrame(d, cb)
+					}
 				} catch (e) {
 					// отрисовка упала — сразу на исходную камеру, не ждём сторожка
 					this._fallback(d, 'error', 'отрисовка: ' + e.message)
@@ -478,6 +493,32 @@ export default class FaceFrame extends TrackSinkSource {
 		d.watch = setInterval(() => this._watch(d), 500)
 	}
 
+	// ket4tec (NAS_CLOUD#160): пришёл ли новый кадр входа. Метаданные rVFC (presentedFrames, иначе mediaTime) -> счётчик inRv;
+	// в режиме rAF — счётчик totalVideoFrames, если он растёт; иначе признака нет — рисуем каждый колбэк (как раньше).
+	// Вход встал — перерисовываем не реже REDRAW_MAX_MS, чтобы сторож выхода видел живой канвас, а не ложный сбой.
+	_isNewFrame(d, meta, cb) {
+		let inc
+		if (meta && (typeof meta.presentedFrames === 'number' || typeof meta.mediaTime === 'number')) {
+			const pf = typeof meta.presentedFrames === 'number' ? (d.lastPF === null ? 1 : meta.presentedFrames - d.lastPF) : 0
+			const mt = typeof meta.mediaTime === 'number' && meta.mediaTime !== d.lastMT ? 1 : 0
+			d.lastPF = meta.presentedFrames ?? d.lastPF
+			d.lastMT = meta.mediaTime ?? d.lastMT
+			d.rvOk = true
+			inc = Math.max(pf, mt)
+			d.inRv += Math.max(inc, 0)
+		} else if (d.useRaf && d.inSeen) {
+			const q = d.video.getVideoPlaybackQuality?.()?.totalVideoFrames
+			if (typeof q !== 'number') {
+				return true
+			}
+			inc = q - d.lastQ
+			d.lastQ = q
+		} else {
+			return true
+		}
+		return inc > 0 || cb - d.lastDraw >= REDRAW_MAX_MS
+	}
+
 	// страховка и замеры: раз в 0,5 с
 	_watch(d) {
 		if (d.stopped) {
@@ -497,10 +538,20 @@ export default class FaceFrame extends TrackSinkSource {
 		if (now - d.fpsT >= 1000) {
 			if (typeof inNow === 'number') {
 				// счётчик входа считаем измеренным только после первого роста: вечный 0 дал бы нулевой порог
-				d.inSeen = d.inSeen || inNow > d.inTotal
-				d.inFps = d.inSeen ? (inNow - d.inTotal) * 1000 / (now - d.fpsT) : null
-				d.inTotal = inNow
+				d.inSeen = d.inSeen || inNow > d.qinLast
+				d.qinLast = inNow
 			}
+			// ket4tec (NAS_CLOUD#160): источник частоты входа — счёт кадров (totalVideoFrames или rVFC), иначе заявленная frameRate дорожки
+			const cfg = d.input.getSettings?.().frameRate
+			const src = d.inSeen ? 'quality' : d.rvOk && d.inRv > 0 ? 'rvfc' : cfg > 0 ? 'settings' : 'none'
+			const cnt = src === 'quality' ? inNow : src === 'rvfc' ? d.inRv : null
+			if (cnt !== null) {
+				d.inFps = src === d.inSrc ? (cnt - d.inTotal) * 1000 / (now - d.fpsT) : d.inFps
+				d.inTotal = cnt
+			} else {
+				d.inFps = src === 'settings' ? cfg : null
+			}
+			d.inSrc = src
 			d.fps = d.fpsFrames * 1000 / (now - d.fpsT)
 			d.fpsT = now
 			d.fpsFrames = 0
@@ -526,12 +577,15 @@ export default class FaceFrame extends TrackSinkSource {
 		// ket4tec (NAS_CLOUD#160): сводка раз в 10 с в журнал звонка — разбор «не кадрирует» без догадок
 		if (now - d.st.t >= STATS_CALLLOG_MS) {
 			const sec = (now - d.st.t) / 1000
+			const srcSame = d.st.src === d.inSrc
+			const inCnt = d.inSrc === 'quality' ? inNow : d.inSrc === 'rvfc' ? d.inRv : null
 			const rate = (cur, prev) => (typeof cur === 'number' ? round1((cur - prev) / sec) : null)
 			// выход: оба счётчика (rVFC пробы и playback quality), в журнал — больший прирост
 			const outRates = [rate(d.outFrames || 0, d.st.out), rate(pq, d.st.outq)].filter((v) => v !== null)
 			logEv('framing_stats', {
 				inst: this._inst,
-				infps: rate(inNow, d.st.in),
+				infps: inCnt !== null && srcSame ? rate(inCnt, d.st.in) : (d.inFps === null ? null : round1(d.inFps)),
+				insrc: d.inSrc,
 				drawfps: rate(d.frames, d.st.draw),
 				outfps: outRates.length ? Math.max(...outRates) : null,
 				detavg: detAvg,
@@ -539,7 +593,7 @@ export default class FaceFrame extends TrackSinkSource {
 				gapmax: Math.round(d.gapMax),
 				hidden: document.hidden,
 			})
-			d.st = { t: now, in: inNow ?? 0, draw: d.frames, out: d.outFrames || 0, outq: pq ?? 0 }
+			d.st = { t: now, src: d.inSrc, in: inCnt ?? 0, draw: d.frames, out: d.outFrames || 0, outq: pq ?? 0 }
 			d.gapMax = 0
 		}
 
@@ -574,7 +628,8 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 		// ket4tec (NAS_CLOUD#160): сбой — отрисовка заметно отстаёт от входа; вход сам по себе 12 к/с — не сбой
-		const lowLimit = d.inFps === null ? MIN_FPS : d.inFps * LOW_FPS_RATIO
+		// заявленная частота (settings) — не измерение: слабая камера отдаёт меньше заявленного, порог не выше прежнего MIN_FPS
+		const lowLimit = d.inFps === null ? MIN_FPS : d.inSrc === 'settings' ? Math.min(MIN_FPS, d.inFps * LOW_FPS_RATIO) : d.inFps * LOW_FPS_RATIO
 		if (d.fps < lowLimit && !d.frozen) {
 			d.lowSince = d.lowSince || now
 			if (now - d.lowSince >= LOW_FPS_MS) {

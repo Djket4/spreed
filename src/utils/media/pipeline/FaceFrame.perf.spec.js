@@ -140,7 +140,7 @@ describe('FaceFrame: форма событий журнала', () => {
 		expect(Object.keys(get('framing_start')).sort()).toEqual(['frozen', 'h', 'inst', 'sched', 'w'])
 		expect(get('framing_start')).toMatchObject({ inst: 'call', sched: 'rvfc', frozen: false })
 		const st = get('framing_stats')
-		expect(Object.keys(st).sort()).toEqual(['detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'inst', 'outfps'])
+		expect(Object.keys(st).sort()).toEqual(['detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'insrc', 'inst', 'outfps'])
 		expect(st).toMatchObject({ inst: 'call', hidden: false })
 		expect(st.infps).toBeGreaterThan(25)
 	})
@@ -214,5 +214,67 @@ describe('FaceFrame: защёлка', () => {
 		expect(ff._digital.frozen).toBe(false)
 		expect(ff.path).toBe('digital')
 		expect(calllog.mock.calls.filter(([k]) => k === 'framing_mode').map(([, d]) => d.mode)).toEqual(['digital', 'frozen', 'digital', 'frozen', 'off', 'digital'])
+	})
+})
+
+// Safari: totalVideoFrames исходного video стоит на 0, rVFC идёт с частотой экрана (screenHz), новый кадр входа — inFps раз в секунду
+describe('FaceFrame: Safari, частота входа по rVFC', () => {
+	const safari = (inFps, screenHz) => {
+		vproto.getVideoPlaybackQuality = function() {
+			return this.srcObject ? undefined : { totalVideoFrames: 0 }
+		}
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => {
+			const t = performance.now()
+			cb(t, { presentedFrames: Math.floor(t / 1000 * inFps), mediaTime: Math.floor(t / 1000 * inFps) / inFps })
+		}, 1000 / screenHz)
+	}
+	const stats = () => calllog.mock.calls.find(([n]) => n === 'framing_stats')[1]
+	test('вход 30, экран 60 -> infps ~30, insrc=rvfc, отрисовок ~30 в секунду', async () => {
+		safari(30, 60)
+		start()
+		await vi.advanceTimersByTimeAsync(11000)
+		expect(stats().insrc).toBe('rvfc')
+		expect(stats().infps).toBeGreaterThan(27)
+		expect(stats().infps).toBeLessThan(33)
+		expect(stats().drawfps).toBeLessThan(33)
+		expect(stats().drawfps).toBeGreaterThan(25)
+	})
+	test('отрисовка 15 к/с при входе 30 -> lowFps', async () => {
+		safari(30, 60)
+		start()
+		await vi.advanceTimersByTimeAsync(3000)
+		ff._digital.fpsFrames = 0 // имитация: ниже — вход 30, рисуем лишь каждый второй новый кадр
+		const orig = ff._renderFrame.bind(ff)
+		let n = 0
+		ff._renderFrame = (d, now) => (n++ % 2 ? undefined : orig(d, now))
+		await vi.advanceTimersByTimeAsync(9000)
+		expect(ff.path).toBe('frozen')
+		expect(calllog.mock.calls.find(([k]) => k === 'framing_error')[1]).toMatchObject({ kind: 'lowFps' })
+	})
+	test('отрисовка 25 при входе 30 -> не сбой', async () => {
+		safari(25, 60)
+		start()
+		await vi.advanceTimersByTimeAsync(9000)
+		expect(ff.path).toBe('digital')
+	})
+	test('вход встал -> канвас перерисовывается не реже раза в 250 мс', async () => {
+		vproto.getVideoPlaybackQuality = () => undefined
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), { presentedFrames: 5, mediaTime: 1 }), 16)
+		start()
+		await vi.advanceTimersByTimeAsync(2000) // HOLD_MS без детектора
+		const f0 = ff._digital.frames
+		await vi.advanceTimersByTimeAsync(1000)
+		const df = ff._digital.frames - f0
+		expect(df).toBeGreaterThanOrEqual(3)
+		expect(df).toBeLessThanOrEqual(5)
+	})
+	test('ни счётчика, ни rVFC-метаданных -> frameRate из настроек дорожки', async () => {
+		vproto.getVideoPlaybackQuality = () => undefined
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), {}), 1000 / 30)
+		const track = start()
+		track.getSettings = () => ({ frameRate: 30, width: 1920, height: 1080 })
+		ff._setInputTrack('default', { ...track, id: 'cam2', getSettings: track.getSettings })
+		await vi.advanceTimersByTimeAsync(11000)
+		expect(stats()).toMatchObject({ insrc: 'settings', infps: 30 })
 	})
 })
