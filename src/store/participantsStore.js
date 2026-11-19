@@ -776,6 +776,7 @@ const actions = {
 			const actualFlags = await joinCall(token, flags, silent, recordingConsent, silentFor, options)
 			k4log('call.joined', { flags: actualFlags })
 			calllog('call_joined', { flags: actualFlags })
+			import('../utils/media/pipeline/FaceFrame.js').then((m) => m.logFaceFrameChoice('join')).catch(() => {}) // ket4tec (NAS_CLOUD#160)
 			const updatedData = {
 				inCall: actualFlags,
 			}

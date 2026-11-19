@@ -57,6 +57,7 @@ const TEXT = {
 	js_error: (d) => `ошибка JS: ${d.name}: ${d.msg}`,
 	net: (d) => 'у браузера ' + (d.st === 'online' ? 'появилась сеть' : 'пропала сеть'),
 	framing_error: (d) => 'сбой кадрирования по лицу: ' + d.reason,
+	framing: (d) => `кадрирование по лицу (${d.src === 'join' ? 'при входе' : 'смена'}): ` + (d.on ? `авто, дальность ${d.range}` : 'выкл'),
 	rtc_stats: (d) => 'связь: ' + ([
 		has(d.up) ? `↑ ${mbit(d.up)} ${d.upl ?? 0}%` : null,
 		has(d.dn) ? `↓ ${mbit(d.dn)} ${d.dnl ?? 0}%` : null,
