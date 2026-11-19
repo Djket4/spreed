@@ -1444,7 +1444,7 @@ OC.L10N.register(
     "Start meeting now" : "Начать встречу сейчас",
     "Give your meeting a title" : "Введите название встречи",
     "Create and copy link" : "Создать и скопировать ссылку",
-    "New conversation" : "Новая комната",
+    "New conversation" : "Новое обсуждение",
     "Join conversations" : "Присоединиться к обсуждениям",
     "Call a phone number" : "Позвонить по номеру телефона",
     "Scroll backward" : "Прокрутить назад",
