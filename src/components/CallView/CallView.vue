@@ -766,6 +766,7 @@ export default {
 	},
 
 	mounted() {
+		this.k4WatchDpr() // ket4tec (NAS_CLOUD#375)
 		this.k4WatchStack() // ket4tec (NAS_CLOUD#270 п.1)
 		// ket4tec (NAS_CLOUD#108): поворот в альбом во время показа — полосу сворачиваем (слушатель в одном месте: CSS не знает про состояние стора и оставил бы дыру 150 px)
 		this.k4lowMq = window.matchMedia?.(LOW_SCREEN)
@@ -813,6 +814,7 @@ export default {
 
 	beforeUnmount() {
 		this.k4TileDebounced.clear?.()
+		this.k4DprMq?.removeEventListener('change', this.k4DprFn)
 		this.k4StackObs?.disconnect() // ket4tec (NAS_CLOUD#270 п.1)
 		Object.keys(this.k4handToasts).forEach(this.k4hideHandToast) // ket4tec (NAS_CLOUD#264): звонок кончился — плашки «подняла руку» не висят
 		this.k4lowMq?.removeEventListener?.('change', this.k4lowFn)
@@ -1181,6 +1183,18 @@ export default {
 				// Just means guests have no name, so don't error …
 				console.error(exception)
 			}
+		},
+
+		// ket4tec (NAS_CLOUD#375): перенос окна на монитор с другим DPR не меняет CSS-сторону плитки (tileSize не придёт):
+		// слушаем смену resolution и пересчитываем тем же дебаунсом, затем подписываемся на новый DPR
+		k4WatchDpr() {
+			this.k4DprMq?.removeEventListener('change', this.k4DprFn)
+			this.k4DprMq = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+			this.k4DprFn = () => {
+				this.k4OnTileSize(this.k4TileCssW)
+				this.k4WatchDpr()
+			}
+			this.k4DprMq?.addEventListener('change', this.k4DprFn)
 		},
 
 		// ket4tec (NAS_CLOUD#375): ширина плитки из VideosGrid; пересчёт слоя с дебаунсом и гистерезисом

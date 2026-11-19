@@ -102,7 +102,8 @@ describe('CallView.vue', () => {
 			window.devicePixelRatio = dpr
 			callParticipantCollection.callParticipantModels = []
 		})
-		const m = () => ({ attributes: { peerId: 'p' }, setSimulcastVideoQuality: vi.fn() })
+		let seq = 0
+		const m = () => ({ attributes: { peerId: 'p' + (++seq) }, setSimulcastVideoQuality: vi.fn() })
 		const tileSize = async (width) => {
 			wrapper.findComponent({ name: 'VideosGrid' }).vm.$emit('tileSize', width)
 			await vi.advanceTimersByTimeAsync(300)
@@ -153,6 +154,35 @@ describe('CallView.vue', () => {
 			expect(spatials(models)).toEqual([2])
 			await tileSize(540)
 			expect(spatials(models)).toEqual([1])
+		})
+
+		test('смена DPR без tileSize пересчитывает слой; после unmount слушатель снят', async () => {
+			const mqs = []
+			const origMM = window.matchMedia
+			window.matchMedia = vi.fn((query) => {
+				const mq = { query, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+				mqs.push(mq)
+				return mq
+			})
+			const models = reactive([m()])
+			callParticipantCollection.callParticipantModels = models
+			wrapper = mountCallView()
+			await tileSize(400)
+			expect(spatials(models)).toEqual([1])
+			const first = mqs.find((mq) => mq.query === '(resolution: 1dppx)')
+			expect(first.addEventListener).toHaveBeenCalledWith('change', expect.any(Function))
+
+			window.devicePixelRatio = 2
+			first.addEventListener.mock.calls[0][1]()
+			await vi.advanceTimersByTimeAsync(300)
+			expect(spatials(models)).toEqual([2])
+			expect(first.removeEventListener).toHaveBeenCalled()
+			const second = mqs.find((mq) => mq.query === '(resolution: 2dppx)')
+			expect(second.addEventListener).toHaveBeenCalled()
+
+			wrapper.unmount()
+			expect(second.removeEventListener).toHaveBeenCalledWith('change', second.addEventListener.mock.calls[0][1])
+			window.matchMedia = origMM
 		})
 
 		test('физическая ширина: CSS-ширина x devicePixelRatio', async () => {
