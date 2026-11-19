@@ -256,30 +256,46 @@ describe('gridLayout', () => {
 	})
 
 	describe('rows of the square layout (NAS_CLOUD#159)', () => {
+		// страница вмещает columns*rows мест; в неё попадает не больше мест, чем плиток (иначе - листание)
 		const rowsOf = (width: number, height: number, total: number) => {
-			const { columns, side } = computeSquareLayout({ gridWidth: width, gridHeight: height, total })
-			const placements = computeTilePlacements({ totalTiles: total, rows: Math.ceil(total / columns), columns })
+			const { columns, rows: layoutRows, side } = computeSquareLayout({ gridWidth: width, gridHeight: height, total })
+			const shown = Math.min(total, columns * layoutRows)
+			const placements = computeTilePlacements({ totalTiles: shown, rows: layoutRows, columns })
 			const rows: number[] = []
 			for (const { row } of placements) {
 				rows[row - 1] = (rows[row - 1] ?? 0) + 1
 			}
-			return { columns, side, rows }
+			return { columns, layoutRows, shown, side, rows, placements }
 		}
 
 		test.each([[1512, 800], [1180, 820], [820, 1180], [390, 700]])('%ix%i: side is the best of all column counts, last row is the incomplete one', (w, h) => {
 			for (let n = 1; n <= 12; n++) {
-				const { columns, side, rows } = rowsOf(w, h, n)
+				const { columns, layoutRows, shown, side, rows, placements } = rowsOf(w, h, n)
 				let best = 0
 				for (let c = 1; c <= n; c++) {
 					best = Math.max(best, Math.floor(Math.min((w - 8 * (c - 1)) / c, (h - 8 * (Math.ceil(n / c) - 1)) / Math.ceil(n / c))))
 				}
-				// ниже minSide (150) включается постраничный режим, там сторона не максимальна
 				if (best >= 150) {
+					// все плитки на одной странице, сторона максимальна
 					expect(side).toBe(best)
+					expect(shown).toBe(n)
+				} else {
+					// ниже minSide включается листание: страница заполнена не больше, чем вмещает
+					expect(shown).toBeLessThanOrEqual(columns * layoutRows)
 				}
-				expect(rows.reduce((a, b) => a + b, 0)).toBe(n)
+				// сетка помещается в область
+				expect(side * columns + 8 * (columns - 1)).toBeLessThanOrEqual(w)
+				expect(side * layoutRows + 8 * (layoutRows - 1)).toBeLessThanOrEqual(h)
+				expect(placements.length).toBe(shown)
+				expect(rows.reduce((a, b) => a + b, 0)).toBe(shown)
+				expect(rows.length).toBeLessThanOrEqual(layoutRows)
 				expect(rows.slice(0, -1).every((r) => r === columns)).toBe(true)
 			}
+		})
+
+		test('390x700, 9 tiles: 4 rows of the page, the rest is paged', () => {
+			const { columns, layoutRows, shown } = rowsOf(390, 700, 9)
+			expect([columns, layoutRows, shown]).toEqual([2, 4, 8])
 		})
 
 		test('5 tiles: 3 on top, 2 below', () => {
