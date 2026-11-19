@@ -51,6 +51,11 @@ export default class VirtualBackground extends TrackSinkSource {
 	static _webGLSupported
 
 	static isSupported() {
+		// ket4tec (NAS_CLOUD#160): в Safari 26 размытие роняет отправку видео раз в ~2 мин и вешает вкладку — выключено, в macOS есть свои видеоэффекты
+		if (isSafari) {
+			return false
+		}
+
 		return this.isWasmSupported() && (this.isWebGLSupported() || this.isCanvasFilterSupported())
 	}
 
