@@ -411,13 +411,15 @@ export default class FaceFrame extends TrackSinkSource {
 			lastMT: null,
 			lastQ: 0,
 			lastDraw: 0,
+			prevCb: 0,
+			cbs: 0, // колбэков отрисовки (rVFC/rAF)
 			novAt: 0, // когда последний раз менялся признак нового кадра
 			badSig: false, // признак нового кадра негоден (стоит при живом входе) — рисуем каждый колбэк
 			qinLast: 0,
 			inSrc: 'none', // источник частоты входа: quality | rvfc | settings | none
 			lastCb: 0,
 			gapMax: 0, // макс. разрыв между колбэками кадра за интервал журнала, мс
-			st: { t: t0, in: 0, draw: 0, out: 0, outq: 0 }, // отметки прошлой записи framing_stats
+			st: { t: t0, in: 0, cb: 0, draw: 0, out: 0, outq: 0 }, // отметки прошлой записи framing_stats
 		}
 		this._digital = d
 		logEv('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, cfgfps: input.getSettings?.().frameRate, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen })
@@ -465,6 +467,7 @@ export default class FaceFrame extends TrackSinkSource {
 				const cb = performance.now()
 				d.gapMax = Math.max(d.gapMax, d.lastCb ? cb - d.lastCb : 0)
 				d.lastCb = cb
+				d.cbs++
 				try {
 					// ket4tec (NAS_CLOUD#160): было — рисовали на каждый колбэк (Safari: rVFC и rAF идут с частотой экрана, 57–60 к/с
 					// при камере 30); теперь рисуем только на новый кадр входа
@@ -522,7 +525,11 @@ export default class FaceFrame extends TrackSinkSource {
 		} else {
 			return true
 		}
-		d.novAt = d.novAt || cb
+		// пауза между колбэками > 1 с (вкладка в фоне, зависание потока) — не признак негодности: отсчёт заново
+		if (!d.novAt || cb - d.prevCb > SIGNAL_DEAD_MS) {
+			d.novAt = cb
+		}
+		d.prevCb = cb
 		const t = d.input
 		// вход настоящий-живой: дорожка live, не muted, video играет. Тогда стоящий признак — это сбой признака, не входа
 		if (inc > 0 || t.readyState !== 'live' || t.muted || d.video.paused) {
@@ -563,6 +570,10 @@ export default class FaceFrame extends TrackSinkSource {
 			const cnt = src === 'quality' ? inNow : src === 'rvfc' ? d.inRv : null
 			if (cnt !== null) {
 				d.inFps = src === d.inSrc ? (cnt - d.inTotal) * 1000 / (now - d.fpsT) : d.inFps
+				// прирост presentedFrames сверху не ограничен (Safari может отдавать больше частоты камеры) — потолок: заявленная частота
+				if (src === 'rvfc' && cfg > 0 && d.inFps !== null) {
+					d.inFps = Math.min(d.inFps, cfg)
+				}
 				d.inTotal = cnt
 			} else {
 				d.inFps = src === 'settings' ? cfg : null
@@ -603,13 +614,14 @@ export default class FaceFrame extends TrackSinkSource {
 				infps: inCnt !== null && srcSame ? rate(inCnt, d.st.in) : (d.inFps === null ? null : round1(d.inFps)),
 				insrc: d.inSrc,
 				drawfps: rate(d.frames, d.st.draw),
+				cbfps: rate(d.cbs, d.st.cb),
 				outfps: outRates.length ? Math.max(...outRates) : null,
 				detavg: detAvg,
 				detp: detP95,
 				gapmax: Math.round(d.gapMax),
 				hidden: document.hidden,
 			})
-			d.st = { t: now, src: d.inSrc, in: inCnt ?? 0, draw: d.frames, out: d.outFrames || 0, outq: pq ?? 0 }
+			d.st = { t: now, src: d.inSrc, in: inCnt ?? 0, draw: d.frames, cb: d.cbs, out: d.outFrames || 0, outq: pq ?? 0 }
 			d.gapMax = 0
 		}
 
@@ -644,8 +656,8 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 		// ket4tec (NAS_CLOUD#160): сбой — отрисовка заметно отстаёт от входа; вход сам по себе 12 к/с — не сбой
-		// заявленная частота (settings) — не измерение: слабая камера отдаёт меньше заявленного, порог не выше прежнего MIN_FPS
-		const lowLimit = d.inFps === null ? MIN_FPS : d.inSrc === 'settings' ? Math.min(MIN_FPS, d.inFps * LOW_FPS_RATIO) : d.inFps * LOW_FPS_RATIO
+		// rvfc и settings — не точный счёт (Safari): порог не строже прежнего MIN_FPS. Заявленная частота (settings) — не измерение: слабая камера отдаёт меньше заявленного, порог не выше прежнего MIN_FPS
+		const lowLimit = d.inFps === null ? MIN_FPS : d.inSrc === 'quality' ? d.inFps * LOW_FPS_RATIO : Math.min(MIN_FPS, d.inFps * LOW_FPS_RATIO)
 		if (d.fps < lowLimit && !d.frozen) {
 			d.lowSince = d.lowSince || now
 			if (now - d.lowSince >= LOW_FPS_MS) {

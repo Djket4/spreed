@@ -140,7 +140,7 @@ describe('FaceFrame: форма событий журнала', () => {
 		expect(Object.keys(get('framing_start')).sort()).toEqual(['frozen', 'h', 'inst', 'sched', 'w'])
 		expect(get('framing_start')).toMatchObject({ inst: 'call', sched: 'rvfc', frozen: false })
 		const st = get('framing_stats')
-		expect(Object.keys(st).sort()).toEqual(['detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'insrc', 'inst', 'outfps'])
+		expect(Object.keys(st).sort()).toEqual(['cbfps', 'detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'insrc', 'inst', 'outfps'])
 		expect(st).toMatchObject({ inst: 'call', hidden: false })
 		expect(st.infps).toBeGreaterThan(25)
 	})
@@ -239,20 +239,20 @@ describe('FaceFrame: Safari, частота входа по rVFC', () => {
 		expect(stats().drawfps).toBeLessThan(33)
 		expect(stats().drawfps).toBeGreaterThan(25)
 	})
-	test('отрисовка 15 к/с при входе 30 -> lowFps', async () => {
+	test('отрисовка 10 к/с при входе 30 -> lowFps', async () => {
 		safari(30, 60)
 		start()
 		await vi.advanceTimersByTimeAsync(3000)
-		ff._digital.fpsFrames = 0 // имитация: ниже — вход 30, рисуем лишь каждый второй новый кадр
+		ff._digital.fpsFrames = 0 // имитация: ниже — вход 30, рисуем лишь каждый третий новый кадр
 		const orig = ff._renderFrame.bind(ff)
 		let n = 0
-		ff._renderFrame = (d, now) => (n++ % 2 ? undefined : orig(d, now))
+		ff._renderFrame = (d, now) => (n++ % 3 ? undefined : orig(d, now))
 		await vi.advanceTimersByTimeAsync(9000)
 		expect(ff.path).toBe('frozen')
 		expect(calllog.mock.calls.find(([k]) => k === 'framing_error')[1]).toMatchObject({ kind: 'lowFps' })
 	})
 	test('отрисовка 25 при входе 30 -> не сбой', async () => {
-		safari(25, 60)
+		safari(30, 25)
 		start()
 		await vi.advanceTimersByTimeAsync(9000)
 		expect(ff.path).toBe('digital')
@@ -283,6 +283,42 @@ describe('FaceFrame: Safari, частота входа по rVFC', () => {
 		await vi.advanceTimersByTimeAsync(8000)
 		expect(stats().insrc).not.toBe('rvfc')
 		expect(calllog.mock.calls.filter(([k, d]) => k === 'framing_mode' && /признак/.test(d.why))).toHaveLength(1)
+	})
+	// presentedFrames идёт со своей частотой pfHz, колбэки — cbHz, камера заявляет 30
+	const pfRun = async (pfHz, cbHz, ms = 12000) => {
+		vproto.getVideoPlaybackQuality = function() {
+			return this.srcObject ? undefined : { totalVideoFrames: 0 }
+		}
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => {
+			const t = performance.now()
+			cb(t, { presentedFrames: Math.floor(t / 1000 * pfHz), mediaTime: t / 1000 })
+		}, 1000 / cbHz)
+		start().getSettings = () => ({ frameRate: 30, width: 1920, height: 1080 })
+		await vi.advanceTimersByTimeAsync(ms)
+	}
+	test.each([[60, 30], [60, 40], [30, 20]])('presentedFrames %i/с при колбэках %i/с -> нет сбоя (база: порог 15)', async (pf, cbHz) => {
+		await pfRun(pf, cbHz)
+		expect(ff.path).toBe('digital')
+		expect(stats().infps).toBeLessThanOrEqual(30)
+		expect(stats().cbfps).toBeGreaterThan(cbHz - 3)
+	})
+	test('колбэки 12/с при входе 30 -> сбой', async () => {
+		await pfRun(30, 12)
+		expect(ff.path).toBe('frozen')
+	})
+	test('пауза колбэков 2 с, затем нормальный поток -> badSig не ставится', async () => {
+		let paused = true
+		Object.defineProperty(vproto, 'paused', { configurable: true, get: () => false })
+		vproto.getVideoPlaybackQuality = () => undefined
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => {
+			const t = performance.now()
+			cb(t, { presentedFrames: Math.floor(t / 1000 * 30), mediaTime: t / 1000 })
+		}, paused ? 2000 : 33)
+		start()
+		await vi.advanceTimersByTimeAsync(2100)
+		paused = false
+		await vi.advanceTimersByTimeAsync(5000)
+		expect(ff._digital.badSig).toBe(false)
 	})
 	test('ни счётчика, ни rVFC-метаданных -> frameRate из настроек дорожки', async () => {
 		vproto.getVideoPlaybackQuality = () => undefined
