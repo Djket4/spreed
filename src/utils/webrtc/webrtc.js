@@ -923,13 +923,11 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	 */
 	function handleIceConnectionStateFailed(peer) {
 		if (!showedTURNWarning && !signaling.settings.turnservers.length) {
+			// ket4tec (NAS_CLOUD#162): без технических слов и ссылки на чужую документацию
 			showError(
-				t('spreed', 'Could not establish a connection with at least one participant. A TURN server might be needed for your scenario. Please ask your administrator to set one up following {linkstart}this documentation{linkend}.')
-					.replace('{linkstart}', '<a  target="_blank" rel="noreferrer nofollow" class="external" href="https://nextcloud-talk.readthedocs.io/en/latest/TURN/">')
-					.replace('{linkend}', ' ↗</a>'),
+				'Связь со звонком не установлена: сеть блокирует соединение. Попробуйте другую сеть или обратитесь к администратору',
 				{
 					timeout: TOAST_PERMANENT_TIMEOUT,
-					isHTML: true,
 				},
 			)
 			showedTURNWarning = true
