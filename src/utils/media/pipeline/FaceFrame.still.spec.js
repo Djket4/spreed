@@ -40,6 +40,7 @@ function run(seed) {
 		published: true,
 		durs: [],
 		tileCanvas: { getContext: () => ({ drawImage() {} }) },
+		fullCanvas: { getContext: () => ({ drawImage() {} }) }, // NAS_CLOUD#160: канвас детекции полного кадра
 		detCount: 0,
 		fpsT: 0,
 		fpsFrames: 0,

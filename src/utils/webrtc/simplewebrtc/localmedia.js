@@ -62,7 +62,7 @@ export default function LocalMedia(opts) {
 
 	this._videoTrackConstrainer = new TrackConstrainer()
 
-	this._faceFrame = new FaceFrame()
+	this._faceFrame = new FaceFrame('call')
 
 	this._virtualBackground = new VirtualBackground()
 	this._virtualBackground.on('loadFailed', () => {
