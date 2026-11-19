@@ -4,11 +4,11 @@
  */
 
 import { expect, test } from 'vitest'
-import FaceFrame from './FaceFrame.js'
+import FaceFrame, { holdZoom, TILES } from './FaceFrame.js'
 
 // NAS_CLOUD#160: iPad, сверхширокая камера 1920x1080, лицо мелкое. Прогон настоящего _renderFrame,
 // детекции из сценария: size(t) — ширина рамки (доля ширины кадра), jit — дрожание размера, miss — пропуск замеров.
-function run({ size, jit = 0.15, miss = (n) => n % 3 === 2, tileK = 1, secs = 20, seed = 3 }) {
+function run({ size, jit = 0.15, miss = (n) => n % 3 === 2, tileK = 1, secs = 20, seed = 3, extra = null }) {
 	let r = seed
 	const rnd = () => ((r = (r * 1103515245 + 12345) % 2147483648) / 2147483648) * 2 - 1
 	const ff = new FaceFrame()
@@ -20,8 +20,14 @@ function run({ size, jit = 0.15, miss = (n) => n % 3 === 2, tileK = 1, secs = 20
 		if (miss(n++)) {
 			return []
 		}
-		const w = size(t / 1000) * (1 + rnd() * jit) * (src === d.tileCanvas ? tileK : 1)
-		return [{ x: 0.5 - w / 2, y: 0.4, w, h: w * W / H * 1.15 }]
+		const w = size(t / 1000) * (1 + rnd() * jit)
+		const h = w * W / H * 1.15
+		if (src === d.tileCanvas) { // рамка в долях плитки: после tileToFrame — ширина w * tileK, центр по x 0.5, верх 0.4
+			const tl = TILES[d.tileIdx % TILES.length]
+			const wt = w * tileK
+			return [{ x: (0.5 - tl.x) / tl.w - wt / tl.w / 2, y: (0.4 - tl.y) / tl.h, w: wt / tl.w, h: h / tl.h }]
+		}
+		return [{ x: 0.5 - w / 2, y: 0.4, w, h }, ...(extra?.(t) ? [extra(t)] : [])]
 	}
 	const d = {
 		video: { videoWidth: W, videoHeight: H },
@@ -51,7 +57,7 @@ function run({ size, jit = 0.15, miss = (n) => n % 3 === 2, tileK = 1, secs = 20
 	const zoom = []
 	for (t = 1; t < secs * 1000; t += 1000 / 30) {
 		ff._renderFrame(d, t)
-		zoom.push({ t, z: d.win.zoom })
+		zoom.push({ t, z: d.win.zoom, cx: d.win.cx })
 	}
 	ff.destroy()
 	return { zoom, d }
@@ -110,4 +116,38 @@ test('детектор молчит 5 с — окно держится, в об�
 	const before = zoom.find((p) => p.t > 4000).z
 	const after = zoom[zoom.length - 1].z
 	expect(Math.abs(after / before - 1)).toBeLessThan(0.05)
+	const mid = zoom.find((p) => p.t > 8000).z // середина молчания (замеры 41..99 ~ 5.5..13 с)
+	expect(Math.abs(mid / before - 1)).toBeLessThan(0.05)
+})
+
+// левая/правая граница окна в долях ширины кадра (кадр 1920x1080, окно квадрат H/zoom)
+function edges(p) {
+	const half = 0.5625 / p.z / 2
+	const cx = Math.min(1 - half, Math.max(half, p.cx))
+	return [cx - half, cx + half]
+}
+
+test('мигающая вторая рамка (люстра, 400 мс вкл/выкл): настоящее лицо целиком в окне, центр не гуляет', () => {
+	const extra = (t) => (Math.floor(t / 400) % 2 === 0 ? { x: 0.85, y: 0.3, w: 0.1, h: 0.1 * 1920 / 1080 * 1.15 } : null)
+	const { zoom } = run({ size: () => 0.1, jit: 0.05, miss: () => false, extra, secs: 20 })
+	const tail = zoom.filter((p) => p.t > 3000)
+	let minMargin = 1
+	for (const p of tail) {
+		const [l, r] = edges(p)
+		minMargin = Math.min(minMargin, 0.35 - l, r - 0.45)
+	}
+	const cxs = tail.map((p) => p.cx)
+	const drift = Math.max(...cxs) - Math.min(...cxs)
+	console.log('flicker: drift', drift.toFixed(4), 'margin', minMargin.toFixed(4))
+	expect(minMargin).toBeGreaterThan(0)
+	expect(drift).toBeLessThanOrEqual(0.02)
+})
+
+test('смена «Дальности» сбрасывает удержание масштаба', () => {
+	const d = {}
+	const z0 = holdZoom(d, 1.5, 0, 0.5)
+	expect(z0).toBe(1.5)
+	expect(holdZoom(d, 1.5 * 1.1, 100, 0.5)).toBe(1.5) // дрожание внутри окна допуска — держим
+	expect(holdZoom(d, 1.79, 200, 0.6)).toBe(1.79) // другой range — цель сразу
+	expect(holdZoom(d, 1, 300, 0)).toBe(1) // range=0 — без задержки 500 мс
 })

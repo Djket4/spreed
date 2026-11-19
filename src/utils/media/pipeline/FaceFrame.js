@@ -173,11 +173,12 @@ const ZOOM_FLIP_MS = 2000
  * @return {number} масштаб для цели
  */
 export function holdZoom(d, zoom, now, r = range) {
-	const s = d.zs
-	if (!s) {
-		d.zs = { z: zoom, pend: 0, dir: 0, at: -Infinity }
+	// ползунок «Дальность» сдвинули (или первый замер): цель принимается сразу, без выдержки
+	if (!d.zs || d.zs.r !== r) {
+		d.zs = { z: zoom, pend: 0, dir: 0, at: -Infinity, r }
 		return zoom
 	}
+	const s = d.zs
 	const err = Math.log(zoom / s.z)
 	const dir = Math.sign(err)
 	if (Math.abs(err) <= r * Math.log(ZOOM_HOLD_FACE) + 1e-9) {
@@ -195,6 +196,58 @@ export function holdZoom(d, zoom, now, r = range) {
 		s.at = now
 	}
 	return s.z
+}
+
+// ket4tec (NAS_CLOUD#160): мигающая ложная рамка (люстра, светильник) не должна двигать окно. Рамки сопоставляются между
+// детекциями по близости центров; в охват входит рамка, державшаяся подряд >= STABLE_MS, и выходит через STABLE_MS после
+// последнего появления. Пока устойчивых нет (первые 600 мс) — охват по текущим рамкам.
+const STABLE_MS = 600
+
+/**
+ * @param {object} d состояние конвейера (поле tr хранит треки)
+ * @param {Array<{x: number, y: number, w: number, h: number}>} faces рамки текущей детекции
+ * @param {number} now время, мс
+ * @return {{cover: Array, stable: number}} рамки для охвата и число устойчивых
+ */
+export function stableFaces(d, faces, now) {
+	const tr = (d.tr = (d.tr || []).filter((t) => now - t.last <= STABLE_MS))
+	if (faces.length) {
+		const used = new Set()
+		for (const f of faces) {
+			const t = tr.find((c) => !used.has(c) && Math.abs(c.x + c.w / 2 - f.x - f.w / 2) < Math.max(c.w, f.w) && Math.abs(c.y + c.h / 2 - f.y - f.h / 2) < Math.max(c.h, f.h))
+			if (t) {
+				used.add(t)
+				Object.assign(t, f, { last: now, since: t.since ?? now })
+				t.stable ||= now - t.since >= STABLE_MS
+			} else {
+				tr.push({ ...f, last: now, since: now, stable: false })
+				used.add(tr[tr.length - 1])
+			}
+		}
+		for (const t of tr) {
+			if (!used.has(t)) {
+				t.since = null // пропал при живой детекции — серия прервалась
+			}
+		}
+	}
+	const st = tr.filter((t) => t.stable)
+	return { cover: st.length ? st : faces, stable: st.length }
+}
+
+/**
+ * Охват (рамки лиц) целиком внутри окна цели.
+ *
+ * @param {object} t цель
+ * @param {Array} cover рамки
+ * @param {number} W ширина кадра
+ * @param {number} H высота кадра
+ */
+function fitsWindow(t, cover, W, H) {
+	const c = clampTarget(t, W, H)
+	const side = Math.min(W, H) / Math.max(1, c.zoom)
+	const sx = c.cx * W - side / 2
+	const sy = c.cy * H - side / 2
+	return cover.every((f) => f.x * W >= sx - 0.5 && (f.x + f.w) * W <= sx + side + 0.5 && f.y * H >= sy - 0.5 && (f.y + f.h) * H <= sy + side + 0.5)
 }
 
 // Резервный проход для далёких лиц: если в полном кадре лиц нет, по очереди
@@ -669,9 +722,11 @@ export default class FaceFrame extends TrackSinkSource {
 					facew: d.fn ? Math.round(d.fw / d.fn * 1000) / 1000 : null,
 					miss: Math.round(d.dmiss / d.dm * 100) / 100,
 					tiles: Math.round(d.dtile / d.dm * 100) / 100,
+					faces: d.fmax || 0,
+					raw: d.rmax || 0,
 				})
 			}
-			d.fw = d.fn = d.dm = d.dmiss = d.dtile = d.zflips = 0
+			d.fw = d.fn = d.dm = d.dmiss = d.dtile = d.zflips = d.fmax = d.rmax = 0
 			d.st = { t: now, src: d.inSrc, in: inCnt ?? 0, draw: d.frames, cb: d.cbs, out: d.outFrames || 0, outq: pq ?? 0 }
 			d.gapMax = 0
 		}
@@ -817,18 +872,28 @@ export default class FaceFrame extends TrackSinkSource {
 			if (tile && !faces.length) {
 				d.tileIdx++
 			}
-			const target = computeTarget(faces)
+			const { cover, stable } = stableFaces(d, faces, now)
+			const target = computeTarget(cover)
 			if (target) {
-				if (faces.length === 1 && range > 0) { // «Дальность» 0 — весь кадр, без доводки к центру
+				if (cover.length === 1 && range > 0) { // «Дальность» 0 — весь кадр, без доводки к центру
 					// ket4tec (NAS_CLOUD#172): лицо у края — квадрат сужается (до 1.5×), чтобы оно встало в центр плитки
 					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
 				}
-				target.zoom = holdZoom(d, target.zoom, now)
+				const raw = target.zoom
+				target.zoom = holdZoom(d, raw, now)
+				// удержанный масштаб не вмещает охват устойчивых лиц — уменьшаем сразу, в обход удержания
+				if (target.zoom > raw && !fitsWindow(target, cover, video.videoWidth, video.videoHeight)) {
+					target.zoom = raw
+					d.zs.z = raw
+					d.zs.pend = 0
+				}
 				d.target = target
 				d.lastFace = now
-				d.fw = (d.fw || 0) + Math.max(...faces.map((f) => f.x + f.w)) - Math.min(...faces.map((f) => f.x))
+				d.fw = (d.fw || 0) + Math.max(...cover.map((f) => f.x + f.w)) - Math.min(...cover.map((f) => f.x))
 				d.fn = (d.fn || 0) + 1
 			}
+			d.fmax = Math.max(d.fmax || 0, stable)
+			d.rmax = Math.max(d.rmax || 0, faces.length)
 			d.dm = (d.dm || 0) + 1
 			d.dmiss = (d.dmiss || 0) + (faces.length ? 0 : 1)
 			d.dtile = (d.dtile || 0) + (tile ? 1 : 0)
