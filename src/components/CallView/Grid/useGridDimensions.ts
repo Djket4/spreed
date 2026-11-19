@@ -7,7 +7,7 @@ import type { Ref } from 'vue'
 
 import debounce from 'debounce'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { computePhoneLayout, computeSquareLayout, PHONE_BAR_WIDTH, PHONE_LANDSCAPE_MIN_SIDE, phoneBarOverlaps, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
+import { computePhoneLayout, computeSquareLayout, PHONE_BAR_WIDTH, PHONE_LANDSCAPE_MIN_SIDE, phoneBarOverlaps, phoneBarWidth, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
 
 type UseGridDimensionsOptions = {
 	/** Element to observe for size changes (its child grid is measured) */
@@ -129,10 +129,17 @@ export function useGridDimensions({
 		})
 		let dimensions = isStripe.value ? { columns: videoCount.value + 1, rows: 1, side: height } : lay(width)
 		// width - с padding, он от сдвига не зависит; сдвигаем, только если плашка шапки легла бы на плитку
-		barShift.value = !!phoneLandscape?.value && !isStripe.value
-			&& phoneBarOverlaps({ gridWidth: width, gridHeight: height, total, layout: dimensions })
+		const bar = !!phoneLandscape?.value && !isStripe.value
+		const barArgs = { gridWidth: width, gridHeight: height, total, layout: dimensions }
+		barShift.value = bar && phoneBarOverlaps(barArgs)
 		if (barShift.value) {
 			dimensions = lay(width - PHONE_BAR_WIDTH)
+		}
+		// ширина плашки шапки (k7call.scss, .top-bar--in-call): по свободному полю слева от центрированной сетки
+		if (bar) {
+			document.documentElement.style.setProperty('--k4-bar-w', `${barShift.value ? PHONE_BAR_WIDTH : phoneBarWidth(barArgs)}px`)
+		} else {
+			document.documentElement.style.removeProperty('--k4-bar-w')
 		}
 
 		columns.value = dimensions.columns
@@ -171,6 +178,7 @@ export function useGridDimensions({
 	onBeforeUnmount(() => {
 		debouncedRecompute.clear?.()
 		resizeObserver?.disconnect()
+		document.documentElement.style.removeProperty('--k4-bar-w')
 	})
 
 	// The number of tiles changed: the available size is unchanged, recompute now.

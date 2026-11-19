@@ -9,6 +9,7 @@ import { describe, expect, test } from 'vitest'
 import {
 	computeSquareLayout as k4Square,
 	phoneBarOverlaps,
+	phoneBarWidth,
 	computePhoneLayout,
 	computeRowDistribution,
 	computeSquareLayout,
@@ -376,10 +377,16 @@ describe('big tile of the speaker view', () => {
 	})
 })
 
-// ket4tec (NAS_CLOUD#159): плашка шапки телефона лёжа (874x402, сетка 766x378) - сдвиг сетки только там, где она легла бы на плитку
-describe('phoneBarOverlaps', () => {
-	test.each([[2, true], [3, false], [4, false], [5, true], [6, true], [9, false]])('N=%i -> %s', (total, expected) => {
-		const layout = k4Square({ gridWidth: 766, gridHeight: 378, total, minSide: 60 })
-		expect(phoneBarOverlaps({ gridWidth: 766, gridHeight: 378, total, layout })).toBe(expected)
+// ket4tec (NAS_CLOUD#159): плашка шапки телефона лёжа - сетка по центру, плашка сужается до поля слева (88..160 px), сдвиг сетки - если и 88 не остаётся
+describe('phoneBarOverlaps / phoneBarWidth', () => {
+	// [gridWidth, gridHeight, total, сдвиг, ширина плашки]
+	test.each([
+		[766, 378, 2, true, 160], [766, 378, 3, false, 160], [766, 378, 4, false, 160], [766, 378, 5, false, 99], [766, 378, 6, false, 99],
+		[766, 378, 7, true, 160], [766, 378, 9, false, 160],
+		[582, 266, 2, true, 160], [582, 266, 3, false, 160], [582, 266, 6, false, 91], [582, 266, 8, true, 160], [582, 266, 9, false, 160],
+	])('%ix%i N=%i -> shift %s, bar %ipx', (gridWidth, gridHeight, total, shift, width) => {
+		const layout = k4Square({ gridWidth, gridHeight, total, minSide: 60 })
+		expect(phoneBarOverlaps({ gridWidth, gridHeight, total, layout })).toBe(shift)
+		expect(shift ? 160 : phoneBarWidth({ gridWidth, gridHeight, total, layout })).toBe(width)
 	})
 })

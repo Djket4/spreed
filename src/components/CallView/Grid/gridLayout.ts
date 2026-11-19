@@ -311,12 +311,24 @@ export function computePhoneLayout({ gridWidth, gridHeight, total }: {
 }
 
 // ket4tec (NAS_CLOUD#159, 19.11): телефон лёжа - плашка шапки (название + таймер) лежит в левом верхнем углу области плиток,
-// не занимая высоту. BAR_WIDTH - её ширина от левого края сетки, BAR_BOTTOM - низ плашки от верха сетки.
+// не занимая высоту. Сетка всегда по центру, плашка сужается до свободного поля слева (PHONE_BAR_WIDTH..PHONE_BAR_MIN_WIDTH),
+// и только если и 88 px не остаётся, сетка сдвигается вправо на PHONE_BAR_WIDTH. BAR_BOTTOM - низ плашки от верха сетки.
 export const PHONE_BAR_WIDTH = 160
+export const PHONE_BAR_MIN_WIDTH = 88
+// плашка начинается у края #videos, сетка - на --wrapper-padding (10 px) правее
+const PHONE_BAR_EDGE = 10
 export const PHONE_BAR_BOTTOM = 16
+const PHONE_BAR_GAP = 8
+
+type PhoneBarArgs = {
+	gridWidth: number
+	gridHeight: number
+	total: number
+	layout: { columns: number, rows: number, side: number, tileHeight?: number }
+}
 
 /**
- * Заходит ли плашка шапки на плитку: сетка по центру, первый ряд полный (или все плитки, если их меньше столбцов).
+ * Поле слева (от края #videos) и сверху от плиток при сетке по центру (первый ряд полный или все плитки, если их меньше столбцов).
  *
  * @param root0
  * @param root0.gridWidth
@@ -324,14 +336,33 @@ export const PHONE_BAR_BOTTOM = 16
  * @param root0.total
  * @param root0.layout
  */
-export function phoneBarOverlaps({ gridWidth, gridHeight, total, layout }: {
-	gridWidth: number
-	gridHeight: number
-	total: number
-	layout: { columns: number, rows: number, side: number, tileHeight?: number }
-}): boolean {
+function phoneBarMargins({ gridWidth, gridHeight, total, layout }: PhoneBarArgs) {
 	const first = Math.min(Math.max(total, 1), layout.columns)
-	const left = (gridWidth - (first * layout.side + GRID_GAP * (first - 1))) / 2
-	const top = (gridHeight - (layout.rows * (layout.tileHeight ?? layout.side) + GRID_GAP * (layout.rows - 1))) / 2
-	return left < PHONE_BAR_WIDTH && top < PHONE_BAR_BOTTOM
+	return {
+		left: PHONE_BAR_EDGE + (gridWidth - (first * layout.side + GRID_GAP * (first - 1))) / 2,
+		top: (gridHeight - (layout.rows * (layout.tileHeight ?? layout.side) + GRID_GAP * (layout.rows - 1))) / 2,
+	}
+}
+
+/**
+ * Ширина плашки шапки: полная, если плитки ей не мешают по высоте, иначе левое поле минус 8 px, но не меньше PHONE_BAR_MIN_WIDTH.
+ *
+ * @param args
+ */
+export function phoneBarWidth(args: PhoneBarArgs): number {
+	const { left, top } = phoneBarMargins(args)
+	if (top >= PHONE_BAR_BOTTOM) {
+		return PHONE_BAR_WIDTH
+	}
+	return Math.floor(Math.min(PHONE_BAR_WIDTH, Math.max(PHONE_BAR_MIN_WIDTH, left - PHONE_BAR_GAP)))
+}
+
+/**
+ * Приходится ли сдвигать сетку: плашка даже минимальной ширины легла бы на плитку.
+ *
+ * @param args
+ */
+export function phoneBarOverlaps(args: PhoneBarArgs): boolean {
+	const { left, top } = phoneBarMargins(args)
+	return top < PHONE_BAR_BOTTOM && left - PHONE_BAR_GAP < PHONE_BAR_MIN_WIDTH
 }

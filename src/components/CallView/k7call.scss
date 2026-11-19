@@ -618,10 +618,10 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	body:has(#content-vue.in-call) :is(#content, #content-vue) { top: 0 !important; height: 100dvh !important; }
 	#content-vue.in-call {
 		.app-navigation-toggle-wrapper, > .app-sidebar__toggle { display: none; }
-		// ket4tec (NAS_CLOUD#159, 19.11): шапка - компактная плашка в левом верхнем углу (160 px: название с многоточием + таймер), вне потока:
-		// плитки получают всю высоту; если плашка легла бы на плитку, сетка сдвигается вправо (phoneBarOverlaps, useGridDimensions)
+		// ket4tec (NAS_CLOUD#159, 19.11): шапка - компактная плашка в левом верхнем углу (до 160 px: название с многоточием + таймер), вне потока:
+		// плитки получают всю высоту; плашка сужается до поля слева от сетки (--k4-bar-w, не уже 88 px), иначе сетка сдвигается вправо (phoneBarOverlaps)
 		.top-bar--in-call {
-			inset: 6px auto auto #{$L}; width: 160px; height: 22px; padding: 0; z-index: 3;
+			inset: 6px auto auto #{$L}; width: var(--k4-bar-w, 160px); height: 22px; padding: 0; z-index: 3;
 			flex-direction: row; justify-content: flex-start; align-items: center; gap: 6px;
 			> .top-bar__icon-wrapper { display: none; }
 			.conversation-header { flex: 1 1 auto; min-width: 0; width: auto; margin: 0; padding: 0 !important; justify-content: flex-start; }
@@ -731,6 +731,10 @@ $k4psp: #{'min(100cqw, calc(100cqh - #{$k4rhp} - 8px))'};
 // свёрнутая лента: под капсулу «Камеры · N» отдельная полоса 48 px под квадратом, на плитку капсула не заходит
 $k4cp: 48px;
 $k4pc: #{'min(100cqw, calc(100cqh - #{$k4cp} - 8px))'};
+// полоса под уведомления (main.js: --k7-call-top - --k7-call-top0) сидит сверху #videos и сдвигает группу вниз: поднимаем её на долю свободного места,
+// чтобы пустота делилась поровну сверху и снизу; не больше самой пустоты (иначе квадрат уйдёт под обрез #videos)
+$k4lane: #{'(var(--k7-call-top, 0px) - var(--k7-call-top0, 0px))'};
+@function k4up($sq, $rh) { @return calc(-1 * max(0px, min(#{$k4lane}, 100cqh - #{$sq} - #{$rh} - 8px))); }
 @container k4v (aspect-ratio < 1) {
 	#{$k4big} {
 		> .video__promoted { width: #{$k4ps}; height: #{$k4ps}; align-self: center; margin: 0; }
@@ -743,6 +747,13 @@ $k4pc: #{'min(100cqw, calc(100cqh - #{$k4cp} - 8px))'};
 			.grid > * { width: auto !important; height: calc(100% - 23px) !important; aspect-ratio: 1 !important; flex: none !important; margin-block: 0 !important; }
 			.grid > :first-child { margin-inline-start: auto !important; }
 			.grid > :last-child { margin-inline-end: auto !important; }
+		}
+		// iPad и десктоп (не телефон): зазор квадрат-ряд ровно 8 px - штатные 8 px поля полосы сверху и снизу убираем, ряд с подписью занимает всю
+		// высоту; группа поднята на полосу под уведомления (k4up), пустота делится поровну сверху и снизу
+		@media (min-width: 501px) and (min-height: 501px) {
+			> .video__promoted { margin-top: k4up($k4ps, $k4rh); }
+			> .grid-main-wrapper:not(.is-grid) .stripe-wrapper { padding-block: 0; }
+			&:has(.stripe-controls-position--collapsed) > .video__promoted { margin-top: k4up($k4pc, $k4cp); }
 		}
 		// телефон: имя внутри плитки (полоса 22 px по низу), снизу не резервируем
 		@media (max-width: 500px), (max-height: 500px) {
