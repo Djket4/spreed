@@ -137,7 +137,7 @@ describe('FaceFrame: форма событий журнала', () => {
 		start()
 		await vi.advanceTimersByTimeAsync(11000)
 		const get = (k) => calllog.mock.calls.find(([n]) => n === k)[1]
-		expect(Object.keys(get('framing_start')).sort()).toEqual(['frozen', 'h', 'inst', 'sched', 'w'])
+		expect(Object.keys(get('framing_start')).sort()).toEqual(['frozen', 'h', 'inst', 'oh', 'ow', 'sched', 'w'])
 		expect(get('framing_start')).toMatchObject({ inst: 'call', sched: 'rvfc', frozen: false })
 		const st = get('framing_stats')
 		expect(Object.keys(st).sort()).toEqual(['cbfps', 'detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'insrc', 'inst', 'outfps'])
@@ -328,5 +328,115 @@ describe('FaceFrame: Safari, частота входа по rVFC', () => {
 		ff._setInputTrack('default', { ...track, id: 'cam2', getSettings: track.getSettings })
 		await vi.advanceTimersByTimeAsync(11000)
 		expect(stats()).toMatchObject({ insrc: 'settings', infps: 30 })
+	})
+})
+
+describe('FaceFrame: рабочее разрешение выхода (NAS_CLOUD#160)', () => {
+	const draws = []
+	const run = async (w, h) => {
+		vw = w
+		vh = h
+		setRates(30, 30)
+		start()
+		window.HTMLCanvasElement.prototype.getContext = () => ({ drawImage: (...a) => draws.push(a), getImageData: () => ({ data: [255, 255, 255, 255] }) })
+		ff._digital.ctx = window.HTMLCanvasElement.prototype.getContext()
+		await vi.advanceTimersByTimeAsync(2500)
+		return ff._digital.canvas
+	}
+	beforeEach(() => {
+		draws.length = 0
+	})
+
+	test('вход 1080x1920 -> выход 720x720 (не 1080x1080), окно в координатах входа, в один drawImage', async () => {
+		const c = await run(1080, 1920)
+		expect([c.width, c.height]).toEqual([720, 720])
+		const main = draws.filter((a) => a[5] === 0 && a[7] === 720)
+		expect(main.length).toBeGreaterThan(0)
+		// окно по центру кадра: квадрат 1080 со сдвигом по y (1920-1080)/2 = 420 — лицо в центре окна
+		const [, sx, sy, sw, sh] = main[main.length - 1]
+		expect([sx, sy, sw, sh]).toEqual([0, 420, 1080, 1080])
+	})
+	test('вход 1280x720 -> выход 720x720 как и раньше', async () => {
+		const c = await run(1280, 720)
+		expect([c.width, c.height]).toEqual([720, 720])
+	})
+	test('вход 640x480 -> 480x480 без изменений', async () => {
+		const c = await run(640, 480)
+		expect([c.width, c.height]).toEqual([480, 480])
+	})
+	test('нехватка мощности: сперва ступень (360, журнал framing_ease), потом остановка', async () => {
+		vw = 1080
+		vh = 1920
+		setRates(30, 12)
+		start()
+		await vi.advanceTimersByTimeAsync(4500)
+		expect(ff.path).toBe('digital')
+		expect(ff._digital.canvas.width).toBe(360)
+		expect(calllog.mock.calls.filter(([k]) => k === 'framing_ease')).toHaveLength(1)
+		await vi.advanceTimersByTimeAsync(5000)
+		expect(ff.path).toBe('frozen')
+	})
+	test('ступень помогла (после неё 30 к/с) — остановки нет', async () => {
+		setRates(30, 12)
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), {}), 1000 / (ff._digital?.eased ? 30 : 12))
+		start()
+		await vi.advanceTimersByTimeAsync(15000)
+		expect(ff._digital.eased).toBe(true)
+		expect(ff.path).toBe('digital')
+	})
+	test('остановка не раньше 3 с после ступени', async () => {
+		setRates(30, 12)
+		start()
+		let easeAt = 0
+		let stopAt = 0
+		for (let t = 0; t < 12000 && !stopAt; t += 250) {
+			await vi.advanceTimersByTimeAsync(250)
+			easeAt ||= ff._digital.eased ? performance.now() : 0
+			stopAt = ff.path === 'frozen' ? performance.now() : 0
+		}
+		expect(easeAt).toBeGreaterThan(0)
+		expect(stopAt - easeAt).toBeGreaterThanOrEqual(2750)
+	})
+	test('framing_start без размера камеры: ow/oh — фактический размер канваса', async () => {
+		setRates(30, 30)
+		start()
+		await vi.advanceTimersByTimeAsync(1500)
+		const ev = calllog.mock.calls.filter(([k]) => k === 'framing_start')
+		expect(ev).toHaveLength(1)
+		expect(ev[0][1].ow).toBe(720)
+	})
+	test('после публикации колбэков пробы не больше ~2 в секунду', async () => {
+		setRates(30, 30)
+		const base = vproto.requestVideoFrameCallback
+		let probeCalls = 0
+		vproto.requestVideoFrameCallback = function(cb) {
+			if (ff?._digital && this !== ff._digital.video) {
+				probeCalls++
+			}
+			return base.call(this, cb)
+		}
+		start()
+		await vi.advanceTimersByTimeAsync(3000)
+		expect(ff._digital.published).toBe(true)
+		probeCalls = 0
+		await vi.advanceTimersByTimeAsync(10000)
+		expect(probeCalls).toBeLessThanOrEqual(20)
+		expect(ff.path).toBe('digital')
+	})
+	test('проба раз в секунду, presentedFrames +30 за колбэк -> outfps в framing_stats около 30', async () => {
+		setRates(30, 30)
+		const base = vproto.requestVideoFrameCallback
+		let pf = 0
+		vproto.requestVideoFrameCallback = function(cb) {
+			if (ff?._digital && this !== ff._digital.video) {
+				return setTimeout(() => cb(performance.now(), { presentedFrames: pf += 30 }), 1000)
+			}
+			return base.call(this, cb)
+		}
+		start()
+		await vi.advanceTimersByTimeAsync(31000)
+		const st = calllog.mock.calls.filter(([k]) => k === 'framing_stats').pop()[1]
+		expect(st.outfps).toBeGreaterThan(25)
+		expect(st.outfps).toBeLessThan(35)
 	})
 })
