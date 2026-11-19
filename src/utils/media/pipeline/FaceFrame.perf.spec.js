@@ -55,7 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	ff?.destroy()
-	for (const k of ['videoWidth', 'videoHeight', 'readyState', 'getVideoPlaybackQuality', 'requestVideoFrameCallback']) {
+	for (const k of ['videoWidth', 'videoHeight', 'readyState', 'getVideoPlaybackQuality', 'requestVideoFrameCallback', 'paused']) {
 		delete vproto[k]
 	}
 	vi.useRealTimers()
@@ -140,7 +140,7 @@ describe('FaceFrame: форма событий журнала', () => {
 		expect(Object.keys(get('framing_start')).sort()).toEqual(['frozen', 'h', 'inst', 'sched', 'w'])
 		expect(get('framing_start')).toMatchObject({ inst: 'call', sched: 'rvfc', frozen: false })
 		const st = get('framing_stats')
-		expect(Object.keys(st).sort()).toEqual(['detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'inst', 'outfps'])
+		expect(Object.keys(st).sort()).toEqual(['cbfps', 'detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'insrc', 'inst', 'outfps'])
 		expect(st).toMatchObject({ inst: 'call', hidden: false })
 		expect(st.infps).toBeGreaterThan(25)
 	})
@@ -214,5 +214,119 @@ describe('FaceFrame: защёлка', () => {
 		expect(ff._digital.frozen).toBe(false)
 		expect(ff.path).toBe('digital')
 		expect(calllog.mock.calls.filter(([k]) => k === 'framing_mode').map(([, d]) => d.mode)).toEqual(['digital', 'frozen', 'digital', 'frozen', 'off', 'digital'])
+	})
+})
+
+// Safari: totalVideoFrames исходного video стоит на 0, rVFC идёт с частотой экрана (screenHz), новый кадр входа — inFps раз в секунду
+describe('FaceFrame: Safari, частота входа по rVFC', () => {
+	const safari = (inFps, screenHz) => {
+		vproto.getVideoPlaybackQuality = function() {
+			return this.srcObject ? undefined : { totalVideoFrames: 0 }
+		}
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => {
+			const t = performance.now()
+			cb(t, { presentedFrames: Math.floor(t / 1000 * inFps), mediaTime: Math.floor(t / 1000 * inFps) / inFps })
+		}, 1000 / screenHz)
+	}
+	const stats = () => calllog.mock.calls.find(([n]) => n === 'framing_stats')[1]
+	test('вход 30, экран 60 -> infps ~30, insrc=rvfc, отрисовок ~30 в секунду', async () => {
+		safari(30, 60)
+		start()
+		await vi.advanceTimersByTimeAsync(11000)
+		expect(stats().insrc).toBe('rvfc')
+		expect(stats().infps).toBeGreaterThan(27)
+		expect(stats().infps).toBeLessThan(33)
+		expect(stats().drawfps).toBeLessThan(33)
+		expect(stats().drawfps).toBeGreaterThan(25)
+	})
+	test('отрисовка 10 к/с при входе 30 -> lowFps', async () => {
+		safari(30, 60)
+		start()
+		await vi.advanceTimersByTimeAsync(3000)
+		ff._digital.fpsFrames = 0 // имитация: ниже — вход 30, рисуем лишь каждый третий новый кадр
+		const orig = ff._renderFrame.bind(ff)
+		let n = 0
+		ff._renderFrame = (d, now) => (n++ % 3 ? undefined : orig(d, now))
+		await vi.advanceTimersByTimeAsync(9000)
+		expect(ff.path).toBe('frozen')
+		expect(calllog.mock.calls.find(([k]) => k === 'framing_error')[1]).toMatchObject({ kind: 'lowFps' })
+	})
+	test('отрисовка 25 при входе 30 -> не сбой', async () => {
+		safari(30, 25)
+		start()
+		await vi.advanceTimersByTimeAsync(9000)
+		expect(ff.path).toBe('digital')
+	})
+	test('метаданные стоят, дорожка muted -> редкая перерисовка, без переключения', async () => {
+		vproto.getVideoPlaybackQuality = () => undefined
+		Object.defineProperty(vproto, 'paused', { configurable: true, get: () => false })
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), { presentedFrames: 5, mediaTime: 1 }), 16)
+		start().muted = true
+		await vi.advanceTimersByTimeAsync(2000) // HOLD_MS без детектора
+		const f0 = ff._digital.frames
+		await vi.advanceTimersByTimeAsync(1000)
+		const df = ff._digital.frames - f0
+		expect(df).toBeGreaterThanOrEqual(3)
+		expect(df).toBeLessThanOrEqual(5)
+		expect(ff._digital.badSig).toBe(false)
+	})
+	test('метаданные стоят, дорожка live, колбэки 60 Гц -> за 1,5 с рисуем каждый колбэк, insrc не rvfc', async () => {
+		vproto.getVideoPlaybackQuality = () => undefined
+		Object.defineProperty(vproto, 'paused', { configurable: true, get: () => false })
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), { presentedFrames: 5, mediaTime: 1 }), 1000 / 60)
+		start()
+		await vi.advanceTimersByTimeAsync(1500 + 1500) // HOLD_MS + 1,5 с
+		expect(ff._digital.badSig).toBe(true)
+		const f0 = ff._digital.frames
+		await vi.advanceTimersByTimeAsync(1000)
+		expect(ff._digital.frames - f0).toBeGreaterThan(50)
+		await vi.advanceTimersByTimeAsync(8000)
+		expect(stats().insrc).not.toBe('rvfc')
+		expect(calllog.mock.calls.filter(([k, d]) => k === 'framing_mode' && /признак/.test(d.why))).toHaveLength(1)
+	})
+	// presentedFrames идёт со своей частотой pfHz, колбэки — cbHz, камера заявляет 30
+	const pfRun = async (pfHz, cbHz, ms = 12000) => {
+		vproto.getVideoPlaybackQuality = function() {
+			return this.srcObject ? undefined : { totalVideoFrames: 0 }
+		}
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => {
+			const t = performance.now()
+			cb(t, { presentedFrames: Math.floor(t / 1000 * pfHz), mediaTime: t / 1000 })
+		}, 1000 / cbHz)
+		start().getSettings = () => ({ frameRate: 30, width: 1920, height: 1080 })
+		await vi.advanceTimersByTimeAsync(ms)
+	}
+	test.each([[60, 30], [60, 40], [30, 20]])('presentedFrames %i/с при колбэках %i/с -> нет сбоя (база: порог 15)', async (pf, cbHz) => {
+		await pfRun(pf, cbHz)
+		expect(ff.path).toBe('digital')
+		expect(stats().infps).toBeLessThanOrEqual(30)
+		expect(stats().cbfps).toBeGreaterThan(cbHz - 3)
+	})
+	test('колбэки 12/с при входе 30 -> сбой', async () => {
+		await pfRun(30, 12)
+		expect(ff.path).toBe('frozen')
+	})
+	test('пауза колбэков 2 с, затем нормальный поток -> badSig не ставится', async () => {
+		let paused = true
+		Object.defineProperty(vproto, 'paused', { configurable: true, get: () => false })
+		vproto.getVideoPlaybackQuality = () => undefined
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => {
+			const t = performance.now()
+			cb(t, { presentedFrames: Math.floor(t / 1000 * 30), mediaTime: t / 1000 })
+		}, paused ? 2000 : 33)
+		start()
+		await vi.advanceTimersByTimeAsync(2100)
+		paused = false
+		await vi.advanceTimersByTimeAsync(5000)
+		expect(ff._digital.badSig).toBe(false)
+	})
+	test('ни счётчика, ни rVFC-метаданных -> frameRate из настроек дорожки', async () => {
+		vproto.getVideoPlaybackQuality = () => undefined
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), {}), 1000 / 30)
+		const track = start()
+		track.getSettings = () => ({ frameRate: 30, width: 1920, height: 1080 })
+		ff._setInputTrack('default', { ...track, id: 'cam2', getSettings: track.getSettings })
+		await vi.advanceTimersByTimeAsync(11000)
+		expect(stats()).toMatchObject({ insrc: 'settings', infps: 30 })
 	})
 })
