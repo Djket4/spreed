@@ -29,7 +29,7 @@ const HOLD_MS = 1500
 // ket4tec (NAS_CLOUD#160): «мало кадров» — только когда отрисовка отстаёт от входа (камера в слабом свете даёт 10–14 к/с — это не сбой конвейера)
 const LOW_FPS_RATIO = 0.7 // отрисовка < 70 % входа
 const LOW_FPS_MS = 2000
-const FALLBACK_IN_FPS = 30 // вход не измерить (нет getVideoPlaybackQuality) — сравниваем с номиналом
+const MIN_FPS = 15 // вход не измерить (нет getVideoPlaybackQuality) — прежнее правило: отрисовка < 15 к/с
 const STATS_LOG_MS = 5000
 const STATS_CALLLOG_MS = 10000 // framing_stats в журнал звонка
 // ket4tec (NAS_CLOUD#160): детектор MediaPipe на CPU не должен видеть полный кадр 1080p — рисуем в канвас постоянного размера (длинная сторона, px).
@@ -559,11 +559,11 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 		// ket4tec (NAS_CLOUD#160): сбой — отрисовка заметно отстаёт от входа; вход сам по себе 12 к/с — не сбой
-		const inRef = d.inFps ?? FALLBACK_IN_FPS
-		if (d.fps < inRef * LOW_FPS_RATIO && !d.frozen) {
+		const lowLimit = d.inFps === null ? MIN_FPS : d.inFps * LOW_FPS_RATIO
+		if (d.fps < lowLimit && !d.frozen) {
 			d.lowSince = d.lowSince || now
 			if (now - d.lowSince >= LOW_FPS_MS) {
-				this._fallback(d, 'lowFps', `отрисовка ${stats.fps} к/с при входе ${round1(inRef)} к/с (< ${LOW_FPS_RATIO * 100}%) в течение ${LOW_FPS_MS} мс`)
+				this._fallback(d, 'lowFps', d.inFps === null ? `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс` : `отрисовка ${stats.fps} к/с при входе ${round1(d.inFps)} к/с (< ${LOW_FPS_RATIO * 100}%) в течение ${LOW_FPS_MS} мс`)
 			}
 		} else {
 			d.lowSince = 0

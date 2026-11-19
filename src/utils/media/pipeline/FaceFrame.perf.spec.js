@@ -106,6 +106,45 @@ describe('FaceFrame: порог «мало кадров» от входа', () =
 	})
 })
 
+describe('FaceFrame: без счётчика входа — прежний порог 15 к/с', () => {
+	const rvfcOnly = (drawFps) => {
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), {}), 1000 / drawFps)
+		// счётчик кадров у пробы нужен сторожу выхода, у исходного video его нет
+		vproto.getVideoPlaybackQuality = function() {
+			return this.srcObject ? undefined : { totalVideoFrames: Math.floor(performance.now() / 33) }
+		}
+	}
+	test('отрисовка 18 к/с -> не сбой', async () => {
+		rvfcOnly(18)
+		start()
+		await vi.advanceTimersByTimeAsync(9000)
+		expect(ff.path).toBe('digital')
+	})
+	test('отрисовка 12 к/с -> сбой, in_fps: null', async () => {
+		rvfcOnly(12)
+		start()
+		await vi.advanceTimersByTimeAsync(9000)
+		expect(ff.path).toBe('frozen')
+		const err = calllog.mock.calls.find(([k]) => k === 'framing_error')
+		expect(err[1]).toMatchObject({ inst: 'call', kind: 'lowFps', in_fps: null })
+	})
+})
+
+describe('FaceFrame: форма событий журнала', () => {
+	test('framing_start и framing_stats', async () => {
+		setRates(30, 30)
+		start()
+		await vi.advanceTimersByTimeAsync(11000)
+		const get = (k) => calllog.mock.calls.find(([n]) => n === k)[1]
+		expect(Object.keys(get('framing_start')).sort()).toEqual(['frozen', 'h', 'in_fps_cfg', 'inst', 'sched', 'w'])
+		expect(get('framing_start')).toMatchObject({ inst: 'call', sched: 'rvfc', frozen: false })
+		const st = get('framing_stats')
+		expect(Object.keys(st).sort()).toEqual(['detAvg', 'detP95', 'draw_fps', 'gapMax', 'hidden', 'in_fps', 'inst', 'out_fps'])
+		expect(st).toMatchObject({ inst: 'call', hidden: false })
+		expect(st.in_fps).toBeGreaterThan(25)
+	})
+})
+
 describe('FaceFrame: защёлка', () => {
 	test('новый трек и выкл→вкл камеры сбрасывают защёлку', async () => {
 		start()
