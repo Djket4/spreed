@@ -7,7 +7,7 @@ import type { Ref } from 'vue'
 
 import debounce from 'debounce'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { computePhoneLayout, computeSquareLayout, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
+import { computePhoneLayout, computeSquareLayout, PHONE_BAR_WIDTH, PHONE_LANDSCAPE_MIN_SIDE, phoneBarOverlaps, phoneBarWidth, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
 
 type UseGridDimensionsOptions = {
 	/** Element to observe for size changes (its child grid is measured) */
@@ -26,6 +26,8 @@ type UseGridDimensionsOptions = {
 	stripeOpen: Readonly<Ref<boolean>>
 	/** ket4tec (NAS_CLOUD#159): iPhone vertically, smaller minimum square */
 	phonePortrait?: Readonly<Ref<boolean>>
+	/** ket4tec (NAS_CLOUD#159): phone held sideways, up to six tiles on one page, as big as the area allows */
+	phoneLandscape?: Readonly<Ref<boolean>>
 }
 
 /**
@@ -53,6 +55,7 @@ export function useGridDimensions({
 	videoCount,
 	stripeOpen,
 	phonePortrait,
+	phoneLandscape,
 }: UseGridDimensionsOptions) {
 	const gridWidth = ref(0)
 	const gridHeight = ref(0)
@@ -60,6 +63,8 @@ export function useGridDimensions({
 	const rows = ref(0)
 	const side = ref(0)
 	const tileHeight = ref(0)
+	// ket4tec (NAS_CLOUD#159): плашка шапки заходит на плитку - сетка сдвинута вправо на её ширину (padding-inline-start)
+	const barShift = ref(false)
 
 	const dpiFactor = computed(() => {
 		if (isStripe.value) {
@@ -115,9 +120,27 @@ export function useGridDimensions({
 		gridHeight.value = height
 
 		// ket4tec (NAS_CLOUD#159): квадратные плитки; полоса - одна строка, сторона = её высота
-		const dimensions = isStripe.value
-			? { columns: videoCount.value + 1, rows: 1, side: height }
-			: (phonePortrait?.value ? computePhoneLayout : computeSquareLayout)({ gridWidth: width, gridHeight: height, total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1) })
+		const total = videoCount.value + (noLocalVideoReserve.value ? 0 : 1)
+		const lay = (w: number) => (phonePortrait?.value ? computePhoneLayout : computeSquareLayout)({
+			gridWidth: w,
+			gridHeight: height,
+			total,
+			...(phoneLandscape?.value ? { minSide: PHONE_LANDSCAPE_MIN_SIDE } : {}),
+		})
+		let dimensions = isStripe.value ? { columns: videoCount.value + 1, rows: 1, side: height } : lay(width)
+		// width - с padding, он от сдвига не зависит; сдвигаем, только если плашка шапки легла бы на плитку
+		const bar = !!phoneLandscape?.value && !isStripe.value
+		const barArgs = { gridWidth: width, gridHeight: height, total, layout: dimensions }
+		barShift.value = bar && phoneBarOverlaps(barArgs)
+		if (barShift.value) {
+			dimensions = lay(width - PHONE_BAR_WIDTH)
+		}
+		// ширина плашки шапки (k7call.scss, .top-bar--in-call): по свободному полю слева от центрированной сетки
+		if (bar) {
+			document.documentElement.style.setProperty('--k4-bar-w', `${barShift.value ? PHONE_BAR_WIDTH : phoneBarWidth(barArgs)}px`)
+		} else {
+			document.documentElement.style.removeProperty('--k4-bar-w')
+		}
 
 		columns.value = dimensions.columns
 		rows.value = dimensions.rows
@@ -155,6 +178,7 @@ export function useGridDimensions({
 	onBeforeUnmount(() => {
 		debouncedRecompute.clear?.()
 		resizeObserver?.disconnect()
+		document.documentElement.style.removeProperty('--k4-bar-w')
 	})
 
 	// The number of tiles changed: the available size is unchanged, recompute now.
@@ -173,6 +197,7 @@ export function useGridDimensions({
 		rows,
 		side,
 		tileHeight,
+		barShift,
 		dpiFactor,
 		minWidth,
 		minHeight,

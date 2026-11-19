@@ -7,9 +7,13 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import {
+	computeSquareLayout as k4Square,
+	phoneBarOverlaps,
+	phoneBarWidth,
 	computePhoneLayout,
 	computeRowDistribution,
 	computeSquareLayout,
+	PHONE_LANDSCAPE_MIN_SIDE,
 	computeTilePlacements,
 	getHalfColumnCount,
 	getHalfColumnMinWidth,
@@ -309,6 +313,27 @@ describe('gridLayout', () => {
 		})
 	})
 
+	describe('phone held sideways (NAS_CLOUD#159)', () => {
+		// 586x266 - область iPhone 17 Pro лёжа: окно 874 минус колонка названия и кнопки справа
+		const area = { gridWidth: 586, gridHeight: 266 }
+
+		test.each([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]])('%i tiles with the local one: all on the page, one row or two, never paged', (total) => {
+			const { columns, rows, side } = computeSquareLayout({ ...area, total, minSide: PHONE_LANDSCAPE_MIN_SIDE })
+			expect(columns * rows).toBeGreaterThanOrEqual(total)
+			expect(side).toBeGreaterThanOrEqual(PHONE_LANDSCAPE_MIN_SIDE)
+			expect(side * columns + 8 * (columns - 1)).toBeLessThanOrEqual(area.gridWidth)
+			expect(side * rows + 8 * (rows - 1)).toBeLessThanOrEqual(area.gridHeight)
+		})
+
+		test('side is the best one: 6 tiles are 3x2 at 129 px, 4 tiles 4x1 at 140 px, not two 216 px tiles with an arrow', () => {
+			expect(computeSquareLayout({ ...area, total: 6, minSide: PHONE_LANDSCAPE_MIN_SIDE })).toEqual({ columns: 3, rows: 2, side: 129 })
+			expect(computeSquareLayout({ ...area, total: 4, minSide: PHONE_LANDSCAPE_MIN_SIDE })).toEqual({ columns: 4, rows: 1, side: 140 })
+			// прежнее правило (minSide 150) не вмещало шесть: листание
+			const old = computeSquareLayout({ ...area, total: 6 })
+			expect(old.columns * old.rows).toBeLessThan(6)
+		})
+	})
+
 	describe('getJustifyContent', () => {
 		test('centers the tiles of the grid', () => {
 			expect(getJustifyContent({ isStripe: false, totalTiles: 1, isLocalVideoAlone: true })).toBe('center')
@@ -349,5 +374,19 @@ describe('big tile of the speaker view', () => {
 	])('area %ix%i: at least 70 percent is the big tile', (width, height, row) => {
 		const share = ((height - row - GRID_GAP) * width) / (width * height)
 		expect(share).toBeGreaterThanOrEqual(0.7)
+	})
+})
+
+// ket4tec (NAS_CLOUD#159): плашка шапки телефона лёжа - сетка по центру, плашка сужается до поля слева (88..160 px), сдвиг сетки - если и 88 не остаётся
+describe('phoneBarOverlaps / phoneBarWidth', () => {
+	// [gridWidth, gridHeight, total, сдвиг, ширина плашки]
+	test.each([
+		[766, 378, 2, true, 160], [766, 378, 3, false, 160], [766, 378, 4, false, 160], [766, 378, 5, false, 99], [766, 378, 6, false, 99],
+		[766, 378, 7, true, 160], [766, 378, 9, false, 160],
+		[582, 266, 2, true, 160], [582, 266, 3, false, 160], [582, 266, 6, false, 91], [582, 266, 8, true, 160], [582, 266, 9, false, 160],
+	])('%ix%i N=%i -> shift %s, bar %ipx', (gridWidth, gridHeight, total, shift, width) => {
+		const layout = k4Square({ gridWidth, gridHeight, total, minSide: 60 })
+		expect(phoneBarOverlaps({ gridWidth, gridHeight, total, layout })).toBe(shift)
+		expect(shift ? 160 : phoneBarWidth({ gridWidth, gridHeight, total, layout })).toBe(width)
 	})
 })

@@ -579,8 +579,8 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 		}
 	}
 }
-// ket4tec (NAS_CLOUD#159): в сетке «Классика» на телефоне «+N» - обычная ячейка сетки
-@media (max-width: 500px) and (orientation: portrait) {
+// ket4tec (NAS_CLOUD#159): в сетке «Классика» на телефоне «+N» - обычная ячейка сетки (и лёжа)
+@media (max-width: 500px) and (orientation: portrait), (max-height: 500px) and (orientation: landscape) {
 	#call-container .grid-main-wrapper.is-grid .k4-more-tile {
 		display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--k7-r-tile);
 		background: var(--k7-glass); color: var(--k7-fg); font-size: 26px; font-weight: 700; box-shadow: inset 0 0 0 1px var(--k7-line2); cursor: pointer;
@@ -618,21 +618,23 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	body:has(#content-vue.in-call) :is(#content, #content-vue) { top: 0 !important; height: 100dvh !important; }
 	#content-vue.in-call {
 		.app-navigation-toggle-wrapper, > .app-sidebar__toggle { display: none; }
+		// ket4tec (NAS_CLOUD#159, 19.11): шапка - компактная плашка в левом верхнем углу (до 160 px: название с многоточием + таймер), вне потока:
+		// плитки получают всю высоту; плашка сужается до поля слева от сетки (--k4-bar-w, не уже 88 px), иначе сетка сдвигается вправо (phoneBarOverlaps)
 		.top-bar--in-call {
-			inset: 12px auto auto #{$L}; width: 184px; height: auto; padding: 0; // высота по содержимому — не перекрывает пилюлю «Камеры»
-			flex-direction: column; justify-content: flex-start; align-items: flex-start; gap: 10px;
+			inset: 6px auto auto #{$L}; width: var(--k4-bar-w, 160px); height: 22px; padding: 0; z-index: 3;
+			flex-direction: row; justify-content: flex-start; align-items: center; gap: 6px;
 			> .top-bar__icon-wrapper { display: none; }
-			.conversation-header { flex: none; width: 100%; margin: 0; padding: 0 !important; justify-content: flex-start; }
-			.conversation-header__text:has(.k4-shows), .conversation-header__text { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 10px; width: 100%; }
-			.conversation-header .title { font-size: 17px; line-height: 1.2; text-align: start; }
-			.k4-shows { height: 26px; margin: 0; }
-			.top-bar__controls { margin: 0; gap: 6px; }
+			.conversation-header { flex: 1 1 auto; min-width: 0; width: auto; margin: 0; padding: 0 !important; justify-content: flex-start; }
+			.conversation-header__text:has(.k4-shows), .conversation-header__text { flex-direction: row; flex-wrap: nowrap; align-items: center; width: 100%; min-width: 0; }
+			.conversation-header .title { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 22px; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+			.k4-shows { display: none; } // в 160 px не помещается
+			.top-bar__controls { flex: none; margin: 0; gap: 6px; }
 			.top-bar__controls > .button-vue { display: none; } // участники и поиск — в эскизе их нет (список — в портрете)
-			.top-bar__controls :is(.call-time, .button-vue) { height: 36px !important; min-height: 36px !important; }
-			.top-bar__controls .action-item .button-vue { width: 36px !important; min-width: 36px !important; }
+			.top-bar__controls :is(.call-time, .button-vue) { height: 22px !important; min-height: 22px !important; font-size: 12px; }
+			.top-bar__controls .action-item .button-vue { width: 22px !important; min-width: 22px !important; }
 		}
 		#call-container { --k7-btn: 38px; }
-		#call-container > #videos { inset: 12px calc(#{$R} + 60px) 12px calc(#{$L} + 200px) !important; width: auto !important; height: auto !important; }
+		#call-container > #videos { inset: 12px calc(#{$R} + 60px) 12px #{$L} !important; width: auto !important; height: auto !important; }
 		#call-container > .bottom-bar {
 			inset: 0 #{$R} 0 auto !important; width: auto; height: auto; padding: 0 !important;
 			flex-direction: column; justify-content: center; gap: 8px;
@@ -644,18 +646,18 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	}
 	#{$k4s} { --stripe-height: 110px; }
 	// ket4tec (NAS_CLOUD#270 п.2): полосы под уведомления тут нет (main.js её выключает) — стопка вверху по центру показа
-	// (между левой колонкой 200 px и кнопками справа 60 px), поверх плиток, а не на 128 px по умолчанию
+	// (между левым краем и кнопками справа 60 px), поверх плиток, а не на 128 px по умолчанию
 	// NAS_CLOUD#332: плашки вне стопки («Ссылка скопирована») — внизу по центру показа, не поверх «Отправить ссылку» и не на колонке кнопок справа
 	html.k7f.k7f body:has(#content-vue.in-call) .toastify.dialogs {
 		inset-block: auto max(12px, env(safe-area-inset-bottom, 0px)) !important;
-		translate: 70px 0;
-		max-width: calc(100vw - 280px);
+		translate: -28px 0;
+		max-width: calc(100vw - 160px);
 	}
 	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts { // NAS_CLOUD#332: вверху стопка закрывала «Отправить ссылку»
 		top: auto !important;
 		bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
-		translate: 70px 0;
-		max-width: calc(100vw - 280px);
+		translate: -28px 0;
+		max-width: calc(100vw - 160px);
 	}
 }
 
@@ -700,7 +702,8 @@ body:has(#call-container.k4-selflost) :is(.top-bar--in-call, .app-sidebar__toggl
 #call-container :is(.localVideoContainer, .video-container) { isolation: isolate; }
 #call-container :is(.localVideoContainer, .video-container) > .avatar-container { z-index: -1; }
 #call-container .videoWrapper.k4-vf:not(.presenter-overlay) { position: absolute !important; inset: 0; opacity: 0; transition: opacity 1s cubic-bezier(.4, 0, .6, 1); background: transparent !important; }
-#call-container .videoWrapper.k4-vf.k4-vf--on { opacity: 1; }
+// проявление нового кадра - 0,25 с (владелец 19.11: «фейд долгий»); угасание при выкл остаётся 1 с (k4fade.js, FADE_MS)
+#call-container .videoWrapper.k4-vf.k4-vf--on { opacity: 1; transition-duration: .25s; }
 #call-container .videoWrapper.k4-vf video { background: transparent !important; }
 #call-container .videoWrapper .k4-vsnap { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 #call-container .videoWrapper .k4-vsnap.video--fit { object-fit: contain; }
@@ -719,10 +722,22 @@ $k4ls: #{'min(calc(100cqw - #{$k4th} - 8px), 100cqh)'};
 $k4lo: #{'calc((100cqw - #{$k4th} - 8px - #{$k4ls}) / 2)'};
 // absolute-потомки #videos отсчитываются от края с полем padding-inline (--wrapper-padding), cqw - от содержимого
 $k4lp: #{'calc(#{$k4lo} + var(--wrapper-padding, 0px))'};
-// портрет: высота ряда миниатюр 140..180 px (плитка 96+), между квадратом и рядом 8 px, чужие отступы обнулены
-$k4rh: #{'clamp(140px, calc(100cqh - 100cqw - 8px), 180px)'};
+// портрет: высота ряда миниатюр 140..220 px (плитка 96+ под именем), остаток высоты не пустует: блок по центру; между квадратом и рядом 8 px
+// телефон (узко или низко): имя внутри плитки, ряд 112..180 px, плитка без места под имя - квадрат шире
+$k4rh: #{'clamp(140px, calc(100cqh - 100cqw - 8px), 220px)'};
 $k4ps: #{'min(100cqw, calc(100cqh - #{$k4rh} - 8px))'};
-@container k4v (max-aspect-ratio: 1/1) {
+$k4rhp: #{'clamp(112px, calc(100cqh - 100cqw - 8px), 180px)'};
+$k4psp: #{'min(100cqw, calc(100cqh - #{$k4rhp} - 8px))'};
+// свёрнутая лента: под капсулу «Камеры · N» отдельная полоса 48 px под квадратом, на плитку капсула не заходит
+$k4cp: 48px;
+$k4pc: #{'min(100cqw, calc(100cqh - #{$k4cp} - 8px))'};
+// полоса под уведомления (main.js: --k7-call-top - --k7-call-top0) сидит сверху #videos и сдвигает группу вниз: поднимаем её на полосу,
+// чтобы пустота делилась поровну сверху и снизу от строки звонка до панели кнопок. Группа выходит выше края #videos на полполосы - тут overflow: visible
+// (группа не выше #videos, так что строки звонка она не достаёт)
+$k4lane: #{'(var(--k7-call-top, 0px) - var(--k7-call-top0, 0px))'};
+$k4up: calc(-1 * #{$k4lane});
+@media (min-width: 501px) and (min-height: 501px) { #{$k4big} { overflow: visible; } }
+@container k4v (aspect-ratio < 1) {
 	#{$k4big} {
 		> .video__promoted { width: #{$k4ps}; height: #{$k4ps}; align-self: center; margin: 0; }
 		> .grid-main-wrapper:not(.is-grid) {
@@ -735,23 +750,63 @@ $k4ps: #{'min(100cqw, calc(100cqh - #{$k4rh} - 8px))'};
 			.grid > :first-child { margin-inline-start: auto !important; }
 			.grid > :last-child { margin-inline-end: auto !important; }
 		}
+		// iPad и десктоп (не телефон): зазор квадрат-ряд ровно 8 px - штатные 8 px поля полосы сверху и снизу убираем, ряд с подписью занимает всю
+		// высоту; группа поднята на полосу под уведомления (k4up), пустота делится поровну сверху и снизу
+		@media (min-width: 501px) and (min-height: 501px) {
+			> .video__promoted { margin-top: $k4up; }
+			> .grid-main-wrapper:not(.is-grid) .stripe-wrapper { padding-block: 0; }
+			&:has(.stripe-controls-position--collapsed) > .video__promoted { margin-top: $k4up; }
+		}
+		// телефон: имя внутри плитки (полоса 22 px по низу), снизу не резервируем
+		@media (max-width: 500px), (max-height: 500px) {
+			> .video__promoted { width: #{$k4psp}; height: #{$k4psp}; }
+			> .grid-main-wrapper:not(.is-grid) {
+				--stripe-height: #{$k4rhp} !important;
+				.videos-wrapper--stripe { height: #{$k4rhp} !important; }
+				.grid > * { height: 100% !important; }
+			}
+		}
+		// свёрнутая лента: квадрат крупнее, под ним полоса с капсулой
+		&:has(.stripe-controls-position--collapsed) {
+			> .video__promoted { width: #{$k4pc}; height: #{$k4pc}; }
+			> .grid-main-wrapper:not(.is-grid) {
+				height: $k4cp; --stripe-height: #{$k4cp} !important;
+				.stripe-controls-position--collapsed { position: absolute; inset-block: 3px auto; inset-inline: 0 auto; }
+			}
+		}
 	}
 }
-@container k4v (min-aspect-ratio: 1/1) {
+@container k4v (aspect-ratio >= 1) {
 	#{$k4big} {
 		> .video__promoted { width: #{$k4ls}; height: #{$k4ls}; align-self: flex-start; margin: 0; margin-inline-start: calc(#{$k4lo} + #{$k4th} + 8px); }
 		> .grid-main-wrapper:not(.is-grid) {
 			position: absolute; inset-inline-start: #{$k4lp}; top: calc((100cqh - #{$k4ls}) / 2);
 			width: #{$k4th}; height: #{$k4ls}; margin: 0; padding: 0; --stripe-height: 100% !important;
+			container: k4c / inline-size;
 			// «Скрыть» не нужна, столбец не сворачивается; уже свёрнутую (в портрете) ленту раскрывает кнопка-капсула в углу столбца
 			.stripe-controls-position:not(.stripe-controls-position--collapsed) { display: none; }
-			.stripe-controls-position--collapsed { display: block; top: 0; inset-inline-start: 0; inset-inline-end: auto; }
+			// position: absolute перебивает fixed телефонной раскладки: капсула - в углу столбца, не над названием комнаты
+			.stripe-controls-position--collapsed { display: block; position: absolute; inset-block: 0 auto; inset-inline: 0 auto; max-width: 100%; }
 			.videos-wrapper--stripe { height: 100% !important; margin: 0 !important; }
 			.stripe-wrapper { padding: 0; }
 			.grid { display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-content: normal !important; overflow-x: hidden !important; overflow-y: auto !important; row-gap: 30px !important; column-gap: 0 !important; scrollbar-width: thin; overscroll-behavior-y: contain; }
 			.grid > *, .grid > :first-child, .grid > :last-child { width: 100% !important; height: auto !important; aspect-ratio: 1 !important; flex: none !important; margin: 0 !important; }
 		}
 	}
+}
+// то же для ландшафтной раскладки (iPad с закрытой панелью, десктоп): квадрат и столбец поднимаются на полполосы
+@container k4v (aspect-ratio >= 1) {
+	@media (min-width: 501px) and (min-height: 501px) {
+		#{$k4big} {
+			> .video__promoted { margin-top: $k4up; }
+			> .grid-main-wrapper:not(.is-grid) { top: calc((100cqh - #{$k4ls}) / 2 - #{$k4lane} / 2); }
+		}
+	}
+}
+// капсула в столбце: аватары не нужны; в узком столбце (< 150 px) остаётся одна кнопка-стрелка без подписи
+@container k4c (max-width: 1000px) { #call-container .stripe-controls-position--collapsed .k4-cams__ava { display: none; } }
+@container k4c (max-width: 149px) {
+	#call-container .stripe-controls-position--collapsed .stripe-controls__group .button-vue { font-size: 0; width: 42px; padding: 0 !important; }
 }
 // кнопка «Назад»/«Открепить» на крупной плитке: в левом нижнем углу рядом с именем, иконкой 28 px; зона нажатия 44 px
 #call-container .wrapper--big { justify-content: flex-start; padding-inline: 10px; padding-block-end: 10px; }

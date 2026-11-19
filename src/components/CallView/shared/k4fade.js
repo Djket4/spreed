@@ -18,6 +18,8 @@ export const FADE_MS = 1000
 // кадр так и не пришёл (или камера правда чёрная) — проявляем как есть. Больше, чем ожидание детекции
 // плюс сторожок FaceFrame (1,5 + 2 с): при откате на исходную камеру плитка проявляется уже по её кадру
 const WAIT_MS = 5000
+// смена потока на той же плитке: дольше не держим старый кадр, даже если нового нет
+const SWAP_WAIT_MS = 800
 
 /**
  * Целый кадр: не чёрный в середине и у каждого края. Первые кадры iOS бывают картинкой поменьше
@@ -134,6 +136,7 @@ export function useK4VideoFade() {
 			return
 		}
 		const t = ++tok
+		cancelSwap()
 		clearTimeout(timer)
 		if (!on) {
 			leaving = true
@@ -201,12 +204,85 @@ export function useK4VideoFade() {
 		poll()
 	}
 
+	/**
+	 * ket4tec (NAS_CLOUD#159): крупная плитка переиспользуется при смене говорящего, у <video> подменяют srcObject. Safari в этот момент
+	 * отдаёт пустое поле на 0,15-0,2 с. Вызывать ДО подмены: копия последнего кадра ложится поверх видео и держится, пока новый поток
+	 * не даст первый целый кадр; затем мгновенно снимается (без фейда и масштаба).
+	 *
+	 * @param {() => HTMLVideoElement} getVideo
+	 */
+	// смена потока: своё поколение, чтобы повторная смена (A -> B -> A) и set() отменяли прежний опрос
+	let swapGen = 0
+	let swapTimer = 0
+	let swapRvfc = 0
+	let swapVideo = null
+	let swapping = false
+	const dropSwapPoll = () => {
+		swapGen++
+		clearTimeout(swapTimer)
+		if (swapRvfc) {
+			swapVideo?.cancelVideoFrameCallback?.(swapRvfc)
+			swapRvfc = 0
+		}
+	}
+	const cancelSwap = () => {
+		dropSwapPoll()
+		swapping = false
+	}
+
+	function swap(getVideo) {
+		const v = getVideo()
+		if (!v || leaving || !state.opaque) {
+			return
+		}
+		if (swapping) {
+			// повторная смена, пока держится прежний снимок: он остаётся как есть (не переснимаем пустое поле), ждём заново
+			dropSwapPoll()
+		} else {
+			if (!keep(v)) {
+				return
+			}
+			stopKeep()
+			snap.style.opacity = '1'
+			swapping = true
+		}
+		swapVideo = v
+		const g = swapGen
+		const t0 = performance.now()
+		let fresh = false
+		let ct0 = -1
+		const poll = () => {
+			if (g !== swapGen) {
+				return
+			}
+			if (ct0 < 0) {
+				ct0 = v.currentTime
+				swapRvfc = v.requestVideoFrameCallback?.(() => {
+					swapRvfc = 0
+					fresh = true
+				}) || 0
+			} else if (v.currentTime !== ct0) {
+				fresh = true // как в set(): rVFC мог промолчать на подмене srcObject (Safari) - новый кадр видно по ходу времени
+			}
+			if ((fresh && v.readyState >= 2 && v.videoWidth && hasPicture(v)) || performance.now() - t0 > SWAP_WAIT_MS) {
+				cancelSwap()
+				snap.style.opacity = '0'
+				startKeep(getVideo)
+				return
+			}
+			swapTimer = setTimeout(poll, 30)
+		}
+		// подмена идёт сразу после вызова: первый опрос - после неё
+		swapTimer = setTimeout(poll, 0)
+	}
+
 	onBeforeUnmount(() => {
+		cancelSwap()
 		tok++
 		clearTimeout(timer)
 		stopKeep()
 		snap.remove()
 	})
 
-	return { state, set }
+	return { state, set, swap }
 }
