@@ -81,8 +81,13 @@
 				v-if="showStopFollowingButton"
 				class="following-button"
 				variant="tertiary"
+				:aria-label="t('spreed', 'Stop following')"
+				:title="t('spreed', 'Stop following')"
 				@click="handleStopFollowing">
-				{{ t('spreed', 'Stop following') }}
+				<template #icon>
+					<IconPinOff :size="20" />
+				</template>
+				<span class="following-button__text">{{ t('spreed', 'Stop following') }}</span>
 			</NcButton>
 		</div>
 	</div>
@@ -97,6 +102,7 @@ import IconAlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline
 import IconHandBackLeft from 'vue-material-design-icons/HandBackLeft.vue' // Filled for better indication
 import IconMicrophone from 'vue-material-design-icons/Microphone.vue' // Filled for better indication
 import IconMonitor from 'vue-material-design-icons/Monitor.vue'
+import IconPinOff from 'vue-material-design-icons/PinOff.vue'
 import IconVideo from 'vue-material-design-icons/Video.vue' // Filled for better indication
 import IconVideoOffOutline from 'vue-material-design-icons/VideoOffOutline.vue'
 import IconMicrophoneOffOutline from '../../../../img/material-icons/microphone-off-outline.svg?raw'
@@ -113,6 +119,7 @@ export default {
 		IconHandBackLeft,
 		IconMicrophone,
 		IconMonitor,
+		IconPinOff,
 		IconVideo,
 		IconVideoOffOutline,
 		NcButton,
@@ -330,10 +337,12 @@ export default {
 }
 
 // ket4tec (NAS_CLOUD#362): на узкой плитке (контейнер — .wrapper, inline-size, см. k7call.scss) кнопки микрофона и камеры не нужны:
-// остаются имя и угловой значок .k4-micoff; управление — в меню участника боковой панели
-@container (max-width: 180px) {
+// остаются имя и угловой значок .k4-micoff; управление — в меню участника боковой панели.
+// «Открепить» на узкой плитке — одна иконка. 240px: закреплённая плитка 192px в окне 1000 с панелью (кадр 1119g)
+@container (max-width: 240px) {
 	.audioIndicator,
-	.videoIndicator {
+	.videoIndicator,
+	.following-button__text {
 		display: none;
 	}
 }
