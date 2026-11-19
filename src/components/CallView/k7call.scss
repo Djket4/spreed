@@ -633,8 +633,9 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 		translate: 70px 0;
 		max-width: calc(100vw - 280px);
 	}
-	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts {
-		top: max(12px, env(safe-area-inset-top, 0px)) !important;
+	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts { // NAS_CLOUD#332: вверху стопка закрывала «Отправить ссылку»
+		top: auto !important;
+		bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
 		translate: 70px 0;
 		max-width: calc(100vw - 280px);
 	}
