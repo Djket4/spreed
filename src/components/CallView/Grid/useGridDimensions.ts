@@ -7,7 +7,7 @@ import type { Ref } from 'vue'
 
 import debounce from 'debounce'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { computePhoneLayout, computeSquareLayout, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
+import { computePhoneLayout, computeSquareLayout, PHONE_LANDSCAPE_MIN_SIDE, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
 
 type UseGridDimensionsOptions = {
 	/** Element to observe for size changes (its child grid is measured) */
@@ -26,6 +26,8 @@ type UseGridDimensionsOptions = {
 	stripeOpen: Readonly<Ref<boolean>>
 	/** ket4tec (NAS_CLOUD#159): iPhone vertically, smaller minimum square */
 	phonePortrait?: Readonly<Ref<boolean>>
+	/** ket4tec (NAS_CLOUD#159): phone held sideways, up to six tiles on one page, as big as the area allows */
+	phoneLandscape?: Readonly<Ref<boolean>>
 }
 
 /**
@@ -53,6 +55,7 @@ export function useGridDimensions({
 	videoCount,
 	stripeOpen,
 	phonePortrait,
+	phoneLandscape,
 }: UseGridDimensionsOptions) {
 	const gridWidth = ref(0)
 	const gridHeight = ref(0)
@@ -117,7 +120,12 @@ export function useGridDimensions({
 		// ket4tec (NAS_CLOUD#159): квадратные плитки; полоса - одна строка, сторона = её высота
 		const dimensions = isStripe.value
 			? { columns: videoCount.value + 1, rows: 1, side: height }
-			: (phonePortrait?.value ? computePhoneLayout : computeSquareLayout)({ gridWidth: width, gridHeight: height, total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1) })
+			: (phonePortrait?.value ? computePhoneLayout : computeSquareLayout)({
+				gridWidth: width,
+				gridHeight: height,
+				total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1),
+				...(phoneLandscape?.value ? { minSide: PHONE_LANDSCAPE_MIN_SIDE } : {}),
+			})
 
 		columns.value = dimensions.columns
 		rows.value = dimensions.rows

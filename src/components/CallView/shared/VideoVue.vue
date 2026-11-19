@@ -709,6 +709,10 @@ export default {
 			// element until the video track starts to play; an audio element is
 			// thus needed to play audio when the remote peer starts with the
 			// camera available but disabled.
+			// ket4tec (NAS_CLOUD#159): другой поток на той же плитке - старый кадр держится, пока новый не дал первый
+			if (this.$refs.video.srcObject && this.$refs.video.srcObject !== stream) {
+				this.fade.swap(() => this.$refs.video)
+			}
 			attachMediaStream(stream, this.$refs.video)
 
 			this.$refs.video.muted = true

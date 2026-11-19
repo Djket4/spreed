@@ -10,6 +10,7 @@ import {
 	computePhoneLayout,
 	computeRowDistribution,
 	computeSquareLayout,
+	PHONE_LANDSCAPE_MIN_SIDE,
 	computeTilePlacements,
 	getHalfColumnCount,
 	getHalfColumnMinWidth,
@@ -306,6 +307,27 @@ describe('gridLayout', () => {
 		test('7 tiles are 4+3 and 8 tiles are 4+4 in a wide window', () => {
 			expect(rowsOf(1512, 800, 7).rows).toEqual([4, 3])
 			expect(rowsOf(1512, 800, 8).rows).toEqual([4, 4])
+		})
+	})
+
+	describe('phone held sideways (NAS_CLOUD#159)', () => {
+		// 586x266 - область iPhone 17 Pro лёжа: окно 874 минус колонка названия и кнопки справа
+		const area = { gridWidth: 586, gridHeight: 266 }
+
+		test.each([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]])('%i tiles with the local one: all on the page, one row or two, never paged', (total) => {
+			const { columns, rows, side } = computeSquareLayout({ ...area, total, minSide: PHONE_LANDSCAPE_MIN_SIDE })
+			expect(columns * rows).toBeGreaterThanOrEqual(total)
+			expect(side).toBeGreaterThanOrEqual(PHONE_LANDSCAPE_MIN_SIDE)
+			expect(side * columns + 8 * (columns - 1)).toBeLessThanOrEqual(area.gridWidth)
+			expect(side * rows + 8 * (rows - 1)).toBeLessThanOrEqual(area.gridHeight)
+		})
+
+		test('side is the best one: 6 tiles are 3x2 at 129 px, 4 tiles 4x1 at 140 px, not two 216 px tiles with an arrow', () => {
+			expect(computeSquareLayout({ ...area, total: 6, minSide: PHONE_LANDSCAPE_MIN_SIDE })).toEqual({ columns: 3, rows: 2, side: 129 })
+			expect(computeSquareLayout({ ...area, total: 4, minSide: PHONE_LANDSCAPE_MIN_SIDE })).toEqual({ columns: 4, rows: 1, side: 140 })
+			// прежнее правило (minSide 150) не вмещало шесть: листание
+			const old = computeSquareLayout({ ...area, total: 6 })
+			expect(old.columns * old.rows).toBeLessThan(6)
 		})
 	})
 

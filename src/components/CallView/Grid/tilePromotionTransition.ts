@@ -130,7 +130,8 @@ function animateTile(sessionId: string, from: DOMRect) {
  * @param previousSessionIds - the same, before the change
  */
 export function animateTilePromotion(sessionIds: string[], previousSessionIds: string[]) {
-	if (prefersReducedMotion()) {
+	// ket4tec (NAS_CLOUD#159): на телефоне плитка меняется сразу, без переезда с масштабом (владелец: «въезжает», на iPhone - пустой кадр)
+	if (prefersReducedMotion() || window.matchMedia?.('(max-width: 767px), (max-height: 500px)').matches) {
 		return
 	}
 

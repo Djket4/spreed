@@ -312,7 +312,10 @@ export default {
 
 		// ket4tec (NAS_CLOUD#159): тот же media, что у полосы в k7call.scss
 		const k4PhonePortrait = useMediaQuery('(max-width: 500px) and (orientation: portrait)')
-		const phoneGrid = computed(() => k4PhonePortrait.value && !props.isStripe && !devMode.value)
+		// ket4tec (NAS_CLOUD#159): телефон лежа - то же правило по числу (до шести все на экране, 7+ - «+N»), плитки крупнейшие в области
+		const k4PhoneLand = useMediaQuery('(max-height: 500px) and (orientation: landscape)')
+		const k4Phone = computed(() => k4PhonePortrait.value || k4PhoneLand.value)
+		const phoneGrid = computed(() => k4Phone.value && !props.isStripe && !devMode.value)
 
 		const gridDimensions = useGridDimensions({
 			wrapper: gridWrapper,
@@ -323,7 +326,8 @@ export default {
 			// на телефоне сетка не больше шести мест: остальные уходят в «+N»
 			videoCount: computed(() => (phoneGrid.value ? Math.min(cappedVideosCount.value, PHONE_MAX_TILES - 1) : cappedVideosCount.value)),
 			stripeOpen,
-			phonePortrait: phoneGrid,
+			phonePortrait: computed(() => phoneGrid.value && k4PhonePortrait.value),
+			phoneLandscape: computed(() => phoneGrid.value && !k4PhonePortrait.value),
 		})
 
 		// Number of grid slots (videos per page) at any given moment, clamped to
@@ -417,7 +421,7 @@ export default {
 			videosCap,
 			callViewStore,
 			sidebarStore: useSidebarStore(), // ket4tec (NAS_CLOUD#195)
-			k4PhonePortrait,
+			k4Phone,
 			gridWrapper,
 			grid,
 			stripeOpen,
@@ -483,7 +487,7 @@ export default {
 
 		// ket4tec (NAS_CLOUD#195 п.3): больше шести — 4 собеседника, «Вы» и «+N» (скрытые собеседники)
 		k4More() {
-			if (!this.k4PhonePortrait) {
+			if (!this.k4Phone) {
 				return 0
 			}
 			if (!this.isStripe) {

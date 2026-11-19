@@ -136,3 +136,66 @@ test('NAS_CLOUD#279 п.3: rVFC не стреляет — плитка прояв
 	expect(fade.state.opaque).toBe(true)
 	delete vproto.requestVideoFrameCallback
 })
+
+test('NAS_CLOUD#159: смена потока на той же плитке - старый кадр держится поверх, пока новый не дал первый целый кадр', async () => {
+	vi.useFakeTimers()
+	const vproto = window.HTMLVideoElement.prototype
+	vi.spyOn(vproto, 'videoWidth', 'get').mockReturnValue(640)
+	vi.spyOn(vproto, 'videoHeight', 'get').mockReturnValue(360)
+	let ready = 4
+	vi.spyOn(vproto, 'readyState', 'get').mockImplementation(() => ready)
+	vproto.play = () => Promise.resolve()
+	vproto.pause = () => {}
+	vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage() {}, getImageData: () => ({ data: new Array(256).fill(200) }) })
+	const box = document.createElement('div')
+	const v = document.createElement('video')
+	let frame = null
+	v.requestVideoFrameCallback = (f) => {
+		frame = f
+	}
+	box.append(v)
+	const fade = useK4VideoFade()
+	const get = () => v
+	fade.set(true, get)
+	frame?.()
+	await vi.advanceTimersByTimeAsync(FADE_MS + 100)
+	expect(fade.state.opaque).toBe(true)
+	const snap = box.querySelector('.k4-vsnap')
+
+	fade.swap(get)
+	expect(snap.style.opacity).toBe('1')
+	ready = 0 // подмена srcObject: пустое поле
+	await vi.advanceTimersByTimeAsync(200)
+	expect(snap.style.opacity).toBe('1') // нового кадра ещё нет - старый на месте
+	ready = 4
+	const f = frame
+	frame = null
+	f?.() // старый колбэк keeper не в счёт, ждём тот, что поставил swap
+	await vi.advanceTimersByTimeAsync(40)
+	frame?.()
+	await vi.advanceTimersByTimeAsync(100)
+	expect(snap.style.opacity).toBe('0') // новый кадр пришёл - снимок снят сразу
+})
+
+test('NAS_CLOUD#159: поток не пришёл - старый кадр не висит дольше 0,8 с', async () => {
+	vi.useFakeTimers()
+	const vproto = window.HTMLVideoElement.prototype
+	vi.spyOn(vproto, 'videoWidth', 'get').mockReturnValue(640)
+	vi.spyOn(vproto, 'videoHeight', 'get').mockReturnValue(360)
+	vi.spyOn(vproto, 'readyState', 'get').mockReturnValue(4)
+	vproto.play = () => Promise.resolve()
+	vproto.pause = () => {}
+	vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage() {}, getImageData: () => ({ data: new Array(256).fill(200) }) })
+	const box = document.createElement('div')
+	const v = document.createElement('video')
+	box.append(v)
+	const fade = useK4VideoFade()
+	const get = () => v
+	fade.set(true, get)
+	await vi.advanceTimersByTimeAsync(FADE_MS + 100)
+	const snap = box.querySelector('.k4-vsnap')
+	fade.swap(get)
+	expect(snap.style.opacity).toBe('1')
+	await vi.advanceTimersByTimeAsync(900)
+	expect(snap.style.opacity).toBe('0')
+})

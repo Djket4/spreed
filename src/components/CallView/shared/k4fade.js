@@ -18,6 +18,8 @@ export const FADE_MS = 1000
 // кадр так и не пришёл (или камера правда чёрная) — проявляем как есть. Больше, чем ожидание детекции
 // плюс сторожок FaceFrame (1,5 + 2 с): при откате на исходную камеру плитка проявляется уже по её кадру
 const WAIT_MS = 5000
+// смена потока на той же плитке: дольше не держим старый кадр, даже если нового нет
+const SWAP_WAIT_MS = 800
 
 /**
  * Целый кадр: не чёрный в середине и у каждого края. Первые кадры iOS бывают картинкой поменьше
@@ -201,6 +203,47 @@ export function useK4VideoFade() {
 		poll()
 	}
 
+	/**
+	 * ket4tec (NAS_CLOUD#159): крупная плитка переиспользуется при смене говорящего, у <video> подменяют srcObject. Safari в этот момент
+	 * отдаёт пустое поле на 0,15-0,2 с. Вызывать ДО подмены: копия последнего кадра ложится поверх видео и держится, пока новый поток
+	 * не даст первый целый кадр; затем мгновенно снимается (без фейда и масштаба).
+	 *
+	 * @param {() => HTMLVideoElement} getVideo
+	 */
+	function swap(getVideo) {
+		const v = getVideo()
+		if (!v || leaving || !state.opaque || !keep(v)) {
+			return
+		}
+		stopKeep()
+		snap.style.opacity = '1'
+		const t = tok
+		const t0 = performance.now()
+		let fresh = false
+		let ct0 = -1
+		const poll = () => {
+			if (t !== tok) {
+				return // сам set() (вкл/выкл) взял снимок на себя
+			}
+			if (ct0 < 0) {
+				ct0 = v.currentTime
+				v.requestVideoFrameCallback?.(() => {
+					fresh = true
+				})
+			} else if (!v.requestVideoFrameCallback && v.currentTime !== ct0) {
+				fresh = true
+			}
+			if ((fresh && v.readyState >= 2 && v.videoWidth && hasPicture(v)) || performance.now() - t0 > SWAP_WAIT_MS) {
+				snap.style.opacity = '0'
+				startKeep(getVideo)
+				return
+			}
+			setTimeout(poll, 30)
+		}
+		// подмена идёт сразу после вызова: первый опрос - после неё
+		setTimeout(poll, 0)
+	}
+
 	onBeforeUnmount(() => {
 		tok++
 		clearTimeout(timer)
@@ -208,5 +251,5 @@ export function useK4VideoFade() {
 		snap.remove()
 	})
 
-	return { state, set }
+	return { state, set, swap }
 }
