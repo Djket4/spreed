@@ -38,6 +38,10 @@ const STATS_CALLLOG_MS = 10000 // framing_stats в журнал звонка
 // Полный кадр — 320: BlazeFace short-range сам работает на 128×128, больше смысла нет. Плитка — 480: вырезка исходных пикселей
 // (далёкое лицо в плитке 40 % кадра остаётся крупным), но не апскейл до размера кадра.
 const DETECT_FULL_PX = 320
+// ket4tec (NAS_CLOUD#160): сторона выходного квадрата не больше 720 (simulcast-верх 720p; 1080 на iPhone не вывозит),
+// при нехватке мощности ступенью ниже — вдвое
+const OUT_MAX_PX = 720
+const outSide = (w, h, eased) => Math.min(w, h, eased ? OUT_MAX_PX / 2 : OUT_MAX_PX)
 const DETECT_TILE_PX = 480
 // ket4tec (NAS_CLOUD#271): было 2000 — рука у лица или контровой свет на 2+ с уводили окно в общий план и обратно (скачок общий↔крупный)
 const LOST_AFTER_MS = 8000
@@ -358,7 +362,7 @@ export default class FaceFrame extends TrackSinkSource {
 		// в captureStream таким: Safari показывал на плитке квадрат поменьше посередине ~0,3 с, потом скачок во всю плитку
 		const { width: sw, height: sh } = input.getSettings?.() || {}
 		if (sw && sh) {
-			canvas.width = canvas.height = Math.min(sw, sh)
+			canvas.width = canvas.height = outSide(sw, sh)
 		}
 		// Safari (предположение): captureStream отложенного от DOM канваса может отдавать чёрные кадры
 		canvas.style.cssText = video.style.cssText
@@ -422,7 +426,7 @@ export default class FaceFrame extends TrackSinkSource {
 			st: { t: t0, in: 0, cb: 0, draw: 0, out: 0, outq: 0 }, // отметки прошлой записи framing_stats
 		}
 		this._digital = d
-		logEv('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, cfgfps: input.getSettings?.().frameRate, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen })
+		logEv('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, cfgfps: input.getSettings?.().frameRate, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen, ow: canvas.width, oh: canvas.height })
 		// выход — сразу канвас: до первой отрисовки кадров нет, на плитках держится облако
 		d.output = canvas.captureStream().getVideoTracks()[0]
 		if (!d.output) {
@@ -660,7 +664,12 @@ export default class FaceFrame extends TrackSinkSource {
 		const lowLimit = d.inFps === null ? MIN_FPS : d.inSrc === 'quality' ? d.inFps * LOW_FPS_RATIO : Math.min(MIN_FPS, d.inFps * LOW_FPS_RATIO)
 		if (d.fps < lowLimit && !d.frozen) {
 			d.lowSince = d.lowSince || now
-			if (now - d.lowSince >= LOW_FPS_MS) {
+			if (now - d.lowSince >= LOW_FPS_MS && !d.eased) {
+				// ступень до остановки: рабочее разрешение вдвое и детектор вдвое реже; не помогло — остановка
+				d.eased = true
+				d.lowSince = 0
+				logEv('framing_ease', { inst: this._inst, drawfps: round1(d.fps || 0), infps: (d.inFps ?? null) === null ? null : round1(d.inFps) })
+			} else if (now - d.lowSince >= LOW_FPS_MS) {
 				this._fallback(d, 'lowFps', d.inFps === null ? `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс` : `отрисовка ${stats.fps} к/с при входе ${round1(d.inFps)} к/с (< ${LOW_FPS_RATIO * 100}%) в течение ${LOW_FPS_MS} мс`)
 			}
 		} else {
@@ -738,6 +747,7 @@ export default class FaceFrame extends TrackSinkSource {
 	_maybeDetect(d, now) {
 		const { video } = d
 		const full = now >= d.nextDetectAt
+		const iv = d.eased ? DETECT_INTERVAL_MS * 2 : DETECT_INTERVAL_MS
 		// до первой отрисовки плитки — каждый кадр: лицо у края полный кадр не видит, по 2 плитки/с искали бы до 2 с
 		const tileDue = !full && d.noFace && (!d.placed || now >= d.nextTileAt)
 		if (d.frozen || !d.detector || !(full || tileDue)) {
@@ -783,7 +793,7 @@ export default class FaceFrame extends TrackSinkSource {
 			d.durs.shift()
 		}
 		if (full) {
-			d.nextDetectAt = now + (dur > SLOW_DETECT_MS ? Math.max(DETECT_INTERVAL_MS, dur * 4) : DETECT_INTERVAL_MS)
+			d.nextDetectAt = now + (dur > SLOW_DETECT_MS ? Math.max(iv, dur * 4) : iv)
 		} else {
 			d.nextTileAt = now + TILE_INTERVAL_MS
 			d.nextDetectAt = Math.max(d.nextDetectAt, now + (dur > SLOW_DETECT_MS ? dur * 4 : 0))
@@ -799,7 +809,7 @@ export default class FaceFrame extends TrackSinkSource {
 		// сдвиг к лицу видят все — собеседники, своя плитка и превью проверки устройств
 		const W = video.videoWidth
 		const H = video.videoHeight
-		const side = Math.min(W, H)
+		const side = outSide(W, H, d.eased)
 		if (canvas.width !== side || canvas.height !== side) {
 			canvas.width = side
 			canvas.height = side
