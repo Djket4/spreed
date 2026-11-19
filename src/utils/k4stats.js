@@ -333,7 +333,7 @@ function lagStep() {
 			if (!seenTr.has(t)) {
 				seenTr.add(t)
 				for (const ev of ['mute', 'unmute', 'ended']) {
-					const fn = () => calllog('track_state', { kind: t.kind, ev })
+					const fn = () => calllog('track_state', { kind: t.kind, st: ev })
 					t.addEventListener(ev, fn)
 					stopWatch.push(() => t.removeEventListener(ev, fn))
 				}
@@ -431,7 +431,7 @@ export function startK4stats(c) {
 	lagTimer = setInterval(lagStep, LAG_MS)
 	if (typeof document !== 'undefined') {
 		for (const [target, ev, name] of [[document, 'visibilitychange'], [document, 'freeze', 'freeze'], [document, 'resume', 'resume'], [window, 'pagehide', 'pagehide']]) {
-			const fn = () => calllog('page_state', { ev: name || (document.hidden ? 'hidden' : 'visible') })
+			const fn = () => calllog('page_state', { st: name || (document.hidden ? 'hidden' : 'visible') })
 			target.addEventListener(ev, fn)
 			stopWatch.push(() => target.removeEventListener(ev, fn))
 		}

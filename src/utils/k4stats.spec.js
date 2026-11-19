@@ -278,15 +278,18 @@ describe('рантайм', () => {
 			const fire = (m, name) => m.mock.calls.find((c) => c[0] === name)[1]()
 			fire(track.addEventListener, 'mute')
 			fire(pc.addEventListener, 'connectionstatechange')
-			expect(ev('track_state')[0][1]).toEqual({ kind: 'video', ev: 'mute' })
+			expect(ev('track_state')[0][1]).toEqual({ kind: 'video', st: 'mute' })
 			expect(ev('pc_state')[0][1]).toEqual({ ice: 'connected', conn: 'connected' })
 			document.dispatchEvent(new Event('freeze'))
-			expect(ev('page_state')[0][1]).toEqual({ ev: 'freeze' })
+			expect(ev('page_state')[0][1]).toEqual({ st: 'freeze' })
 			await vi.advanceTimersByTimeAsync(15000)
 			for (const k of ['rtc_health', 'stall', 'track_state', 'pc_state', 'page_state']) {
 				for (const [, d] of ev(k)) {
 					expect(Object.keys(d).length).toBeLessThanOrEqual(12)
-					Object.keys(d).forEach((x) => expect(x).toMatch(/^[a-z]{1,12}$/))
+					Object.keys(d).forEach((x) => {
+						expect(x).toMatch(/^[a-z]{1,12}$/)
+						expect(['ev', 'room', 't', 'dt', 'sess', 'ty']).not.toContain(x) // их выбрасывает parse_client на сервере
+					})
 				}
 			}
 		})
