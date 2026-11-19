@@ -15,17 +15,22 @@
 					:key="it.t + it.id"
 					type="button"
 					class="k4-snaps__it"
-					:class="{ 'k4-snaps__it--on': state.bg && state.bg.t === it.t && state.bg.id === it.id }"
+					:class="{ 'k4-snaps__it--on': state.bg && state.bg.id === it.id && (state.bg.t === it.t || (it.pdf && state.bg.t === 'p')) }"
 					:title="it.name"
 					:aria-label="'Показать всем: ' + it.name"
 					:disabled="busy"
 					@click="show(it)">
-					<img :src="bgUrl(it, 256)" alt="" loading="lazy">
+					<b v-if="it.pdf" class="k4-snaps__pdf">PDF<i>{{ it.name }}</i></b>
+					<img
+						v-else
+						:src="bgUrl(it, 256)"
+						alt=""
+						loading="lazy">
 					<span>Показать всем</span>
 				</button>
 			</div>
 		</template>
-		<p v-if="!groups[0].items.length && !groups[1].items.length" class="k4-snaps__empty">
+		<p v-if="!groups.some((g) => g.items.length)" class="k4-snaps__empty">
 			Снимки доски и картинки из беседы появятся здесь — их можно показать всем и рисовать поверх
 		</p>
 	</div>
@@ -40,6 +45,7 @@ import { useGetToken } from '../../../composables/useGetToken.ts'
 import { SHARED_ITEM } from '../../../constants.ts'
 import { useSharedItemsStore } from '../../../stores/sharedItems.ts'
 import { useSidebarStore } from '../../../stores/sidebar.ts'
+import { showChatFile } from './fileToBoard.js'
 import { bgUrl, canShow, onDraw, showImage, state } from './useDrawing.js'
 
 const props = defineProps({
@@ -61,6 +67,15 @@ const groups = computed(() => [
 			.filter((m) => m.messageParameters?.file?.mimetype?.startsWith('image/'))
 			.sort((a, b) => b.id - a.id)
 			.map((m) => ({ t: 'm', id: +m.id, name: m.messageParameters.file.name })),
+	},
+	// ket4tec (NAS_CLOUD#107): PDF из беседы — на доске постранично
+	{
+		id: 'p',
+		title: 'PDF из беседы',
+		items: Object.values(sharedItemsStore.sharedItems(token.value)[SHARED_ITEM.TYPES.FILE] || {})
+			.filter((m) => m.messageParameters?.file?.mimetype === 'application/pdf')
+			.sort((a, b) => b.id - a.id)
+			.map((m) => ({ t: 'm', id: +m.id, pdf: true, name: m.messageParameters.file.name })),
 	},
 ])
 
@@ -103,7 +118,7 @@ async function show(it) {
 			return
 		}
 		// сервер отдаёт гостям (у них нет чата) только отмеченное: картинку беседы и снимок; отмечаем после снимка старой доски
-		const err = await showImage({ t: it.t, id: it.id }, () => axios.post(generateOcsUrl(it.t === 'm' ? 'apps/spreed/api/v1/k4draw/{token}/image/{id}' : 'apps/spreed/api/v1/k4draw/{token}/snapshot/{id}', { token: token.value, id: it.id })))
+		const err = it.pdf ? await showChatFile(it.id, true) : await showImage({ t: it.t, id: it.id }, () => axios.post(generateOcsUrl(it.t === 'm' ? 'apps/spreed/api/v1/k4draw/{token}/image/{id}' : 'apps/spreed/api/v1/k4draw/{token}/snapshot/{id}', { token: token.value, id: it.id })))
 		// показано — панель закрываем: картинка во весь экран доски
 		err ? showError(err) : sidebarStore.hideSidebar()
 	} catch (e) {
@@ -117,6 +132,7 @@ async function show(it) {
 
 <style lang="scss" scoped>
 .k4-snaps {
+	&__pdf { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; font-size: 20px; color: var(--color-text-maxcontrast); i { max-width: 90%; overflow: hidden; font-size: 11px; font-style: normal; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; } }
 	padding: 4px 0 12px;
 	h3 {
 		margin: 8px 0 6px;

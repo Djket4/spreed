@@ -8,7 +8,7 @@
 		ref="root"
 		class="k4-board"
 		:class="{ 'k4-board--draw': state.mode, 'k4-board--strip': people.length, 'k4-board--img': state.bg }"
-		:style="{ ...(state.bg ? { '--k4-bgimg': `url('${bgUrl(state.bg)}')` } : {}), ...fit.root }">
+		:style="{ ...(bgImg ? { '--k4-bgimg': `url('${bgImg}')` } : {}), ...fit.root }">
 		<DrawLayer :key="state.board" :presenter="state.board" board />
 		<!-- ket4tec (NAS_CLOUD#103 п.42, 53): камеры участников полосой рядом с доской (iPad — сбоку, iPhone — сверху);
 			звук идёт отдельно (CallParticipantsAudioPlayer), здесь видео без звука -->
@@ -41,6 +41,28 @@
 				<K4TileStats :peerId="p.me ? 'local' : p.id" compact />
 			</div>
 		</div>
+		<!-- ket4tec (NAS_CLOUD#107): листание PDF — видно всем, листает тот, кто показывает -->
+		<div
+			v-if="state.bg && state.bg.t === 'p'"
+			class="k4-pager"
+			role="group"
+			aria-label="Страницы PDF">
+			<button
+				type="button"
+				aria-label="Предыдущая страница"
+				:disabled="turning || !canTurn(state.bg.page - 1)"
+				@click="turn(state.bg.page - 1)">
+				‹
+			</button>
+			<span aria-live="polite">{{ bgErr || (bgBusy ? 'Загрузка…' : `стр. ${state.bg.page} из ${state.bg.pages}`) }}</span>
+			<button
+				type="button"
+				aria-label="Следующая страница"
+				:disabled="turning || !canTurn(state.bg.page + 1)"
+				@click="turn(state.bg.page + 1)">
+				›
+			</button>
+		</div>
 		<!-- ket4tec (правило 11.11): доска общая — открыл любой, у всех; закрыл любой, кому можно рисовать, — у всех -->
 		<button
 			v-if="canDraw()"
@@ -56,6 +78,7 @@
 </template>
 
 <script setup>
+import { showError } from '@nextcloud/dialogs'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
@@ -68,11 +91,52 @@ import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useActorStore } from '../../../stores/actor.ts'
 import { callParticipantCollection, localMediaModel } from '../../../utils/webrtc/index.js'
 import { k4net, peerGone, phoneStrip } from '../shared/k4peer.js' // ket4tec (NAS_CLOUD#195)
-import { bgUrl, canDraw, humans, myId, passBoard, requestCloseBoard, showOf, state } from './useDrawing.js'
+import { bgSrc } from './pdfBg.js'
+import { bgUrl, canDraw, canTurn, humans, myId, passBoard, requestCloseBoard, showOf, state, turnPage } from './useDrawing.js'
 
 const token = useGetToken()
 
 const store = useStore()
+
+// ket4tec (NAS_CLOUD#107): картинка фона; страницу PDF каждый рисует сам, пока рисует — прежний фон убран
+const bgImg = ref('')
+const bgBusy = ref(false)
+const bgErr = ref('')
+const turning = ref(false)
+let bgSeq = 0
+watch(() => state.bg, async (bg) => {
+	const n = ++bgSeq
+	bgErr.value = ''
+	if (bg?.t !== 'p') {
+		bgBusy.value = false
+		bgImg.value = bg ? bgUrl(bg) : ''
+		return
+	}
+	bgImg.value = ''
+	bgBusy.value = true
+	try {
+		const u = await bgSrc(bg, token.value)
+		n === bgSeq && (bgImg.value = u)
+	} catch (e) {
+		console.error('k4draw pdf page', e)
+		n === bgSeq && (bgErr.value = 'Не удалось открыть страницу PDF')
+	} finally {
+		n === bgSeq && (bgBusy.value = false)
+	}
+}, { immediate: true })
+
+/**
+ * @param {number} page страница
+ */
+async function turn(page) {
+	turning.value = true
+	try {
+		const err = await turnPage(page)
+		err && showError(err)
+	} finally {
+		turning.value = false
+	}
+}
 const actor = useActorStore()
 /** Участники звонка для полосы камер: я первым, дальше остальные. */
 const people = computed(() => {
@@ -281,6 +345,26 @@ onBeforeUnmount(() => {
 	}
 	// ket4tec (NAS_CLOUD#112): рамка поверх видео/облака; красной «без микрофона» нет (NAS_CLOUD#195), только говорящий
 	&--talk::after { content: ''; position: absolute; z-index: 3; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 3px var(--k7-acc, #a86bff); }
+}
+.k4-pager {
+	position: absolute;
+	z-index: 7;
+	top: calc(20px + var(--k4-st));
+	left: 20px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	height: 36px;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: #2a2426d9;
+	color: #f3eee9;
+	font-size: 13px;
+	font-weight: 600;
+	box-shadow: 0 4px 14px #0004, inset 0 0 0 1px #ffffff1a;
+	button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: inherit; font: inherit; font-size: 22px; line-height: 1; touch-action: manipulation; cursor: pointer; }
+	button:disabled { opacity: .35; cursor: default; }
+	span { min-width: 84px; text-align: center; }
 }
 .k4-board__close {
 	position: absolute;

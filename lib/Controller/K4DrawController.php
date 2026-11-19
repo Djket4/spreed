@@ -226,7 +226,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	/**
 	 * Картинка из сообщения беседы с файлом (системное `file_shared` этой комнаты), иначе null.
 	 */
-	private function chatFile(int $messageId): ?File {
+	private function chatFile(int $messageId, bool $pdf = false): ?File {
 		try {
 			$c = $this->chatManager->getComment($this->room, (string)$messageId);
 			// обычное сообщение пользователя (verb comment) с подделанным JSON не годится
@@ -245,7 +245,9 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		} catch (\Throwable) {
 			return null;
 		}
-		return $node instanceof File && str_starts_with($node->getMimeType(), 'image/') ? $node : null;
+		// ket4tec (NAS_CLOUD#107): PDF беседы — страницы фона доски; «картинка» — только image/*
+		$ok = $node instanceof File && ($pdf ? $node->getMimeType() === 'application/pdf' : str_starts_with($node->getMimeType(), 'image/'));
+		return $ok ? $node : null;
 	}
 
 	/** Выведенное на доску в этой комнате ('m<id>' — картинка беседы, 's<id>' — снимок); гость без чата видит только это. */
@@ -298,7 +300,7 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 		'messageId' => '\d{1,18}',
 	])]
 	public function showChatImage(int $messageId): DataResponse {
-		if ($this->participant->cannotSeeChat() || $this->chatFile($messageId) === null) {
+		if ($this->participant->cannotSeeChat() || ($this->chatFile($messageId) ?? $this->chatFile($messageId, true)) === null) {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		}
 		return $this->markShown('m' . $messageId) ? new DataResponse([]) : new DataResponse([], Http::STATUS_INTERNAL_SERVER_ERROR);
@@ -352,6 +354,30 @@ class K4DrawController extends AEnvironmentAwareOCSController {
 	public function chatImage(int $messageId, int $size = 1600): Response {
 		$file = (!$this->participant->cannotSeeChat() || in_array('m' . $messageId, $this->shown(), true)) ? $this->chatFile($messageId) : null;
 		return $file ? $this->image($file, $size) : new DataResponse([], Http::STATUS_NOT_FOUND);
+	}
+
+	/**
+	 * ket4tec (NAS_CLOUD#107): оригинал PDF из беседы — клиент сам рисует страницы фона доски (pdf.js).
+	 * Права те же, что у картинки: участник с чатом — любой PDF беседы; гость без чата — только выведенный на доску.
+	 */
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[RequireModeratorOrNoLobby]
+	#[RequireParticipant]
+	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/k4draw/{token}/pdf/{messageId}', requirements: [
+		'apiVersion' => '(v1)',
+		'token' => '[a-z0-9]{4,30}',
+		'messageId' => '\d{1,18}',
+	])]
+	public function chatPdf(int $messageId): Response {
+		$file = (!$this->participant->cannotSeeChat() || in_array('m' . $messageId, $this->shown(), true)) ? $this->chatFile($messageId, true) : null;
+		if (!$file) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+		$res = new FileDisplayResponse($file, Http::STATUS_OK, ['Content-Type' => 'application/pdf']);
+		$res->cacheFor(3600, false, true);
+		return $res;
 	}
 
 	/**
