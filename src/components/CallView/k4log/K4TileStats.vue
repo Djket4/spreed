@@ -181,9 +181,11 @@ export default {
 <!-- ket4tec (NAS_CLOUD#270): справа плитки стоит значок «микрофон выключен» (.k4-micoff, 24px + 6px) — строка замеров сдвигается левее него.
 Без scoped: сестринский значок живёт в родителе -->
 <style lang="scss">
-.k4ts--right:has(~ .k4-micoff) {
+.k4ts.k4ts--right:has(~ .k4-micoff) {
+	// NAS_CLOUD#371: width:auto + container-type:inline-size давали плашке ширину 0 (containment обнуляет внутренний размер),
+	// текст вылезал за край и обрезался. Левый и правый край заданы вместе — ширина растягивается по плитке, текст сжимается многоточием
+	left: 4px;
 	right: 34px;
-	width: auto; // фиксированная ширина на узкой плитке (111 px) выталкивала текст под значок
-	max-width: calc(100% - 38px);
+	width: auto;
 }
 </style>

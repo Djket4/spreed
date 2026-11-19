@@ -755,7 +755,10 @@ html.k7f .avatar-wrapper[data-k4ini]::before { content: attr(data-k4ini); positi
 .app-sidebar-tabs__tab-caption { overflow: visible !important; text-overflow: clip !important; white-space: nowrap; }
 // NAS_CLOUD#109 п.13: три вкладки в звонке на iPad — «Участники (2)» обрезалось; вкладки по ширине подписи, а не поровну
 .app-sidebar-tabs__nav button[class*='sidebarTabsButton'] { flex: 1 1 auto !important; }
-.app-sidebar-tabs__nav [class*='sidebarTabsButton__name'] { overflow: visible !important; text-overflow: clip !important; }
+// NAS_CLOUD#371: в узком окне (1000x600) подписи налезали друг на друга — кнопка может сжиматься ниже ширины подписи, подпись сокращается многоточием
+.app-sidebar-tabs__nav button[class*='sidebarTabsButton'] { min-width: 0 !important; }
+.app-sidebar-tabs__nav [class*='sidebarTabsButton__name'] { overflow: hidden !important; text-overflow: ellipsis !important; min-width: 0; max-width: 100%; }
+.app-sidebar-tabs__tab-caption { overflow: hidden !important; text-overflow: ellipsis !important; }
 
 // ket4tec (NAS_CLOUD#162 п.2): стопка уведомлений в звонке — в полосе под верхней строкой (--k7-toast-top ставит main.js);
 // тема облака даёт ей top:128px, перебиваем специфичностью. Вне звонка переменной нет — остаётся 128px.
