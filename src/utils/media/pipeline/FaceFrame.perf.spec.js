@@ -423,4 +423,20 @@ describe('FaceFrame: рабочее разрешение выхода (NAS_CLOUD
 		expect(probeCalls).toBeLessThanOrEqual(20)
 		expect(ff.path).toBe('digital')
 	})
+	test('проба раз в секунду, presentedFrames +30 за колбэк -> outfps в framing_stats около 30', async () => {
+		setRates(30, 30)
+		const base = vproto.requestVideoFrameCallback
+		let pf = 0
+		vproto.requestVideoFrameCallback = function(cb) {
+			if (ff?._digital && this !== ff._digital.video) {
+				return setTimeout(() => cb(performance.now(), { presentedFrames: pf += 30 }), 1000)
+			}
+			return base.call(this, cb)
+		}
+		start()
+		await vi.advanceTimersByTimeAsync(31000)
+		const st = calllog.mock.calls.filter(([k]) => k === 'framing_stats').pop()[1]
+		expect(st.outfps).toBeGreaterThan(25)
+		expect(st.outfps).toBeLessThan(35)
+	})
 })

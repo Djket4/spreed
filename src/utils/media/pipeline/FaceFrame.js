@@ -452,9 +452,14 @@ export default class FaceFrame extends TrackSinkSource {
 		document.body.appendChild(probe)
 		d.probe = probe
 		if (probe.requestVideoFrameCallback) {
-			const onOut = () => {
+			let lastOutPF = null
+			const onOut = (_now, meta) => {
 				if (!d.stopped) {
-					d.outFrames = (d.outFrames || 0) + 1
+					// presentedFrames — счётчик показанных кадров: при редком опросе считаем приращение, а не колбэки; стоячие метаданные (Safari) — не меньше 1 за колбэк
+					const pf = meta?.presentedFrames
+					const step = typeof pf === 'number' && lastOutPF !== null ? Math.max(pf - lastOutPF, 1) : 1
+					lastOutPF = typeof pf === 'number' ? pf : null
+					d.outFrames = (d.outFrames || 0) + step
 					// ket4tec (NAS_CLOUD#160): после публикации не декодируем пробу на каждый кадр — один колбэк в секунду
 					if (d.published) {
 						setTimeout(() => !d.stopped && probe.requestVideoFrameCallback(onOut), PROBE_POLL_MS)
