@@ -923,13 +923,11 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	 */
 	function handleIceConnectionStateFailed(peer) {
 		if (!showedTURNWarning && !signaling.settings.turnservers.length) {
+			// ket4tec (NAS_CLOUD#162): без технических слов и ссылки на чужую документацию
 			showError(
-				t('spreed', 'Could not establish a connection with at least one participant. A TURN server might be needed for your scenario. Please ask your administrator to set one up following {linkstart}this documentation{linkend}.')
-					.replace('{linkstart}', '<a  target="_blank" rel="noreferrer nofollow" class="external" href="https://nextcloud-talk.readthedocs.io/en/latest/TURN/">')
-					.replace('{linkend}', ' ↗</a>'),
+				'Связь со звонком не установлена: сеть блокирует соединение. Попробуйте другую сеть или обратитесь к администратору',
 				{
 					timeout: TOAST_PERMANENT_TIMEOUT,
-					isHTML: true,
 				},
 			)
 			showedTURNWarning = true
@@ -1703,8 +1701,8 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			&& supportsRTCPeerConnection)
 		|| (error.name === 'NotAllowedError'
 			&& error.message && error.message.includes('Only secure origins'))) {
-			message = t('spreed', 'Access to microphone & camera is only possible with HTTPS')
-			message += ': ' + t('spreed', 'Please move your setup to HTTPS')
+			// ket4tec (NAS_CLOUD#162): без технических слов
+			message = 'Микрофон и камера недоступны: ссылка открыта не в защищённом виде. Откройте звонок по ссылке из приглашения'
 		} else if (error.name === 'NotAllowedError') {
 			message = t('spreed', 'Access to microphone & camera was denied')
 			timeout = 5000

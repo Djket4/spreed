@@ -68,7 +68,7 @@ export function useSessionIssueHandler(): DeepReadonly<Ref<boolean>> {
 
 		const result = await spawnDialog(ConfirmDialog, {
 			name: t('spreed', 'Duplicate session'),
-			message: t('spreed', 'You are trying to join a conversation while having an active session in another window or device. This is currently not supported by Nextcloud Talk. What do you want to do?'),
+			message: 'Вы уже в этом обсуждении в другом окне или на другом устройстве. Одновременно в двух местах это не работает. Что сделать?', // ket4tec (NAS_CLOUD#162)
 			buttons: [
 				{
 					label: t('spreed', 'Leave this page'),

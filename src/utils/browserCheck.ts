@@ -81,7 +81,7 @@ export const blockCalls = (isFirefox && majorVersion < 52)
 /**
  * Reusable error message for unsupported browsers
  */
-export const unsupportedWarning = t('spreed', "The browser you're using is not fully supported by Nextcloud Talk. Please use the latest version of Mozilla Firefox, Microsoft Edge, Google Chrome, Opera or Apple Safari.")
+export const unsupportedWarning = 'Этот браузер поддерживается не полностью. Откройте звонок в свежей версии Chrome, Firefox, Edge, Opera или Safari.' // ket4tec (NAS_CLOUD#162)
 
 /**
  * Show an error toast if the browser is not fully supported

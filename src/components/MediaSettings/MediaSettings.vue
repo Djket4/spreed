@@ -598,7 +598,7 @@ export default {
 			const isInsecureContextAccordingToErrorMessage = this.audioStreamError.message && this.audioStreamError.message.includes('Only secure origins')
 			if ((this.audioStreamError.name === 'NotSupportedError' && isInsecureContext)
 				|| (this.audioStreamError.name === 'NotAllowedError' && isInsecureContextAccordingToErrorMessage)) {
-				return t('spreed', 'Access to microphone is only possible with HTTPS')
+				return 'Микрофон недоступен: ссылка открыта не в защищённом виде. Откройте звонок по ссылке из приглашения' // ket4tec (NAS_CLOUD#162)
 			}
 
 			if (this.audioStreamError.name === 'NotAllowedError') {
@@ -640,7 +640,7 @@ export default {
 			const isInsecureContextAccordingToErrorMessage = this.videoStreamError.message && this.videoStreamError.message.includes('Only secure origins')
 			if ((this.videoStreamError.name === 'NotSupportedError' && isInsecureContext)
 				|| (this.videoStreamError.name === 'NotAllowedError' && isInsecureContextAccordingToErrorMessage)) {
-				return t('spreed', 'Access to camera is only possible with HTTPS')
+				return 'Камера недоступна: ссылка открыта не в защищённом виде. Откройте звонок по ссылке из приглашения' // ket4tec (NAS_CLOUD#162)
 			}
 
 			if (this.videoStreamError.name === 'NotAllowedError') {

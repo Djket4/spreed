@@ -489,6 +489,25 @@ html.k7f .navigation-bottom:not(:has(button)) { display: none !important; }
 	}
 }
 
+// ---------- Параметры обсуждения: подзаголовки, пояснения, переключатели, кнопки (NAS_CLOUD#282 п.1) ----------
+// как «Проверка устройств»: акцент вместо штатного синего, капсулы вместо штатных таблеток, пояснения — тихим цветом темы
+:is(.modal-mask#conversation-settings-container, .modal-mask:has(#conversation-settings-container)) {
+	.app-settings-section__subtitle { margin: 18px 0 6px !important; color: var(--k7u-fg) !important; font-size: 15px !important; font-weight: 700 !important; }
+	:is(.app-settings-section__hint, [class*="__hint"]) { padding: 4px 0 8px !important; color: var(--k7u-fg2) !important; font-size: 13px !important; line-height: 1.4; }
+	.checkbox-radio-switch {
+		--color-primary-element: var(--k7u-acc);
+		--color-primary-element-hover: var(--k7u-acc2);
+		--color-primary-element-text: #fff;
+	}
+	.checkbox-radio-switch__text { color: var(--k7u-fg); font-size: 15px; font-weight: 600; }
+	.checkbox-radio-switch :is(.checkbox-radio-switch__content, label) { background: none !important; }
+	.checkbox-radio-switch--checked .checkbox-radio-switch__icon { color: var(--k7u-acc) !important; }
+	.app-settings__content .button-vue { min-height: 44px; border: 0 !important; border-radius: 999px !important; font-weight: 600; }
+	.app-settings__content .button-vue--primary { background: var(--k7u-grad) !important; color: #fff !important; }
+	.app-settings__content .button-vue--error { background: color-mix(in srgb, var(--k7u-dng) 16%, transparent) !important; color: var(--k7u-dng) !important; }
+	.app-settings__content .button-vue--warning { background: var(--k7u-bg3) !important; color: var(--k7u-fg) !important; }
+}
+
 // ---------- Список бесед в одну строку (блок 3) ----------
 // вариант аватарки «только буква» — html.k7-ava-letter (по умолчанию эмодзи)
 html.k7-ava-letter .conversation-icon .k7-ava {

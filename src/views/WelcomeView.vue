@@ -11,12 +11,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
-import TalkDashboard from '../components/Dashboard/TalkDashboard.vue'
-import EmptyView from '../components/EmptyView.vue'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
+import IconPlus from 'vue-material-design-icons/Plus.vue'
 import IconTalk from '../../img/app-dark.svg?raw'
-import { hasTalkFeature } from '../services/CapabilitiesManager.ts'
+import { getTalkConfig } from '../services/CapabilitiesManager.ts'
+import { EventBus } from '../services/EventBus.ts'
 
-const supportsTalkDashboard = hasTalkFeature('local', 'dashboard-event-rooms')
+// ket4tec (NAS_CLOUD#332): штатный экран-«панель» (встречи/упоминания/напоминания) убран, одинаково для всех ролей
+const canStartConversations = getTalkConfig('local', 'conversations', 'can-create')
 
 const store = useStore()
 const router = useRouter()
@@ -34,8 +37,8 @@ const text = computed(() => {
 	}
 
 	return {
-		name: t('spreed', 'Join a conversation or start a new one'),
-		description: t('spreed', 'Say hi to your friends and colleagues!'),
+		name: 'Выберите обсуждение',
+		description: 'Откройте обсуждение из списка или начните новое.',
 	}
 })
 
@@ -65,14 +68,28 @@ watchEffect(async () => {
 </script>
 
 <template>
-	<TalkDashboard v-if="supportsTalkDashboard" />
-	<EmptyView
-		v-else
+	<NcEmptyContent
+		class="empty-view k7-welcome"
 		:name="text.name"
 		:description="text.description">
 		<template #icon>
 			<NcLoadingIcon v-if="isCreatingConversationForCallUser" />
 			<NcIconSvgWrapper v-else :svg="IconTalk" />
 		</template>
-	</EmptyView>
+		<template v-if="canStartConversations && !isCreatingConversationForCallUser" #action>
+			<NcButton variant="primary" @click="EventBus.emit('new-conversation-dialog:show')">
+				<template #icon>
+					<IconPlus :size="20" />
+				</template>
+				Новое обсуждение
+			</NcButton>
+		</template>
+	</NcEmptyContent>
 </template>
+
+<style lang="scss" scoped>
+.k7-welcome {
+	height: 100%;
+	padding: calc(var(--default-grid-baseline) * 4);
+}
+</style>

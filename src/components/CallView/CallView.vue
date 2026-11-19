@@ -174,12 +174,12 @@
 
 		<!-- ket4tec (NAS_CLOUD#154): просьба организатора включить микрофон -->
 		<!-- ket4tec (NAS_CLOUD#162 п.2): плашка живёт в общей стопке уведомлений #k7-toasts; без стопки — под верхней строкой по центру -->
-		<Teleport to="#k7-toasts" :disabled="!hasToastStack()">
+		<Teleport to="#k7-toasts" :disabled="!k4HasStack">
 			<div
 				v-if="showAskUnmute"
 				:ref="k4PinAsk"
 				class="k4-ask-unmute k7-toast k7-toast-on"
-				:class="{ 'k4-ask-unmute--solo': !hasToastStack() }"
+				:class="{ 'k4-ask-unmute--solo': !k4HasStack }"
 				role="alert">
 				<!-- ket4tec (NAS_CLOUD#162 п.2): коротко, чтобы на телефоне было не больше двух строк -->
 				<span>Включите микрофон</span>
@@ -331,6 +331,7 @@ export default {
 		return {
 			k4, // ket4tec: k4draw
 			k4net, // ket4tec (NAS_CLOUD#195)
+			k4HasStack: !!document.getElementById('k7-toasts'), // ket4tec (NAS_CLOUD#270 п.1)
 			k4offline: !navigator.onLine,
 			k4localWas: false,
 			k4downAt: null,
@@ -752,6 +753,7 @@ export default {
 	},
 
 	mounted() {
+		this.k4WatchStack() // ket4tec (NAS_CLOUD#270 п.1)
 		// ket4tec (NAS_CLOUD#108): поворот в альбом во время показа — полосу сворачиваем (слушатель в одном месте: CSS не знает про состояние стора и оставил бы дыру 150 px)
 		this.k4lowMq = window.matchMedia?.(LOW_SCREEN)
 		// ket4tec (NAS_CLOUD#195 п.5): обратно в портрет — полоса снова открыта (в портрете стрелки сворачивания нет)
@@ -797,6 +799,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		this.k4StackObs?.disconnect() // ket4tec (NAS_CLOUD#270 п.1)
 		Object.keys(this.k4handToasts).forEach(this.k4hideHandToast) // ket4tec (NAS_CLOUD#264): звонок кончился — плашки «подняла руку» не висят
 		this.k4lowMq?.removeEventListener?.('change', this.k4lowFn)
 		window.removeEventListener('online', this.k4netFn)
@@ -837,8 +840,20 @@ export default {
 			}
 		},
 
-		hasToastStack() { // ket4tec (NAS_CLOUD#162 п.2)
-			return !!document.getElementById('k7-toasts')
+		// ket4tec (NAS_CLOUD#270 п.1): стопка облака (toasts.js) может появиться позже CallView — ждём её и переносим плашку
+		k4WatchStack() {
+			this.k4HasStack = !!document.getElementById('k7-toasts')
+			if (this.k4HasStack) {
+				return
+			}
+			this.k4StackObs = new MutationObserver(() => {
+				if (document.getElementById('k7-toasts')) {
+					this.k4HasStack = true
+					this.k4StackObs.disconnect()
+					this.k4StackObs = null
+				}
+			})
+			this.k4StackObs.observe(document.body, { childList: true, subtree: true })
 		},
 
 		t,
