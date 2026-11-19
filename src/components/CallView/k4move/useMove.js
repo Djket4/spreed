@@ -87,6 +87,10 @@ export const GET_TIMEOUT = 5000
 /** Попытки вернуться в звонок, если перенос не подтвердился, и пауза между ними. */
 export const REJOIN_TRIES = 3
 export const REJOIN_PAUSE = 2000
+/** Сколько после moved исходная следит, что получатель всё ещё в звонке (закрылся — предложить вернуться). */
+export const MOVED_WATCH = 60000
+/** Сколько после срока помнить перенос, чтобы добить очень поздний вход получателя (его joined приходит после join). */
+export const LATE_KEEP = 600000
 
 let seq = 0 // номер последней попытки получателя: старая попытка после новой ничего не делает
 let recv = null // идёт попытка как получатель (id)
@@ -188,6 +192,7 @@ export async function leaveVerified(from, id, token, rsid) {
 	if (there && !me) {
 		id && sendOp([from], 'moved', id)
 		moved(from, token)
+		watchRecipient(token, rsid)
 		return true
 	}
 	if (!there) { // получатель пропал или сервер не подтвердил (таймаут) — moved не шлём
@@ -201,12 +206,46 @@ export async function leaveVerified(from, id, token, rsid) {
 }
 
 /**
+ * После moved: пока получатель в звонке — молчим; пропал (закрыл вкладку) и меня нигде нет — предложить вернуться.
+ * Пропажа подтверждается двумя ответами сервера подряд (null — не ответил, не считается).
+ * Кнопка, не автовозврат: сервер не отличает закрытую вкладку от осознанного «Выйти».
+ *
+ * @param {string} token комната
+ * @param {string} rsid Nextcloud-сессия получателя
+ */
+async function watchRecipient(token, rsid) {
+	const end = Date.now() + MOVED_WATCH
+	let gone = 0
+	while (Date.now() < end) {
+		await sleep(POLL) // и роль источника к этому моменту уже снята
+		if (src || recv || store.getters.isInCall(token)) {
+			return // новый перенос или я уже в звонке
+		}
+		const list = await peersInCall(token)
+		if (!list) {
+			continue
+		}
+		if (list.some((p) => p.sessionId === useActorStore().sessionId)) {
+			return
+		}
+		gone = list.some((p) => p.sessionId === rsid) ? 0 : gone + 1
+		if (gone >= 2) {
+			ask('Звонок остался без вас', 'Вкладка, куда был перенесён звонок, закрылась. Вернуть звонок сюда?', [
+				{ label: 'Закрыть', callback: () => {} },
+				{ label: 'Вернуть сюда', type: 'primary', callback: () => rejoin(token) },
+			])
+			return
+		}
+	}
+}
+
+/**
  * Принимающая сторона: offer, ответ A, вход здесь, joined. Сама не выходит никогда — решает A по серверу.
  *
  * @param {string[]} sids исходные сессии
  * @param {string} token комната
  * @param {Function} join войти здесь без проверки
- * @return {Promise<string>} joined | busy | stale | superseded
+ * @return {Promise<string>} joined | busy | stale | superseded | failed
  */
 export async function moveHere(sids, token, join) {
 	if (src) {
@@ -250,7 +289,12 @@ export async function moveHere(sids, token, join) {
 			showInfo('Обновите страницу в браузере, где идёт звонок, и повторите перенос')
 			return 'stale'
 		}
-		await Promise.resolve().then(join).catch(() => {})
+		try {
+			await join()
+		} catch (e) { // вход упал: A не будим, звонок остаётся у неё
+			showError('Не удалось войти в звонок здесь: звонок остаётся в другой вкладке')
+			return 'failed'
+		}
 		sendOp([from], 'joined', id) // разбудить A; вошла ли я — A проверит по серверу
 		return 'joined'
 	} finally {
@@ -327,6 +371,7 @@ export function watchMove() {
 	let sig = null
 	let alive = true
 	const tries = new Map() // принятые переносы: id → { from, id, sid, until }
+	const late = new Map() // переносы, у которых вышел срок наблюдения: id → t (помнить LATE_KEEP)
 	const finish = (t, token, rsid) => {
 		if (src?.out) {
 			return
@@ -361,6 +406,7 @@ export function watchMove() {
 		}
 		if (tries.get(t.id) === t) {
 			tries.delete(t.id)
+			alive && !t.v1 && late.set(t.id, t) // поздний joined получателя (после LATE_WAIT) ещё добьём
 		}
 	}
 	const onMsg = (d) => {
@@ -406,7 +452,17 @@ export function watchMove() {
 			}
 			return
 		}
-		const t = tries.get(id)
+		let t = tries.get(id)
+		const l = op === 'joined' && late.get(id)
+		if (l) {
+			late.delete(id)
+			if (!t && !src && l.from === from && Date.now() < l.until + LATE_WAIT + LATE_KEEP && store.getters.isInCall(token)) {
+				t = l // получатель вошёл совсем поздно: одна проверка по серверу; вошла — выходим, нет — забыли
+				tries.set(id, t)
+				check(t, token).finally(() => tries.get(id) === t && tries.delete(id))
+				return
+			}
+		}
 		if (op === 'joined' && t && t.from === from) {
 			check(t, token) // проверить сразу, не ждать шага опроса
 		}

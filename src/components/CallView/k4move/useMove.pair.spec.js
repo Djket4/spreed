@@ -5,10 +5,10 @@
 // и общий сервер: список сессий в звонке (fetchPeers), которым управляет тест. Старая вкладка — фикстура с боевого 8bd62f6 (v1).
 // Инвариант каждого сценария: моих сессий в звонке на сервере никогда не ноль.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { JOIN_WAIT } from './useMove.js'
+import { JOIN_WAIT, LATE_WAIT, MOVED_WATCH } from './useMove.js'
 
 const bus = new Map()
-const srv = { calls: new Set(), min: Infinity, drop: () => false, delay: () => 20 }
+const srv = { calls: new Set(), spans: [], open: null, t0: 0, allow: null, drop: () => false, delay: () => 20 }
 
 /**
  * Вкладка: свой экземпляр useMove со своим store, диалогами и сигналингом.
@@ -112,10 +112,30 @@ async function tab(sid, file = './useMove.js', o = {}) {
 
 const OLD = './useMove.v1prod.fixture.js'
 const calls = () => [...srv.calls].sort()
+/** Пустой звонок (ноль моих сессий) — фиксируем промежутки: начало и конец в мс от старта теста. */
+function watchEmpty() {
+	const t = Date.now() - srv.t0
+	if (!srv.calls.size && !srv.open) {
+		srv.open = { from: t }
+	} else if (srv.calls.size && srv.open) {
+		srv.spans.push({ ...srv.open, to: t })
+		srv.open = null
+	}
+}
+/**
+ * Ноль сессий допустим только в явно названном окне: начало не раньше from, конец не позже to, суммарно не дольше max мс.
+ *
+ * @param {number} from мс от старта теста
+ * @param {number} to мс от старта теста
+ * @param {number} max допустимая длительность
+ */
+const allowEmpty = (from, to, max) => {
+	srv.allow = { from, to, max }
+}
 async function run(ms) {
 	for (let t = 0; t < ms; t += 5) {
 		await vi.advanceTimersByTimeAsync(5)
-		srv.min = srv.min < 0 ? srv.min : Math.min(srv.min, srv.calls.size)
+		watchEmpty()
 	}
 }
 
@@ -124,13 +144,23 @@ describe('перенос на паре вкладок, истина у серв�
 		vi.useFakeTimers()
 		bus.clear()
 		srv.calls.clear()
-		srv.min = Infinity
+		srv.spans = []
+		srv.open = null
+		srv.allow = null
+		srv.t0 = Date.now()
 		srv.drop = () => false
 		srv.delay = () => 20
 	})
 	afterEach(() => {
 		bus.forEach((p) => p.unwatch?.())
-		srv.min < 0 || expect(srv.min).toBeGreaterThan(0) // ноль сессий в звонке — никогда (кроме v1)
+		watchEmpty()
+		const spans = srv.open ? [...srv.spans, { ...srv.open, to: Date.now() - srv.t0 }] : srv.spans
+		if (!srv.allow) {
+			expect(spans).toEqual([]) // ноль сессий в звонке — никогда, кроме названных окон
+		} else {
+			spans.forEach((x) => expect([x.from >= srv.allow.from, x.to <= srv.allow.to]).toEqual([true, true]))
+			expect(spans.reduce((n, x) => n + x.to - x.from, 0)).toBeLessThanOrEqual(srv.allow.max)
+		}
 		vi.useRealTimers()
 	})
 
@@ -250,7 +280,7 @@ describe('перенос на паре вкладок, истина у серв�
 	})
 
 	it('B закрылась во время 4-секундного выхода A: A возвращается в звонок, moved и appPost нет', async () => {
-		srv.min = -1 // ожидаемо и неустранимо: B закрылась сама во время выхода A — пусто ~0,1 с до возврата A; итог — одна
+		allowEmpty(4100, 4400, 200) // неустранимо: B закрылась во время выхода A — пусто ~120 мс (4150–4270) до возврата A; итог — одна
 		const a = await tab('a', './useMove.js', { inCall: true, leaveMs: 4000 })
 		const b = await tab('b')
 		const moved = []
@@ -282,7 +312,7 @@ describe('перенос на паре вкладок, истина у серв�
 	})
 
 	it('задержанный проверочный GET после выхода A: B закрылась, ответ через 20 с — таймаут, A возвращается, moved нет', async () => {
-		srv.min = -1 // ожидаемо: B закрылась уже после выхода A — пусто до таймаута GET (5 с) и возврата A; итог — одна
+		allowEmpty(500, 5400, 5000) // B закрылась после выхода A: пусто до таймаута GET (5 с) и возврата A, не дольше; итог — одна
 		let slow = false
 		srv.delay = () => (!srv.calls.has('nc-a') && srv.calls.has('nc-b') && !slow ? (slow = true, 20000) : 20)
 		const a = await tab('a', './useMove.js', { inCall: true })
@@ -301,7 +331,7 @@ describe('перенос на паре вкладок, истина у серв�
 	})
 
 	it('восстановительный join падает: 3 попытки с проверкой по серверу, потом плашка «Войти»; по кнопке — в звонке', async () => {
-		srv.min = -1 // ожидаемо: вернуться не удалось — пусто до нажатия «Войти»
+		allowEmpty(4100, 12700, 8600) // вернуться не удалось: пусто с выхода A (4,1 с) до нажатия «Войти» (~12,6 с), не дольше
 		const a = await tab('a', './useMove.js', { inCall: true, leaveMs: 4000 })
 		const b = await tab('b')
 		let tries = 0
@@ -332,5 +362,85 @@ describe('перенос на паре вкладок, истина у серв�
 		await run(JOIN_WAIT + 31000)
 		expect(calls()).toEqual(['nc-a'])
 		expect(a.posts).toEqual([])
+	})
+
+	it('восстановительный join бросает reject (и синхронный throw): 3 попытки, плашка «Войти», по кнопке — в звонке', async () => {
+		allowEmpty(4100, 12700, 8600)
+		const a = await tab('a', './useMove.js', { inCall: true, leaveMs: 4000 })
+		const b = await tab('b')
+		let tries = 0
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(500)
+		a.m.setJoiner(async () => {
+			tries++
+			throw new Error('join rejected')
+		})
+		b.close()
+		await run(12000)
+		expect(tries).toBe(3)
+		expect(calls()).toEqual([])
+		expect(a.dialogs.map((d) => d.name)).toContain('Не удалось вернуться в звонок')
+		a.m.setJoiner(() => a.join())
+		a.click('Войти')
+		await run(500)
+		expect(calls()).toEqual(['nc-a'])
+	})
+
+	it('join получателя упал: joined не шлётся, статус failed, звонок остаётся у A', async () => {
+		const a = await tab('a', './useMove.js', { inCall: true })
+		const b = await tab('b')
+		const got = []
+		a.subs.add((d) => got.push(d.op))
+		b.join = async () => {
+			throw new Error('join rejected')
+		}
+		const r = b.m.moveHere(['a'], 't', b.join)
+		await run(JOIN_WAIT + 31000)
+		expect(await r).toBe('failed')
+		expect(got).toEqual(['offer'])
+		expect(b.errors.join()).toMatch(/Не удалось войти/)
+		expect(calls()).toEqual(['nc-a'])
+		expect(a.posts).toEqual([])
+	})
+
+	it('очень поздний вход: B входит через 65+ с (после JOIN_WAIT+LATE_WAIT) — её joined будит A, лишняя сессия A убрана', async () => {
+		const a = await tab('a', './useMove.js', { inCall: true })
+		const b = await tab('b', './useMove.js', { joinMs: JOIN_WAIT + LATE_WAIT + 5000 })
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(JOIN_WAIT + LATE_WAIT + 1000)
+		expect(calls()).toEqual(['nc-a']) // наблюдение закончилось, B ещё не вошла
+		await run(6000)
+		expect(calls()).toEqual(['nc-b'])
+		expect(a.posts).toEqual(['moved'])
+	})
+
+	it('B закрылась уже после moved: A предлагает вернуть звонок, по кнопке — в звонке', async () => {
+		allowEmpty(1000, 6500, 5000) // после moved звонок идёт только у B; закрылась — пусто до нажатия «Вернуть сюда» (~3 с наблюдения), не дольше
+		const a = await tab('a', './useMove.js', { inCall: true })
+		const b = await tab('b')
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(2000)
+		expect(calls()).toEqual(['nc-b'])
+		expect(a.posts).toEqual(['moved'])
+		expect(a.dialogs.map((d) => d.name)).not.toContain('Звонок остался без вас')
+		b.close()
+		await run(4000)
+		expect(a.dialogs.map((d) => d.name)).toContain('Звонок остался без вас')
+		a.dialogs.find((d) => d.name === 'Звонок остался без вас').buttons.find((x) => x.label === 'Вернуть сюда').callback()
+		await run(1000)
+		expect(calls()).toEqual(['nc-a'])
+	})
+
+	it('B не закрывалась после moved: предложения вернуться нет', async () => {
+		const a = await tab('a', './useMove.js', { inCall: true })
+		const b = await tab('b')
+		await b.m.moveGate('t', b.join)
+		b.click('Перенести звонок сюда')
+		await run(MOVED_WATCH + 3000)
+		expect(a.dialogs.map((d) => d.name)).not.toContain('Звонок остался без вас')
+		expect(calls()).toEqual(['nc-b'])
 	})
 })
