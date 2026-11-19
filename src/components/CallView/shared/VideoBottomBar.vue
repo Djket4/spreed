@@ -329,6 +329,15 @@ export default {
 	display: none;
 }
 
+// ket4tec (NAS_CLOUD#362): на узкой плитке (контейнер — .wrapper, inline-size, см. k7call.scss) кнопки микрофона и камеры не нужны:
+// остаются имя и угловой значок .k4-micoff; управление — в меню участника боковой панели
+@container (max-width: 180px) {
+	.audioIndicator,
+	.videoIndicator {
+		display: none;
+	}
+}
+
 .wrapper {
 	display: flex;
 	align-items: center;
