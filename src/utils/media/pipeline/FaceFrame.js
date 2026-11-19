@@ -41,6 +41,8 @@ const DETECT_FULL_PX = 320
 // ket4tec (NAS_CLOUD#160): сторона выходного квадрата не больше 720 (simulcast-верх 720p; 1080 на iPhone не вывозит),
 // при нехватке мощности ступенью ниже — вдвое
 const OUT_MAX_PX = 720
+const EASE_JUDGE_MS = 3000 // после ступени остановка не раньше и только по fps, посчитанному целиком после неё
+const PROBE_POLL_MS = 1000 // после публикации живость выхода — один rVFC пробы в секунду
 const outSide = (w, h, eased) => Math.min(w, h, eased ? OUT_MAX_PX / 2 : OUT_MAX_PX)
 const DETECT_TILE_PX = 480
 // ket4tec (NAS_CLOUD#271): было 2000 — рука у лица или контровой свет на 2+ с уводили окно в общий план и обратно (скачок общий↔крупный)
@@ -426,7 +428,13 @@ export default class FaceFrame extends TrackSinkSource {
 			st: { t: t0, in: 0, cb: 0, draw: 0, out: 0, outq: 0 }, // отметки прошлой записи framing_stats
 		}
 		this._digital = d
-		logEv('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, cfgfps: input.getSettings?.().frameRate, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen, ow: canvas.width, oh: canvas.height })
+		const logStart = () => logEv('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, cfgfps: input.getSettings?.().frameRate, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen, ow: canvas.width, oh: canvas.height })
+		// без размера в getSettings канвас пока 300×150: пишем фактический размер после первой отрисовки
+		if (sw && sh) {
+			logStart()
+		} else {
+			d.logStart = logStart
+		}
 		// выход — сразу канвас: до первой отрисовки кадров нет, на плитках держится облако
 		d.output = canvas.captureStream().getVideoTracks()[0]
 		if (!d.output) {
@@ -447,7 +455,12 @@ export default class FaceFrame extends TrackSinkSource {
 			const onOut = () => {
 				if (!d.stopped) {
 					d.outFrames = (d.outFrames || 0) + 1
-					probe.requestVideoFrameCallback(onOut)
+					// ket4tec (NAS_CLOUD#160): после публикации не декодируем пробу на каждый кадр — один колбэк в секунду
+					if (d.published) {
+						setTimeout(() => !d.stopped && probe.requestVideoFrameCallback(onOut), PROBE_POLL_MS)
+					} else {
+						probe.requestVideoFrameCallback(onOut)
+					}
 				}
 			}
 			probe.requestVideoFrameCallback(onOut)
@@ -584,6 +597,7 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			d.inSrc = src
 			d.fps = d.fpsFrames * 1000 / (now - d.fpsT)
+			d.fpsFrom = d.fpsT // окно, по которому посчитан d.fps
 			d.fpsT = now
 			d.fpsFrames = 0
 		}
@@ -662,14 +676,17 @@ export default class FaceFrame extends TrackSinkSource {
 		// ket4tec (NAS_CLOUD#160): сбой — отрисовка заметно отстаёт от входа; вход сам по себе 12 к/с — не сбой
 		// rvfc и settings — не точный счёт (Safari): порог не строже прежнего MIN_FPS. Заявленная частота (settings) — не измерение: слабая камера отдаёт меньше заявленного, порог не выше прежнего MIN_FPS
 		const lowLimit = d.inFps === null ? MIN_FPS : d.inSrc === 'quality' ? d.inFps * LOW_FPS_RATIO : Math.min(MIN_FPS, d.inFps * LOW_FPS_RATIO)
-		if (d.fps < lowLimit && !d.frozen) {
+		if (d.eased && d.fpsFrom < d.easeAt) {
+			// fps ещё посчитан по окну, захватившему время до ступени — не судим
+		} else if (d.fps < lowLimit && !d.frozen) {
 			d.lowSince = d.lowSince || now
 			if (now - d.lowSince >= LOW_FPS_MS && !d.eased) {
 				// ступень до остановки: рабочее разрешение вдвое и детектор вдвое реже; не помогло — остановка
 				d.eased = true
+				d.easeAt = now
 				d.lowSince = 0
 				logEv('framing_ease', { inst: this._inst, drawfps: round1(d.fps || 0), infps: (d.inFps ?? null) === null ? null : round1(d.inFps) })
-			} else if (now - d.lowSince >= LOW_FPS_MS) {
+			} else if (now - d.lowSince >= EASE_JUDGE_MS && now - d.easeAt >= EASE_JUDGE_MS) {
 				this._fallback(d, 'lowFps', d.inFps === null ? `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс` : `отрисовка ${stats.fps} к/с при входе ${round1(d.inFps)} к/с (< ${LOW_FPS_RATIO * 100}%) в течение ${LOW_FPS_MS} мс`)
 			}
 		} else {
@@ -813,6 +830,10 @@ export default class FaceFrame extends TrackSinkSource {
 		if (canvas.width !== side || canvas.height !== side) {
 			canvas.width = side
 			canvas.height = side
+		}
+		if (d.logStart) {
+			d.logStart()
+			d.logStart = null
 		}
 		// ket4tec (NAS_CLOUD#271): до первой детекции не рисуем; нашли лицо — окно сразу на месте, без пружины
 		if (!d.placed) {

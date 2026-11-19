@@ -376,4 +376,51 @@ describe('FaceFrame: рабочее разрешение выхода (NAS_CLOUD
 		await vi.advanceTimersByTimeAsync(5000)
 		expect(ff.path).toBe('frozen')
 	})
+	test('ступень помогла (после неё 30 к/с) — остановки нет', async () => {
+		setRates(30, 12)
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), {}), 1000 / (ff._digital?.eased ? 30 : 12))
+		start()
+		await vi.advanceTimersByTimeAsync(15000)
+		expect(ff._digital.eased).toBe(true)
+		expect(ff.path).toBe('digital')
+	})
+	test('остановка не раньше 3 с после ступени', async () => {
+		setRates(30, 12)
+		start()
+		let easeAt = 0
+		let stopAt = 0
+		for (let t = 0; t < 12000 && !stopAt; t += 250) {
+			await vi.advanceTimersByTimeAsync(250)
+			easeAt ||= ff._digital.eased ? performance.now() : 0
+			stopAt = ff.path === 'frozen' ? performance.now() : 0
+		}
+		expect(easeAt).toBeGreaterThan(0)
+		expect(stopAt - easeAt).toBeGreaterThanOrEqual(2750)
+	})
+	test('framing_start без размера камеры: ow/oh — фактический размер канваса', async () => {
+		setRates(30, 30)
+		start()
+		await vi.advanceTimersByTimeAsync(1500)
+		const ev = calllog.mock.calls.filter(([k]) => k === 'framing_start')
+		expect(ev).toHaveLength(1)
+		expect(ev[0][1].ow).toBe(720)
+	})
+	test('после публикации колбэков пробы не больше ~2 в секунду', async () => {
+		setRates(30, 30)
+		const base = vproto.requestVideoFrameCallback
+		let probeCalls = 0
+		vproto.requestVideoFrameCallback = function(cb) {
+			if (ff?._digital && this !== ff._digital.video) {
+				probeCalls++
+			}
+			return base.call(this, cb)
+		}
+		start()
+		await vi.advanceTimersByTimeAsync(3000)
+		expect(ff._digital.published).toBe(true)
+		probeCalls = 0
+		await vi.advanceTimersByTimeAsync(10000)
+		expect(probeCalls).toBeLessThanOrEqual(20)
+		expect(ff.path).toBe('digital')
+	})
 })
