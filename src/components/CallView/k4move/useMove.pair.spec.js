@@ -129,7 +129,7 @@ function watchEmpty() {
  * @param {number} to мс от старта теста
  * @param {number} max допустимая длительность
  */
-const allowEmpty = (from, to, max) => {
+function allowEmpty(from, to, max) {
 	srv.allow = { from, to, max }
 }
 async function run(ms) {
