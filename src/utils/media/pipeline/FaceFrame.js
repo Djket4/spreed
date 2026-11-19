@@ -22,6 +22,8 @@ const SLOW_DETECT_MS = 25 // дольше — следующая детекци�
 const RVFC_WAIT_MS = 300 // нет первого rVFC -> requestAnimationFrame
 const MIN_FRAMES = 3 // кадров канваса до проверки выхода пробой
 const NO_FRAMES_MS = 2000
+// ket4tec (NAS_CLOUD#160): выходной трек уже работавший и вставший (Safari 26: видео в 0 через 1–2 мин)
+export const STALL_MS = 3000
 // ket4tec (NAS_CLOUD#271): первый кадр рисуем сразу в итоговом кадрировании — ждём первую детекцию не дольше этого
 const HOLD_MS = 1500
 const MIN_FPS = 15
@@ -68,6 +70,15 @@ export function setFaceFrameRange(value) {
 	try {
 		localStorage.setItem(RANGE_KEY, String(range))
 	} catch (e) { /* localStorage недоступен */ }
+}
+
+/**
+ * ket4tec (NAS_CLOUD#160): выбор кадрирования в журнал звонка
+ *
+ * @param {string} src 'join' (вход в звонок) или 'change' (смена человеком)
+ */
+export function logFaceFrameChoice(src) {
+	calllog('framing', { on: level === 'off' ? 0 : 1, range, src })
 }
 
 /** @return {string} текущий уровень */
@@ -329,6 +340,8 @@ export default class FaceFrame extends TrackSinkSource {
 			startedAt: t0,
 			frames: 0, // отрисовок канваса с ненулевым размером
 			published: false, // выходной трек проверен пробой
+			outMark: null, // последняя отметка прогресса выходного трека (кадры/время пробы)
+			outAt: t0, // когда отметка менялась
 			sid: 0,
 			useRaf: !video.requestVideoFrameCallback,
 			rvfcFired: false,
@@ -358,6 +371,15 @@ export default class FaceFrame extends TrackSinkSource {
 		probe.srcObject = new MediaStream([d.output])
 		document.body.appendChild(probe)
 		d.probe = probe
+		if (probe.requestVideoFrameCallback) {
+			const onOut = () => {
+				if (!d.stopped) {
+					d.outFrames = (d.outFrames || 0) + 1
+					probe.requestVideoFrameCallback(onOut)
+				}
+			}
+			probe.requestVideoFrameCallback(onOut)
+		}
 		probe.play?.()?.catch?.(() => {})
 		this._setOutput(d.output)
 		video.play().catch(() => {})
@@ -433,6 +455,7 @@ export default class FaceFrame extends TrackSinkSource {
 		if (document.hidden) {
 			d.lowSince = 0
 			d.startedAt = now
+			d.outAt = now
 			return
 		}
 		if (!d.published) {
@@ -443,6 +466,18 @@ export default class FaceFrame extends TrackSinkSource {
 					this._fallback(d, 'input', `канвас не получил кадров за ${NO_FRAMES_MS} мс`)
 				}
 			}
+			return
+		}
+		// ket4tec (NAS_CLOUD#160): постоянный сторож выхода. Прогресс пробы: кадры rVFC / счётчик кадров / currentTime —
+		// любой сдвиг считается живым. Исходная камера должна быть живой и включённой, иначе откат не поможет.
+		const p = d.probe
+		const q = p?.getVideoPlaybackQuality?.()
+		const mark = `${d.outFrames || 0}|${q?.totalVideoFrames ?? ''}|${p?.currentTime ?? ''}`
+		if (mark !== d.outMark) {
+			d.outMark = mark
+			d.outAt = now
+		} else if (now - d.outAt > STALL_MS && d.input.readyState === 'live' && d.input.enabled) {
+			this._fallback(d, 'output', `выходной трек встал через ${Math.round((now - d.outAt) / 1000)} с`)
 			return
 		}
 		if (d.fps < MIN_FPS && !d.frozen) {

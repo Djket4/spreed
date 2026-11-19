@@ -9,6 +9,7 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwit
 import {
 	getFaceFrameLevel,
 	getFaceFrameRange,
+	logFaceFrameChoice,
 	onFaceFrameLevelChange,
 	setFaceFrameLevel,
 	setFaceFrameRange,
@@ -23,7 +24,10 @@ onBeforeUnmount(off)
 
 const enabled = computed({
 	get: () => level.value !== 'off',
-	set: (value: boolean) => setFaceFrameLevel(value ? 'auto' : 'off'),
+	set: (value: boolean) => {
+		setFaceFrameLevel(value ? 'auto' : 'off')
+		logFaceFrameChoice('change')
+	},
 })
 
 // ket4tec (NAS_CLOUD#232, Андрей 16.11): 5 положений вместо плавного хода; старое плавное значение — к ближайшему
@@ -38,6 +42,7 @@ if (range.value !== getFaceFrameRange()) {
 function onRange(event: Event) {
 	range.value = parseFloat((event.target as HTMLInputElement).value)
 	setFaceFrameRange(range.value)
+	logFaceFrameChoice('change')
 }
 </script>
 

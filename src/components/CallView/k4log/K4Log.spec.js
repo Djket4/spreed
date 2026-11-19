@@ -72,7 +72,7 @@ describe('K4CallLogTab', () => {
 	afterEach(() => vi.useRealTimers())
 
 	test('d как [] и все виды обрабатываются', async () => {
-		const ev = ['page_load', 'join_click', 'call_joined', 'join_blocked', 'call_left', 'gum_ok', 'gum_err', 'signaling', 'rtc_state', 'screen_start', 'screen_stop', 'screen_denied', 'pagehide', 'js_error', 'net', 'framing_error', 'rtc_stats', 'rtc_path', 'rtc_warn', 'board_open', 'board_close', 'draw_mode', 'media', 'session']
+		const ev = ['page_load', 'join_click', 'call_joined', 'join_blocked', 'call_left', 'gum_ok', 'gum_err', 'signaling', 'rtc_state', 'screen_start', 'screen_stop', 'screen_denied', 'pagehide', 'js_error', 'net', 'framing_error', 'framing', 'rtc_stats', 'rtc_path', 'rtc_warn', 'board_open', 'board_close', 'draw_mode', 'media', 'session']
 		get.mockResolvedValue({ data: { ocs: { data: { now: 1, events: ev.map((k) => ({ t: 1, name: 'x', k, d: [] })) } } } })
 		const w = mount(K4CallLogTab, { props: { active: true } })
 		await flushPromises()
