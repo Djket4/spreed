@@ -7,7 +7,7 @@ import { subscribe } from '@nextcloud/event-bus'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { reactive } from 'vue'
+import { defineComponent, h, onMounted, reactive } from 'vue'
 import CallView from './CallView.vue'
 import { useCallViewStore } from '../../stores/callView.ts'
 import { callParticipantCollection, localMediaModel } from '../../utils/webrtc/index.js'
@@ -225,6 +225,99 @@ describe('CallView.vue', () => {
 
 		expect(store.presentationStarted).toBe(false)
 		expect(store.isGrid).toBe(true)
+	})
+
+	describe('говорящий крупно (NAS_CLOUD#159)', () => {
+		let seq = 0
+		const person = (video = true) => {
+			const id = 'q' + (++seq)
+			return {
+				attributes: { peerId: id, nextcloudSessionId: 's' + id, speaking: false, videoAvailable: video, stream: video ? {} : undefined },
+				setSimulcastVideoQuality: vi.fn(),
+				setVideoBlocked: vi.fn(),
+			}
+		}
+		let models
+		let mounts
+		const Big = defineComponent({
+			props: ['model'],
+			setup() {
+				onMounted(() => mounts++)
+				return () => h('video', { class: 'big-stub' })
+			},
+		})
+		beforeEach(() => {
+			vi.useFakeTimers()
+			mounts = 0
+			models = reactive([person(), person(), person()])
+			callParticipantCollection.callParticipantModels = models
+			useCallViewStore().setCallViewMode({ token: TOKEN, isGrid: false })
+			wrapper = mount(CallView, {
+				props: { token: TOKEN },
+				global: {
+					stubs: {
+						ViewerOverlayCallView: true,
+						EmptyCallView: true,
+						VideoVue: Big,
+						LocalVideo: true,
+						ScreenShare: true,
+						PresenterOverlay: true,
+						VideosGrid: true,
+						ReactionToaster: true,
+						LiveTranscriptionRenderer: true,
+						BottomBar: true,
+					},
+				},
+			})
+		})
+		afterEach(() => {
+			vi.useRealTimers()
+			callParticipantCollection.callParticipantModels = []
+		})
+		const bigPeer = () => wrapper.vm.promotedParticipantModel.attributes.peerId
+
+		test('короткий звук (кашель) не переключает крупного', async () => {
+			const first = bigPeer()
+			models[2].attributes.speaking = true
+			await vi.advanceTimersByTimeAsync(800)
+			models[2].attributes.speaking = false
+			await vi.advanceTimersByTimeAsync(3000)
+			expect(bigPeer()).toBe(first)
+		})
+
+		test('говорит 2 с подряд - становится крупным; замолчал - остаётся последний говоривший', async () => {
+			models[2].attributes.speaking = true
+			await vi.advanceTimersByTimeAsync(2100)
+			expect(bigPeer()).toBe(models[2].attributes.peerId)
+			models[2].attributes.speaking = false
+			await vi.advanceTimersByTimeAsync(60_000)
+			expect(bigPeer()).toBe(models[2].attributes.peerId)
+		})
+
+		test('ушёл крупный собеседник - крупным не становится свой, а кто-то из собеседников', async () => {
+			models[1].attributes.speaking = true
+			await vi.advanceTimersByTimeAsync(2100)
+			models.splice(1, 1)
+			await flushPromises()
+			expect(models.map((x) => x.attributes.peerId)).toContain(bigPeer())
+		})
+
+		test('нажатие на свою плитку ничего не закрепляет', async () => {
+			wrapper.vm.handleClickLocalVideo()
+			await flushPromises()
+			expect(useCallViewStore().selectedVideoPeerId).toBeNull()
+			expect(wrapper.vm.showLocalVideo).toBe(false)
+		})
+
+		test('смена крупного с видео на видео оставляет тот же <video> (не пересоздаётся, без чёрного кадра)', async () => {
+			const el = wrapper.find('.big-stub').element
+			models[2].attributes.speaking = true
+			await vi.advanceTimersByTimeAsync(2100)
+			expect(bigPeer()).toBe(models[2].attributes.peerId)
+			await flushPromises()
+			expect(wrapper.find('.big-stub').element).toBe(el)
+			expect(mounts).toBe(1)
+		})
 	})
 
 	describe('video overlay mouse/keyboard activity tracking', () => {

@@ -631,6 +631,12 @@ export default {
 			},
 		},
 
+		// ket4tec (NAS_CLOUD#159): крупная плитка переиспользуется при смене говорящего - счётчик видимости переходит к новому
+		sharedData(value, oldValue) {
+			oldValue.remoteVideoBlocker.decreaseVisibleCounter()
+			value.remoteVideoBlocker.increaseVisibleCounter()
+		},
+
 		'model.attributes.stream': function(stream) {
 			this._setStream(stream)
 		},

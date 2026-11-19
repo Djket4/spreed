@@ -475,7 +475,8 @@ export default {
 				// сетка: «Вы» + все собеседники > 6 (в записи своей плитки нет)
 				return !this.noLocalVideoReserve && !this.devMode && this.orderedVideos.length > PHONE_MAX_TILES - 1 ? this.orderedVideos.length - (PHONE_MAX_TILES - 2) : 0
 			}
-			return this.totalTiles > 6 ? this.totalTiles - 5 : 0
+			// ket4tec (NAS_CLOUD#159): без показа экрана полоса - один ряд с прокруткой, «+N» не нужен
+			return this.screens.length && this.totalTiles > 6 ? this.totalTiles - 5 : 0
 		},
 
 		// ket4tec (NAS_CLOUD#195 п.3): квадраты полосы на iPhone вертикально (применяет k7call.scss в своём media)
@@ -495,7 +496,7 @@ export default {
 			}
 			return {
 				gridTemplateColumns: `repeat(${getHalfColumnCount(this.columns)}, ${(this.side - GRID_GAP) / 2}px)`,
-				gridTemplateRows: `repeat(${this.rows}, ${this.side}px)`,
+				gridTemplateRows: `repeat(${this.rows}, ${this.tileHeight || this.side}px)`,
 				justifyContent: 'center',
 				alignContent: 'center',
 			}

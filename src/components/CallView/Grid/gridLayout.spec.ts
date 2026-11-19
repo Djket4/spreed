@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import {
+	computePhoneLayout,
 	computeRowDistribution,
 	computeSquareLayout,
 	computeTilePlacements,
@@ -15,8 +18,6 @@ import {
 	getMinTileWidth,
 	GRID_GAP,
 	MIN_TILE_SIDE,
-	PHONE_MAX_TILES,
-	PHONE_MIN_TILE_SIDE,
 	STRIPE_HEIGHT,
 	TARGET_ASPECT_RATIO,
 	TILE_COLUMN_SPAN,
@@ -42,22 +43,43 @@ describe('gridLayout', () => {
 
 	// ket4tec (NAS_CLOUD#159): iPhone вертикально, область между шапкой и нижней панелью ~ 440x460
 	describe('phone portrait', () => {
-		const area = { gridWidth: 440, gridHeight: 460, minSide: PHONE_MIN_TILE_SIDE }
+		const area = { gridWidth: 440, gridHeight: 460 }
 
-		test.each([5, 6])('%i tiles fit one page as 2 columns x 3 rows', (total) => {
-			const { columns, rows } = computeSquareLayout({ ...area, total })
-			expect({ columns, rows }).toEqual({ columns: 2, rows: 3 })
+		test.each([
+			[1, 1, 1],
+			[2, 1, 2],
+			[3, 2, 2],
+			[4, 2, 2],
+			[5, 2, 3],
+			[6, 2, 3],
+			[9, 2, 3], // 7+: на экране шесть мест, остальное - «+N»
+		])('%i tiles: %i column(s) x %i row(s)', (total, columns, rows) => {
+			const layout = computePhoneLayout({ ...area, total })
+			expect({ columns: layout.columns, rows: layout.rows }).toEqual({ columns, rows })
+			// всё помещается и занимает всю высоту, пока плитка не выше 3:4
+			expect(layout.columns * layout.side + (layout.columns - 1) * GRID_GAP).toBeLessThanOrEqual(area.gridWidth)
+			expect(layout.rows * layout.tileHeight + (layout.rows - 1) * GRID_GAP).toBeLessThanOrEqual(area.gridHeight)
+			expect(layout.tileHeight).toBeLessThanOrEqual(layout.side * 4 / 3)
 		})
 
-		test('the default minimum square leaves only two rows (the old bug)', () => {
-			expect(computeSquareLayout({ ...area, minSide: undefined, total: 5 }).rows).toBe(2)
+		test('two participants: two tiles one under the other, full width and the whole height', () => {
+			const { side, tileHeight } = computePhoneLayout({ ...area, total: 2 })
+			expect(side).toBe(440)
+			expect(2 * tileHeight + GRID_GAP).toBe(460)
 		})
 
-		test('more than six: four others, you and "+N" are laid out as six cells', () => {
-			// VideosGrid passes at most PHONE_MAX_TILES - 1 remote tiles to the layout
-			const total = Math.min(9, PHONE_MAX_TILES - 1) + 1
-			const { columns, rows } = computeSquareLayout({ ...area, total })
-			expect(columns * rows).toBe(PHONE_MAX_TILES)
+		test('six tiles fill the height of the area', () => {
+			const { tileHeight } = computePhoneLayout({ ...area, total: 6 })
+			expect(3 * tileHeight + 2 * GRID_GAP).toBeGreaterThanOrEqual(area.gridHeight - 2)
+		})
+
+		test('a tall screen does not stretch a tile beyond 3:4', () => {
+			const { side, tileHeight } = computePhoneLayout({ gridWidth: 440, gridHeight: 1200, total: 4 })
+			expect(tileHeight).toBe(Math.floor(side * 4 / 3))
+		})
+
+		test('the square layout with the default minimum leaves only two rows (the old bug)', () => {
+			expect(computeSquareLayout({ ...area, total: 5 }).rows).toBe(2)
 		})
 	})
 
@@ -256,5 +278,26 @@ describe('gridLayout', () => {
 			// remote one and it belongs to the start of the row
 			expect(getJustifyContent({ isStripe: true, totalTiles: 1, isLocalVideoAlone: false })).toBe('start')
 		})
+	})
+})
+
+// ket4tec (NAS_CLOUD#159): крупная плитка «Говорящего крупно» - прямоугольник области над рядом маленьких (k7call.scss)
+describe('big tile of the speaker view', () => {
+	const scss = readFileSync(resolve(__dirname, '../k7call.scss'), 'utf8')
+
+	test('the big camera tile fills the promoted area, it is not a square', () => {
+		const rule = scss.split('\n').find((line) => line.startsWith('#call-container .video__promoted > .video-container-big {'))
+		expect(rule).toContain('width: 100cqw')
+		expect(rule).toContain('height: 100cqh')
+		expect(rule).not.toContain('cqmin')
+	})
+
+	test.each([
+		[440, 460, STRIPE_HEIGHT - 24], // телефон: ряд 110 + поля, см. k7call.scss
+		[1000, 750, STRIPE_HEIGHT],
+		[1440, 800, STRIPE_HEIGHT],
+	])('area %ix%i: at least 70 percent is the big tile', (width, height, row) => {
+		const share = ((height - row - GRID_GAP) * width) / (width * height)
+		expect(share).toBeGreaterThanOrEqual(0.7)
 	})
 })

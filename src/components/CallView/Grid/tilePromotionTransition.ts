@@ -6,7 +6,8 @@
 import { nextTick } from 'vue'
 
 /** Duration (in ms) of the travel of a tile between the stripe and its slot. */
-const TRANSITION_DURATION = 300
+// ket4tec (NAS_CLOUD#159): на телефоне - 180 мс, долгий переезд читался как «плитки переключаются некорректно»
+const TRANSITION_DURATION = window.innerWidth < 768 ? 180 : 300
 
 /**
  * Data attribute the animated tiles are looked up by. Both the stripe and the
