@@ -1703,8 +1703,8 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			&& supportsRTCPeerConnection)
 		|| (error.name === 'NotAllowedError'
 			&& error.message && error.message.includes('Only secure origins'))) {
-			message = t('spreed', 'Access to microphone & camera is only possible with HTTPS')
-			message += ': ' + t('spreed', 'Please move your setup to HTTPS')
+			// ket4tec (NAS_CLOUD#162): без технических слов
+			message = 'Микрофон и камера недоступны: ссылка открыта не в защищённом виде. Откройте звонок по ссылке из приглашения'
 		} else if (error.name === 'NotAllowedError') {
 			message = t('spreed', 'Access to microphone & camera was denied')
 			timeout = 5000

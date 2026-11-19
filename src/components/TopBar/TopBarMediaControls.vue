@@ -447,7 +447,7 @@ export default {
 				if (window.isSecureContext) {
 					showMessage(t('spreed', 'Screen sharing is not supported by your browser.'))
 				} else {
-					showMessage(t('spreed', 'Screen sharing requires the page to be loaded through HTTPS.'))
+					showMessage('Показ экрана недоступен: ссылка открыта не в защищённом виде. Откройте звонок по ссылке из приглашения') // ket4tec (NAS_CLOUD#162)
 				}
 				return
 			}
@@ -487,7 +487,7 @@ export default {
 
 				switch (err.name) {
 					case 'HTTPS_REQUIRED':
-						showMessage(t('spreed', 'Screensharing requires the page to be loaded through HTTPS.'))
+						showMessage('Показ экрана недоступен: ссылка открыта не в защищённом виде. Откройте звонок по ссылке из приглашения') // ket4tec (NAS_CLOUD#162)
 						break
 					case 'PERMISSION_DENIED':
 					case 'NotAllowedError':
