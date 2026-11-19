@@ -166,13 +166,12 @@ export function computeTilePlacements({
 
 	const placements: TilePlacement[] = []
 
-	for (const [index, rowSize] of computeRowDistribution({ totalTiles, rows }).entries()) {
-		// The half columns left empty by the row, split evenly on both of its sides
-		const column = columns - rowSize + 1
-
-		for (let tile = 0; tile < rowSize; tile++) {
-			placements.push({ row: index + 1, column: column + tile * TILE_COLUMN_SPAN })
-		}
+	// ket4tec (NAS_CLOUD#159, владелец 19.11): полные ряды сверху, неполный - всегда последний и по центру
+	for (let index = 0; index < totalTiles; index++) {
+		const row = Math.floor(index / columns)
+		const rowSize = Math.min(columns, totalTiles - row * columns)
+		const column = columns - rowSize + 1 + (index - row * columns) * TILE_COLUMN_SPAN
+		placements.push({ row: row + 1, column })
 	}
 
 	return placements
@@ -239,6 +238,22 @@ export function computeSquareLayout({ gridWidth, gridHeight, total, minSide = MI
 	minSide?: number
 }): { columns: number, rows: number, side: number } {
 	const need = Math.max(total, 1)
+	// ket4tec (NAS_CLOUD#159): все плитки на одной странице - перебираем число столбцов 1..N, берём максимальную сторону квадрата
+	// (при равной - меньше пустых ячеек). Раньше число рядов ограничивал minSide: в низком окне выходил один ряд.
+	let fit = { columns: 1, rows: 1, side: 0 }
+	for (let columns = 1; columns <= need; columns++) {
+		const rows = Math.ceil(need / columns)
+		const side = Math.floor(Math.min(
+			(gridWidth - GRID_GAP * (columns - 1)) / columns,
+			(gridHeight - GRID_GAP * (rows - 1)) / rows,
+		))
+		if (side > fit.side || (side === fit.side && columns * rows < fit.columns * fit.rows)) {
+			fit = { columns, rows, side }
+		}
+	}
+	if (fit.side >= minSide) {
+		return fit
+	}
 	const maxColumns = Math.max(1, Math.floor((gridWidth + GRID_GAP) / (minSide + GRID_GAP)))
 	const maxRows = Math.max(1, Math.floor((gridHeight + GRID_GAP) / (minSide + GRID_GAP)))
 	let best = { columns: 1, rows: 1, side: 0 }

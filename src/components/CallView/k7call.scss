@@ -704,3 +704,45 @@ body:has(#call-container.k4-selflost) :is(.top-bar--in-call, .app-sidebar__toggl
 #call-container .videoWrapper.k4-vf video { background: transparent !important; }
 #call-container .videoWrapper .k4-vsnap { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 #call-container .videoWrapper .k4-vsnap.video--fit { object-fit: contain; }
+
+// ket4tec (NAS_CLOUD#159, 19.11): «Говорящий крупно» и закреплённый участник. Крупная плитка камеры - квадрат максимального размера
+// и по центру; миниатюры: ландшафт - столбец СЛЕВА с вертикальной прокруткой (96-200 px), портрет - ряд под квадратом с прокруткой вбок.
+// Размеры - container queries по #videos (cqw/cqh), без JS. Показ экрана и доска (нет .video-container-big) не затронуты.
+$k4big: '#call-container:not(.k7-alone) #videos:not(.is-sidebar):has(> .video__promoted > .video-container-big)';
+#call-container:not(.k7-alone) #videos:not(.is-sidebar) { container: k4v / size; }
+#{$k4big} { justify-content: center; align-items: center; }
+#{$k4big} > .video__promoted { flex: none; }
+// ландшафт: ширина столбца = остаток по ширине после квадрата во всю высоту, но 96..200 px
+$k4th: unquote('clamp(96px, calc(100cqw - 100cqh - 8px), 200px)');
+$k4ls: unquote('min(calc(100cqw - #{$k4th} - 8px), 100cqh)');
+$k4lo: unquote('calc((100cqw - #{$k4th} - 8px - #{$k4ls}) / 2)');
+// портрет: высота ряда миниатюр 126..170 px, остальное - квадрат (не шире экрана)
+$k4rh: unquote('clamp(126px, calc(100cqh - 100cqw - 8px), 170px)');
+$k4ps: unquote('min(100cqw, calc(100cqh - #{$k4rh} - 8px))');
+@container k4v (max-aspect-ratio: 1/1) {
+	#{$k4big} {
+		> .video__promoted { width: #{$k4ps}; height: #{$k4ps}; }
+		> .grid-main-wrapper:not(.is-grid) { --stripe-height: #{$k4rh}; flex: none; margin-block-start: 8px; }
+	}
+}
+@container k4v (min-aspect-ratio: 1/1) {
+	#{$k4big} {
+		align-items: flex-start;
+		> .video__promoted { width: #{$k4ls}; height: #{$k4ls}; margin-inline-start: calc(#{$k4lo} + #{$k4th} + 8px); }
+		> .grid-main-wrapper:not(.is-grid) {
+			position: absolute; inset-inline-start: #{$k4lo}; top: calc((100cqh - #{$k4ls}) / 2);
+			width: #{$k4th}; height: #{$k4ls}; margin: 0; --stripe-height: 100%;
+			.stripe-controls-position { display: none; }
+			.videos-wrapper--stripe { height: 100% !important; margin: 0; }
+			.stripe-wrapper { padding: 0; }
+			.grid { flex-direction: column !important; overflow-x: hidden !important; overflow-y: auto !important; row-gap: 30px !important; scrollbar-width: thin; overscroll-behavior-y: contain; justify-content: flex-start !important; }
+			.grid > *, .grid > :first-child, .grid > :last-child { width: 100% !important; height: auto !important; aspect-ratio: 1 !important; flex: none !important; margin: 0 !important; }
+		}
+	}
+}
+// кнопка «Назад»/«Открепить» на крупной плитке: в левом нижнем углу рядом с именем, компактно, лицо не закрывает
+#call-container .wrapper--big { justify-content: flex-start; padding-inline: 10px; padding-block-end: 10px; }
+#call-container .wrapper--big .bottom-bar { justify-content: flex-start; width: auto; padding: 0; gap: 6px; }
+#call-container .wrapper--big .participant-name { margin-inline: 0; }
+#call-container .wrapper--big .following-button { min-height: 28px; min-width: 28px; width: 28px; height: 28px; padding: 0; }
+#call-container .wrapper--big .following-button__text { display: none; }
