@@ -206,6 +206,17 @@ export async function leaveVerified(from, id, token, rsid) {
 }
 
 /**
+ * Сессия того же пользователя (гость без actorId — только своя сессия).
+ *
+ * @param {object} p участник из peersInCall
+ * @return {boolean}
+ */
+function mine(p) {
+	const a = useActorStore()
+	return p.sessionId === a.sessionId || (!!a.actorId && p.actorType === a.actorType && p.actorId === a.actorId)
+}
+
+/**
  * После moved: пока получатель в звонке — молчим; пропал (закрыл вкладку) и меня нигде нет — предложить вернуться.
  * Пропажа подтверждается двумя ответами сервера подряд (null — не ответил, не считается).
  * Кнопка, не автовозврат: сервер не отличает закрытую вкладку от осознанного «Выйти».
@@ -228,11 +239,25 @@ async function watchRecipient(token, rsid) {
 		if (list.some((p) => p.sessionId === useActorStore().sessionId)) {
 			return
 		}
-		gone = list.some((p) => p.sessionId === rsid) ? 0 : gone + 1
+		if (list.some((p) => p.sessionId === rsid)) {
+			gone = 0
+			continue
+		}
+		if (list.some(mine)) {
+			return // получатель ушёл, но звонок живёт у пользователя в другой вкладке (A→B→C): предлагать нечего
+		}
+		gone++
 		if (gone >= 2) {
 			ask('Звонок остался без вас', 'Вкладка, куда был перенесён звонок, закрылась. Вернуть звонок сюда?', [
 				{ label: 'Закрыть', callback: () => {} },
-				{ label: 'Вернуть сюда', type: 'primary', callback: () => rejoin(token) },
+				{ label: 'Вернуть сюда', type: 'primary', callback: async () => {
+					const now = await peersInCall(token)
+					if (!now || now.some(mine)) { // пока диалог висел, звонок появился в другой вкладке (или сервер молчит)
+						showInfo('Звонок уже идёт в другой вкладке')
+						return
+					}
+					rejoin(token)
+				} },
 			])
 			return
 		}
