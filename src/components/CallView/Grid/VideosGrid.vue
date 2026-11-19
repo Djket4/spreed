@@ -191,6 +191,7 @@ import {
 	computeTilePlacements,
 	getHalfColumnCount,
 	GRID_GAP,
+	PHONE_BAR_WIDTH,
 	PHONE_MAX_TILES,
 	TARGET_ASPECT_RATIO,
 	TILE_COLUMN_SPAN,
@@ -518,6 +519,7 @@ export default {
 				gridTemplateRows: `repeat(${this.rows}, ${this.tileHeight || this.side}px)`,
 				justifyContent: 'center',
 				alignContent: 'center',
+				...(this.barShift ? { paddingInlineStart: `${PHONE_BAR_WIDTH}px` } : {}),
 			}
 		},
 

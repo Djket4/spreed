@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import {
+	computeSquareLayout as k4Square,
+	phoneBarOverlaps,
 	computePhoneLayout,
 	computeRowDistribution,
 	computeSquareLayout,
@@ -371,5 +373,13 @@ describe('big tile of the speaker view', () => {
 	])('area %ix%i: at least 70 percent is the big tile', (width, height, row) => {
 		const share = ((height - row - GRID_GAP) * width) / (width * height)
 		expect(share).toBeGreaterThanOrEqual(0.7)
+	})
+})
+
+// ket4tec (NAS_CLOUD#159): плашка шапки телефона лёжа (874x402, сетка 766x378) - сдвиг сетки только там, где она легла бы на плитку
+describe('phoneBarOverlaps', () => {
+	test.each([[2, true], [3, false], [4, false], [5, true], [6, true], [9, false]])('N=%i -> %s', (total, expected) => {
+		const layout = k4Square({ gridWidth: 766, gridHeight: 378, total, minSide: 60 })
+		expect(phoneBarOverlaps({ gridWidth: 766, gridHeight: 378, total, layout })).toBe(expected)
 	})
 })

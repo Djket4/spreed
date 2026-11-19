@@ -309,3 +309,29 @@ export function computePhoneLayout({ gridWidth, gridHeight, total }: {
 	const fill = Math.floor((gridHeight - GRID_GAP * (rows - 1)) / rows)
 	return { columns, rows, side, tileHeight: Math.min(fill, Math.floor(side * PHONE_MAX_TILE_RATIO)) }
 }
+
+// ket4tec (NAS_CLOUD#159, 19.11): телефон лёжа - плашка шапки (название + таймер) лежит в левом верхнем углу области плиток,
+// не занимая высоту. BAR_WIDTH - её ширина от левого края сетки, BAR_BOTTOM - низ плашки от верха сетки.
+export const PHONE_BAR_WIDTH = 160
+export const PHONE_BAR_BOTTOM = 16
+
+/**
+ * Заходит ли плашка шапки на плитку: сетка по центру, первый ряд полный (или все плитки, если их меньше столбцов).
+ *
+ * @param root0
+ * @param root0.gridWidth
+ * @param root0.gridHeight
+ * @param root0.total
+ * @param root0.layout
+ */
+export function phoneBarOverlaps({ gridWidth, gridHeight, total, layout }: {
+	gridWidth: number
+	gridHeight: number
+	total: number
+	layout: { columns: number, rows: number, side: number, tileHeight?: number }
+}): boolean {
+	const first = Math.min(Math.max(total, 1), layout.columns)
+	const left = (gridWidth - (first * layout.side + GRID_GAP * (first - 1))) / 2
+	const top = (gridHeight - (layout.rows * (layout.tileHeight ?? layout.side) + GRID_GAP * (layout.rows - 1))) / 2
+	return left < PHONE_BAR_WIDTH && top < PHONE_BAR_BOTTOM
+}

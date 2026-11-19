@@ -7,7 +7,7 @@ import type { Ref } from 'vue'
 
 import debounce from 'debounce'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { computePhoneLayout, computeSquareLayout, PHONE_LANDSCAPE_MIN_SIDE, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
+import { computePhoneLayout, computeSquareLayout, PHONE_BAR_WIDTH, PHONE_LANDSCAPE_MIN_SIDE, phoneBarOverlaps, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
 
 type UseGridDimensionsOptions = {
 	/** Element to observe for size changes (its child grid is measured) */
@@ -63,6 +63,8 @@ export function useGridDimensions({
 	const rows = ref(0)
 	const side = ref(0)
 	const tileHeight = ref(0)
+	// ket4tec (NAS_CLOUD#159): плашка шапки заходит на плитку - сетка сдвинута вправо на её ширину (padding-inline-start)
+	const barShift = ref(false)
 
 	const dpiFactor = computed(() => {
 		if (isStripe.value) {
@@ -118,14 +120,20 @@ export function useGridDimensions({
 		gridHeight.value = height
 
 		// ket4tec (NAS_CLOUD#159): квадратные плитки; полоса - одна строка, сторона = её высота
-		const dimensions = isStripe.value
-			? { columns: videoCount.value + 1, rows: 1, side: height }
-			: (phonePortrait?.value ? computePhoneLayout : computeSquareLayout)({
-				gridWidth: width,
-				gridHeight: height,
-				total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1),
-				...(phoneLandscape?.value ? { minSide: PHONE_LANDSCAPE_MIN_SIDE } : {}),
-			})
+		const total = videoCount.value + (noLocalVideoReserve.value ? 0 : 1)
+		const lay = (w: number) => (phonePortrait?.value ? computePhoneLayout : computeSquareLayout)({
+			gridWidth: w,
+			gridHeight: height,
+			total,
+			...(phoneLandscape?.value ? { minSide: PHONE_LANDSCAPE_MIN_SIDE } : {}),
+		})
+		let dimensions = isStripe.value ? { columns: videoCount.value + 1, rows: 1, side: height } : lay(width)
+		// width - с padding, он от сдвига не зависит; сдвигаем, только если плашка шапки легла бы на плитку
+		barShift.value = !!phoneLandscape?.value && !isStripe.value
+			&& phoneBarOverlaps({ gridWidth: width, gridHeight: height, total, layout: dimensions })
+		if (barShift.value) {
+			dimensions = lay(width - PHONE_BAR_WIDTH)
+		}
 
 		columns.value = dimensions.columns
 		rows.value = dimensions.rows
@@ -181,6 +189,7 @@ export function useGridDimensions({
 		rows,
 		side,
 		tileHeight,
+		barShift,
 		dpiFactor,
 		minWidth,
 		minHeight,
