@@ -115,6 +115,21 @@
 					@click="setGuestsDraw(!state.gd)">
 					Гости рисуют: {{ state.gd ? 'да' : 'нет' }}
 				</button>
+				<!-- ket4tec (NAS_CLOUD#107): картинка или PDF с устройства — в беседу и сразу на доску у всех -->
+				<button
+					v-if="canPutFile"
+					type="button"
+					:disabled="fileBusy"
+					title="Картинка PNG/JPEG или PDF: уйдёт в беседу и встанет фоном доски у всех"
+					@click="fileInput.click()">
+					{{ fileBusy ? 'Загружаю файл…' : 'Файл на доску' }}
+				</button>
+				<input
+					ref="fileInput"
+					type="file"
+					accept="image/png,image/jpeg,application/pdf"
+					hidden
+					@change="putFile">
 				<button type="button" @click="clearMine(); more = false">
 					Стереть своё
 				</button>
@@ -201,12 +216,14 @@
 </template>
 
 <script setup>
+import { showError } from '@nextcloud/dialogs'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useGetToken } from '../../../composables/useGetToken.ts'
 import { useSidebarStore } from '../../../stores/sidebar.ts'
+import { fileToBoard } from './fileToBoard.js'
 import { isMac, mac, macLabel, openMac } from './macBridge.js'
 import { shoot, snap, watchSnaps } from './snapshot.js'
-import { amMod, canClearAll, clearAll, clearMine, isBoard, isPresenter, myColor, PALETTE, reducedMotion, requestCloseBoard, setColor, setGuestsDraw, setSize, SP, state, TSIZE, undo, WSZ } from './useDrawing.js'
+import { amMod, canClearAll, canShow, clearAll, clearMine, isBoard, isPresenter, myColor, PALETTE, reducedMotion, requestCloseBoard, setColor, setGuestsDraw, setSize, SP, state, TSIZE, undo, WSZ } from './useDrawing.js'
 
 const TOOLS = [
 	{ id: 'laser', label: 'Указка: тап — мигающая точка, ведёшь — линия, гаснет сама', sub: 'указка · тап — точка, линия гаснет через ' },
@@ -231,6 +248,32 @@ const px = ref(0)
 const presenter = computed(() => isPresenter())
 const board = computed(() => !!state.big && state.big === state.board && isBoard(state.keys[state.big]))
 const mod = computed(() => amMod())
+
+// ket4tec (NAS_CLOUD#107): «Файл на доску» — когда доску можно вести мне (своя или свободная)
+const fileInput = ref(null)
+const fileBusy = ref(false)
+const canPutFile = computed(() => (state.board, !canShow({ t: 'm', id: 1 })))
+/**
+ * @param {Event} e выбор файла
+ */
+async function putFile(e) {
+	const f = e.target.files?.[0]
+	e.target.value = '' // тот же файл можно выбрать снова
+	if (!f) {
+		return
+	}
+	more.value = false
+	fileBusy.value = true
+	try {
+		const err = await fileToBoard(f)
+		err && showError(err)
+	} catch (er) {
+		console.error('k4draw file to board', er)
+		showError('Не получилось положить файл на доску')
+	} finally {
+		fileBusy.value = false
+	}
+}
 const canClear = computed(() => (state.undo, state.big, canClearAll()))
 
 /** «Закрыть доску»: у всех, кто бы её ни открыл (правило 11.11); с рисунком — сначала «Сохранить рисунок?». */

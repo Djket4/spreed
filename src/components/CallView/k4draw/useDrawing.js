@@ -1478,6 +1478,10 @@ export function humans() {
 	return callParticipantCollection.callParticipantModels.filter((m) => !m.attributes.internal || m.attributes.videoAvailable)
 }
 
+/**
+ *
+ * @param excl
+ */
 function pickOwner(excl) {
 	// про других — по экранному потоку, не по state.keys: зритель доски ключ чужого показа уже забыл, и выбор у клиентов разошёлся бы
 	// выбор без согласования: у кого `h`/`H` показа ещё в пути, выберет иначе. Сводят два правила в приёме `h`: из двух взявших остаётся старший, а доску, отданную показывающему, выбирают заново
@@ -1605,7 +1609,49 @@ const boardAr = () => 4 / 3
  * @return {{ t: string, id: number }|null}
  */
 function okBg(bg) {
-	return bg && (bg.t === 's' || bg.t === 'm') && Number.isSafeInteger(bg.id) && bg.id > 0 ? { t: bg.t, id: bg.id } : null
+	if (!bg || !Number.isSafeInteger(bg.id) || bg.id <= 0) {
+		return null
+	}
+	if (bg.t === 's' || bg.t === 'm') {
+		return { t: bg.t, id: bg.id }
+	}
+	// ket4tec (NAS_CLOUD#107): страница PDF из беседы; картинку страницы каждый рисует сам (pdfBg.js)
+	return bg.t === 'p' && Number.isInteger(bg.pages) && bg.pages >= 1 && bg.pages <= 2000 && Number.isInteger(bg.page) && bg.page >= 1 && bg.page <= bg.pages
+		? { t: 'p', id: bg.id, page: bg.page, pages: bg.pages }
+		: null
+}
+
+/**
+ * Тот же фон: для PDF — и та же страница.
+ *
+ * @param a
+ * @param b
+ */
+const sameBg = (a, b) => a?.t === b?.t && a?.id === b?.id && a?.page === b?.page
+
+/**
+ * ket4tec (NAS_CLOUD#107): листать PDF на доске может только тот, кто её открыл.
+ *
+ * @param {number} [page] нужная страница; без неё — просто проверка права
+ * @return {boolean}
+ */
+export function canTurn(page) {
+	const bg = state.bg
+	return bg?.t === 'p' && state.board === me() && (page === undefined || (Number.isInteger(page) && page >= 1 && page <= bg.pages && page !== bg.page))
+}
+
+/**
+ * Листание PDF на доске: рисунок прежней страницы уходит в Снимки, доска открывается заново на новой странице
+ * (тот же путь, что смена картинки).
+ *
+ * @param {number} page номер страницы, с 1
+ * @return {Promise<string>} '' — перелистнули, иначе причина
+ */
+export async function turnPage(page) {
+	if (!canTurn(page)) {
+		return 'Листать может только тот, кто показывает'
+	}
+	return showImage({ ...state.bg, page })
 }
 
 /**
@@ -1615,6 +1661,9 @@ function okBg(bg) {
  * @param {number} size сторона превью, px
  */
 export function bgUrl(bg, size = 1600) {
+	if (bg.t === 'p') { // ket4tec (NAS_CLOUD#107): оригинал PDF; на доске показывается отрисованная страница (pdfBg.js)
+		return generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/pdf/{id}', { token: useTokenStore().token, id: bg.id })
+	}
 	return generateOcsUrl('apps/spreed/api/v1/k4draw/{token}/' + (bg.t === 's' ? 'snapshot' : 'image') + '/{id}', { token: useTokenStore().token, id: bg.id }) + '?size=' + size
 }
 
@@ -1635,7 +1684,7 @@ export async function showImage(bg, beforeOpen) {
 	const s = myShow()
 	const busy = 'Доску сейчас ведёт другой участник: пусть закроет её, тогда покажете свою картинку'
 	if (s && isBoard(s.k)) {
-		if (s.bg?.t === bg.t && s.bg?.id === bg.id) {
+		if (sameBg(s.bg, bg)) {
 			return ''
 		}
 		if (s.perm > 0) {
