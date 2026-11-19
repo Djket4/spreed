@@ -55,7 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	ff?.destroy()
-	for (const k of ['videoWidth', 'videoHeight', 'readyState', 'getVideoPlaybackQuality', 'requestVideoFrameCallback']) {
+	for (const k of ['videoWidth', 'videoHeight', 'readyState', 'getVideoPlaybackQuality', 'requestVideoFrameCallback', 'paused']) {
 		delete vproto[k]
 	}
 	vi.useRealTimers()
@@ -257,16 +257,32 @@ describe('FaceFrame: Safari, частота входа по rVFC', () => {
 		await vi.advanceTimersByTimeAsync(9000)
 		expect(ff.path).toBe('digital')
 	})
-	test('вход встал -> канвас перерисовывается не реже раза в 250 мс', async () => {
+	test('метаданные стоят, дорожка muted -> редкая перерисовка, без переключения', async () => {
 		vproto.getVideoPlaybackQuality = () => undefined
+		Object.defineProperty(vproto, 'paused', { configurable: true, get: () => false })
 		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), { presentedFrames: 5, mediaTime: 1 }), 16)
-		start()
+		start().muted = true
 		await vi.advanceTimersByTimeAsync(2000) // HOLD_MS без детектора
 		const f0 = ff._digital.frames
 		await vi.advanceTimersByTimeAsync(1000)
 		const df = ff._digital.frames - f0
 		expect(df).toBeGreaterThanOrEqual(3)
 		expect(df).toBeLessThanOrEqual(5)
+		expect(ff._digital.badSig).toBe(false)
+	})
+	test('метаданные стоят, дорожка live, колбэки 60 Гц -> за 1,5 с рисуем каждый колбэк, insrc не rvfc', async () => {
+		vproto.getVideoPlaybackQuality = () => undefined
+		Object.defineProperty(vproto, 'paused', { configurable: true, get: () => false })
+		vproto.requestVideoFrameCallback = (cb) => setTimeout(() => cb(performance.now(), { presentedFrames: 5, mediaTime: 1 }), 1000 / 60)
+		start()
+		await vi.advanceTimersByTimeAsync(1500 + 1500) // HOLD_MS + 1,5 с
+		expect(ff._digital.badSig).toBe(true)
+		const f0 = ff._digital.frames
+		await vi.advanceTimersByTimeAsync(1000)
+		expect(ff._digital.frames - f0).toBeGreaterThan(50)
+		await vi.advanceTimersByTimeAsync(8000)
+		expect(stats().insrc).not.toBe('rvfc')
+		expect(calllog.mock.calls.filter(([k, d]) => k === 'framing_mode' && /признак/.test(d.why))).toHaveLength(1)
 	})
 	test('ни счётчика, ни rVFC-метаданных -> frameRate из настроек дорожки', async () => {
 		vproto.getVideoPlaybackQuality = () => undefined

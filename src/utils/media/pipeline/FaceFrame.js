@@ -30,6 +30,7 @@ const HOLD_MS = 1500
 const LOW_FPS_RATIO = 0.7 // отрисовка < 70 % входа
 const LOW_FPS_MS = 2000
 const MIN_FPS = 15 // вход не измерить (нет getVideoPlaybackQuality) — прежнее правило: отрисовка < 15 к/с
+const SIGNAL_DEAD_MS = 1000 // признак нового кадра не менялся при живом входе — признак негоден до конца запуска
 const REDRAW_MAX_MS = 250 // вход не меняется дольше — всё равно перерисовываем (метаданные кадра могут не отражать смену кадра)
 const STATS_LOG_MS = 5000
 const STATS_CALLLOG_MS = 10000 // framing_stats в журнал звонка
@@ -410,6 +411,8 @@ export default class FaceFrame extends TrackSinkSource {
 			lastMT: null,
 			lastQ: 0,
 			lastDraw: 0,
+			novAt: 0, // когда последний раз менялся признак нового кадра
+			badSig: false, // признак нового кадра негоден (стоит при живом входе) — рисуем каждый колбэк
 			qinLast: 0,
 			inSrc: 'none', // источник частоты входа: quality | rvfc | settings | none
 			lastCb: 0,
@@ -497,6 +500,9 @@ export default class FaceFrame extends TrackSinkSource {
 	// в режиме rAF — счётчик totalVideoFrames, если он растёт; иначе признака нет — рисуем каждый колбэк (как раньше).
 	// Вход встал — перерисовываем не реже REDRAW_MAX_MS, чтобы сторож выхода видел живой канвас, а не ложный сбой.
 	_isNewFrame(d, meta, cb) {
+		if (d.badSig) {
+			return true
+		}
 		let inc
 		if (meta && (typeof meta.presentedFrames === 'number' || typeof meta.mediaTime === 'number')) {
 			const pf = typeof meta.presentedFrames === 'number' ? (d.lastPF === null ? 1 : meta.presentedFrames - d.lastPF) : 0
@@ -514,6 +520,16 @@ export default class FaceFrame extends TrackSinkSource {
 			inc = q - d.lastQ
 			d.lastQ = q
 		} else {
+			return true
+		}
+		d.novAt = d.novAt || cb
+		const t = d.input
+		// вход настоящий-живой: дорожка live, не muted, video играет. Тогда стоящий признак — это сбой признака, не входа
+		if (inc > 0 || t.readyState !== 'live' || t.muted || d.video.paused) {
+			d.novAt = cb
+		} else if (cb - d.novAt >= SIGNAL_DEAD_MS) {
+			d.badSig = true
+			logEv('framing_mode', { inst: this._inst, mode: this.path, why: 'признак кадра входа не растёт, рисуем каждый колбэк' })
 			return true
 		}
 		return inc > 0 || cb - d.lastDraw >= REDRAW_MAX_MS
@@ -543,7 +559,7 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			// ket4tec (NAS_CLOUD#160): источник частоты входа — счёт кадров (totalVideoFrames или rVFC), иначе заявленная frameRate дорожки
 			const cfg = d.input.getSettings?.().frameRate
-			const src = d.inSeen ? 'quality' : d.rvOk && d.inRv > 0 ? 'rvfc' : cfg > 0 ? 'settings' : 'none'
+			const src = d.badSig ? (cfg > 0 ? 'settings' : 'none') : d.inSeen ? 'quality' : d.rvOk && d.inRv > 0 ? 'rvfc' : cfg > 0 ? 'settings' : 'none'
 			const cnt = src === 'quality' ? inNow : src === 'rvfc' ? d.inRv : null
 			if (cnt !== null) {
 				d.inFps = src === d.inSrc ? (cnt - d.inTotal) * 1000 / (now - d.fpsT) : d.inFps
