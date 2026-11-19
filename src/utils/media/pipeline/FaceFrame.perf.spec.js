@@ -140,7 +140,7 @@ describe('FaceFrame: форма событий журнала', () => {
 		expect(Object.keys(get('framing_start')).sort()).toEqual(['frozen', 'h', 'inst', 'oh', 'ow', 'sched', 'w'])
 		expect(get('framing_start')).toMatchObject({ inst: 'call', sched: 'rvfc', frozen: false })
 		const st = get('framing_stats')
-		expect(Object.keys(st).sort()).toEqual(['cbfps', 'detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'insrc', 'inst', 'outfps'])
+		expect(Object.keys(st).sort()).toEqual(['cbfps', 'detavg', 'detp', 'drawfps', 'gapmax', 'hidden', 'infps', 'insrc', 'inst', 'outfps', 'zflips', 'zoom'])
 		expect(st).toMatchObject({ inst: 'call', hidden: false })
 		expect(st.infps).toBeGreaterThan(25)
 	})
@@ -182,7 +182,7 @@ describe('FaceFrame: ключи событий под серверный фил�
 		setRates(30, 12) // даёт start, mode, stats, error (lowFps), mode frozen
 		start()
 		await vi.advanceTimersByTimeAsync(12000)
-		const own = calllog.mock.calls.filter(([k]) => /^framing_(start|stats|error|mode)$/.test(k))
+		const own = calllog.mock.calls.filter(([k]) => /^framing_(start|stats|face|error|mode)$/.test(k))
 		expect(new Set(own.map(([k]) => k))).toEqual(new Set(['framing_start', 'framing_stats', 'framing_error', 'framing_mode']))
 		for (const [, d] of own) {
 			const keys = Object.keys(d)

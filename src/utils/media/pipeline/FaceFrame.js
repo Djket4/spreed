@@ -164,6 +164,118 @@ export function computeTarget(faces, r = range) {
 
 export { stepWindow }
 
+// ket4tec (NAS_CLOUD#160): iPad, мелкое лицо — рамка детектора дрожит, а цель масштаба шла в окно как есть («дышит зумом»).
+// Масштаб держим, пока размер лица (zoom = zMax^range) не ушёл больше чем на ZOOM_HOLD_FACE по сырому замеру дольше ZOOM_HOLD_MS;
+// разворот направления — не чаще ZOOM_FLIP_MS. Сдвиг окна идёт отдельно и этим не ограничен.
+const ZOOM_HOLD_FACE = 1.25
+const ZOOM_HOLD_MS = 500
+const ZOOM_FLIP_MS = 2000
+
+/**
+ * @param {object} d состояние конвейера (поле zs хранит принятый масштаб)
+ * @param {number} zoom сырой масштаб из замера
+ * @param {number} now время, мс
+ * @param {number} [r] дальность 0..1
+ * @return {number} масштаб для цели
+ */
+export function holdZoom(d, zoom, now, r = range) {
+	// ползунок «Дальность» сдвинули (или первый замер): цель принимается сразу, без выдержки
+	if (!d.zs || d.zs.r !== r) {
+		d.zs = { z: zoom, pend: 0, dir: 0, at: -Infinity, r }
+		return zoom
+	}
+	const s = d.zs
+	const err = Math.log(zoom / s.z)
+	const dir = Math.sign(err)
+	if (Math.abs(err) <= r * Math.log(ZOOM_HOLD_FACE) + 1e-9) {
+		s.pend = 0
+		return s.z
+	}
+	if (!s.pend || s.pdir !== dir) {
+		s.pend = now
+		s.pdir = dir
+	}
+	if (now - s.pend >= ZOOM_HOLD_MS && (dir === s.dir || now - s.at >= ZOOM_FLIP_MS)) {
+		s.z = zoom
+		s.pend = 0
+		s.dir = dir
+		s.at = now
+	}
+	return s.z
+}
+
+// ket4tec (NAS_CLOUD#160): мигающая ложная рамка (люстра, светильник) не должна двигать окно. Рамки сопоставляются между
+// детекциями по близости центров; в охват входит рамка, державшаяся подряд >= STABLE_MS, и выходит через STABLE_MS после
+// последнего появления. Пока устойчивых нет (первые 600 мс) — охват по текущим рамкам.
+const STABLE_MS = 600
+const TRACK_SPEED = 1 // допустимая скорость лица для сопоставления, ширин кадра в секунду
+
+/**
+ * @param {object} d состояние конвейера (поля tr и dts хранят треки и времена детекций)
+ * @param {Array<{x: number, y: number, w: number, h: number}>} faces рамки текущей детекции
+ * @param {number} now время, мс
+ * @return {{cover: Array, stable: number}} рамки для охвата и число устойчивых
+ */
+export function stableFaces(d, faces, now) {
+	// срок жизни и «устойчивости» — не меньше 2.5 средних интервалов детекции (в режиме плиток они реже 600 мс)
+	const ts = (d.dts = [...(d.dts || []), now].slice(-6))
+	const hold = Math.max(STABLE_MS, ts.length > 1 ? 2.5 * (now - ts[0]) / (ts.length - 1) : 0)
+	const tr = (d.tr = (d.tr || []).filter((t) => now - t.last <= hold))
+	if (faces.length) {
+		const used = new Set()
+		const fresh = []
+		for (const f of faces) {
+			// ближайший трек; допуск — ширина рамки, а для давно не виденного — путь, который лицо успело пройти
+			const dist = (c) => Math.hypot(c.x + c.w / 2 - f.x - f.w / 2, c.y + c.h / 2 - f.y - f.h / 2)
+			const tol = (c) => Math.max(c.w, f.w, TRACK_SPEED * (now - c.last) / 1000)
+			const t = tr.filter((c) => !used.has(c) && Math.abs(c.x + c.w / 2 - f.x - f.w / 2) < tol(c) && Math.abs(c.y + c.h / 2 - f.y - f.h / 2) < Math.max(c.h, f.h, tol(c))).sort((p, q) => dist(p) - dist(q))[0]
+			if (t) {
+				used.add(t)
+				Object.assign(t, f, { last: now, since: t.since ?? now })
+				t.stable ||= now - t.since >= hold
+			} else {
+				const n = { ...f, last: now, since: now, stable: false }
+				tr.push(n)
+				used.add(n)
+				fresh.push(n)
+			}
+		}
+		const lost = tr.filter((t) => !used.has(t))
+		// быстрое лицо ушло дальше допуска: ни один устойчивый трек не сопоставился, один пропал, одна новая рамка того же размера — трек переезжает
+		const lostStable = lost.filter((t) => t.stable)
+		if (lostStable.length === 1 && fresh.length === 1 && ![...used].some((t) => t.stable)) {
+			const [o] = lostStable
+			const ratio = fresh[0].w / o.w
+			if (ratio >= 0.6 && ratio <= 1.6) {
+				Object.assign(o, fresh[0], { last: now, since: now, stable: true })
+				tr.splice(tr.indexOf(fresh[0]), 1)
+				lost.splice(lost.indexOf(o), 1)
+			}
+		}
+		for (const t of lost) {
+			t.since = null // пропал при живой детекции — серия прервалась
+		}
+	}
+	const st = tr.filter((t) => t.stable)
+	return { cover: st.length ? st : faces, stable: st.length }
+}
+
+/**
+ * Охват (рамки лиц) целиком внутри окна цели.
+ *
+ * @param {object} t цель
+ * @param {Array} cover рамки
+ * @param {number} W ширина кадра
+ * @param {number} H высота кадра
+ */
+function fitsWindow(t, cover, W, H) {
+	const c = clampTarget(t, W, H)
+	const side = Math.min(W, H) / Math.max(1, c.zoom)
+	const sx = c.cx * W - side / 2
+	const sy = c.cy * H - side / 2
+	return cover.every((f) => f.x * W >= sx - 0.5 && (f.x + f.w) * W <= sx + side + 0.5 && f.y * H >= sy - 0.5 && (f.y + f.h) * H <= sy + side + 0.5)
+}
+
 // Резервный проход для далёких лиц: если в полном кадре лиц нет, по очереди
 // (одна плитка за детекцию) прогоняется центр, 4 угловых плитки 60% и сетка 3×3 по 40% с перекрытием.
 export const TILES = [
@@ -643,7 +755,21 @@ export default class FaceFrame extends TrackSinkSource {
 				detp: detP95,
 				gapmax: Math.round(d.gapMax),
 				hidden: document.hidden,
+				zoom: Math.round((d.win?.zoom || 1) * 100) / 100,
+				zflips: d.zflips || 0,
 			})
+			// ket4tec (NAS_CLOUD#160): что видит детектор — разбор «кадр не держится на лице» (доля ширины кадра, пропуски, плитки)
+			if (d.dm) {
+				logEv('framing_face', {
+					inst: this._inst,
+					facew: d.fn ? Math.round(d.fw / d.fn * 1000) / 1000 : null,
+					miss: Math.round(d.dmiss / d.dm * 100) / 100,
+					tiles: Math.round(d.dtile / d.dm * 100) / 100,
+					faces: d.fmax || 0,
+					raw: d.rmax || 0,
+				})
+			}
+			d.fw = d.fn = d.dm = d.dmiss = d.dtile = d.zflips = d.fmax = d.rmax = 0
 			d.st = { t: now, src: d.inSrc, in: inCnt ?? 0, draw: d.frames, cb: d.cbs, out: d.outFrames || 0, outq: pq ?? 0 }
 			d.gapMax = 0
 		}
@@ -798,15 +924,33 @@ export default class FaceFrame extends TrackSinkSource {
 			if (tile && !faces.length) {
 				d.tileIdx++
 			}
-			const target = computeTarget(faces)
+			const { cover, stable } = stableFaces(d, faces, now)
+			const target = computeTarget(cover)
 			if (target) {
-				if (faces.length === 1 && range > 0) { // «Дальность» 0 — весь кадр, без доводки к центру
+				if (cover.length === 1 && range > 0) { // «Дальность» 0 — весь кадр, без доводки к центру
 					// ket4tec (NAS_CLOUD#172): лицо у края — квадрат сужается (до 1.5×), чтобы оно встало в центр плитки
 					target.zoom = Math.max(target.zoom, centerZoom(target, video.videoWidth, video.videoHeight))
 				}
+				const raw = target.zoom
+				target.zoom = holdZoom(d, raw, now)
+				// удержанный масштаб не вмещает охват устойчивых лиц — уменьшаем сразу, в обход удержания
+				if (target.zoom > raw && !fitsWindow(target, cover, video.videoWidth, video.videoHeight)) {
+					target.zoom = raw
+					d.zs.z = raw
+					d.zs.pend = 0
+					d.zs.dir = -1
+					d.zs.at = now
+				}
 				d.target = target
 				d.lastFace = now
+				d.fw = (d.fw || 0) + Math.max(...cover.map((f) => f.x + f.w)) - Math.min(...cover.map((f) => f.x))
+				d.fn = (d.fn || 0) + 1
 			}
+			d.fmax = Math.max(d.fmax || 0, stable)
+			d.rmax = Math.max(d.rmax || 0, faces.length)
+			d.dm = (d.dm || 0) + 1
+			d.dmiss = (d.dmiss || 0) + (faces.length ? 0 : 1)
+			d.dtile = (d.dtile || 0) + (tile ? 1 : 0)
 		} catch (e) { /* пропускаем детекцию */ }
 		const dur = performance.now() - t
 		d.detCount++
@@ -819,6 +963,22 @@ export default class FaceFrame extends TrackSinkSource {
 		} else {
 			d.nextTileAt = now + TILE_INTERVAL_MS
 			d.nextDetectAt = Math.max(d.nextDetectAt, now + (dur > SLOW_DETECT_MS ? dur * 4 : 0))
+		}
+	}
+
+	// ket4tec (NAS_CLOUD#160): смены направления масштаба (размах > 1% от крайней точки) — для журнала
+	_trackFlips(d) {
+		const z = d.win.zoom
+		const t = d.zt ||= { ext: z, dir: 0 }
+		if (z > t.ext * 1.01 || z < t.ext / 1.01) {
+			const dir = z > t.ext ? 1 : -1
+			if (t.dir && dir !== t.dir) {
+				d.zflips = (d.zflips || 0) + 1
+			}
+			t.dir = dir
+			t.ext = z
+		} else if ((t.dir === 1 && z > t.ext) || (t.dir === -1 && z < t.ext)) {
+			t.ext = z
 		}
 	}
 
@@ -859,6 +1019,7 @@ export default class FaceFrame extends TrackSinkSource {
 		d.lastTick = now
 		d.win = stepWindow(d.win, clampTarget(d.target, W, H), dt, { W, H })
 		this.window = d.win
+		this._trackFlips(d)
 
 		const { sx, sy, side: ss } = squareRect(d.win, W, H)
 		ctx.drawImage(video, sx, sy, ss, ss, 0, 0, side, side)
