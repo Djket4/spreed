@@ -6,7 +6,14 @@
 import { nextTick } from 'vue'
 
 /** Duration (in ms) of the travel of a tile between the stripe and its slot. */
+// ket4tec (NAS_CLOUD#159): на телефоне - 180 мс, долгий переезд читался как «плитки переключаются некорректно»
+const PHONE_TRANSITION_DURATION = 180
 const TRANSITION_DURATION = 300
+
+/** Duration at the moment of the transition: the window may have been rotated or resized since the import. */
+function transitionDuration() {
+	return window.matchMedia?.('(max-width: 767px)').matches ? PHONE_TRANSITION_DURATION : TRANSITION_DURATION
+}
 
 /**
  * Data attribute the animated tiles are looked up by. Both the stripe and the
@@ -103,7 +110,7 @@ function animateTile(sessionId: string, from: DOMRect) {
 	// Nothing else ends the transition when it is taken over, for instance by
 	// another change moving the tile again
 	tile.addEventListener('transitioncancel', reset)
-	tile.style.transition = `transform ${TRANSITION_DURATION}ms ease-in-out`
+	tile.style.transition = `transform ${transitionDuration()}ms ease-in-out`
 	tile.style.transform = ''
 }
 

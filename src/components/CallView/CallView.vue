@@ -82,7 +82,7 @@
 					<!-- Promoted "autopilot" mode -->
 					<VideoVue
 						v-else-if="promotedParticipantModel"
-						:key="`autopilot-${promotedParticipantModel.attributes.peerId}`"
+						:key="promotedVideoKey"
 						:data-tile-session-id="promotedParticipantModel.attributes.nextcloudSessionId"
 						:token="token"
 						:model="promotedParticipantModel"
@@ -228,6 +228,7 @@ import { k4log } from '../../utils/k4log.js'
 import { callParticipantCollection, localCallParticipantModel, localMediaModel } from '../../utils/webrtc/index.js'
 import RemoteVideoBlocker from '../../utils/webrtc/RemoteVideoBlocker.js'
 import { placeholderImage, placeholderModel, placeholderName, placeholderSharedData } from './Grid/gridPlaceholders.ts'
+import { createSpeakerHold } from './Grid/speakerHold.ts'
 import { animateTilePromotion } from './Grid/tilePromotionTransition.ts'
 import { state as k4, watchCall } from './k4draw/useDrawing.js' // ket4tec: k4draw
 import { watchHeaderLinks, watchMove } from './k4move/useMove.js' // ket4tec (NAS_CLOUD#113)
@@ -347,6 +348,7 @@ export default {
 			sharedDatas: {},
 			raisedHandUnwatchers: {},
 			speakingUnwatchers: {},
+			heldSpeakerId: null, // ket4tec (NAS_CLOUD#159): крупный собеседник с удержанием
 			screenUnwatchers: {},
 			speakers: [],
 			localSharedData: {
@@ -383,6 +385,14 @@ export default {
 				// added
 				?? this.callParticipantModels.find((callParticipantModel) => this.sharedDatas[callParticipantModel.attributes.peerId]?.promoted)
 				?? this.callParticipantModels[0]
+		},
+
+		// ket4tec (NAS_CLOUD#159): ключ крупной плитки не зависит от участника: смена говорящего «с видео на видео» оставляет тот же
+		// VideoVue и тот же <video> (новый key давал новый элемент и проявление за 1 с из облака - чёрный экран). Меняется только
+		// вид «есть кадр / нет кадра»: там нужен новый элемент, чтобы не держать чужой замерший кадр.
+		promotedVideoKey() {
+			const a = this.promotedParticipantModel?.attributes
+			return `autopilot-${a?.videoAvailable && !a?.videoBlocked && a?.stream ? 'video' : 'avatar'}`
 		},
 
 		// The speakers currently sharing the main area, in the order they became
@@ -545,7 +555,7 @@ export default {
 
 		// Shows the local video if selected
 		showLocalVideo() {
-			return this.hasLocalVideo && this.selectedVideoPeerId === 'local'
+			return false // ket4tec (NAS_CLOUD#159): своя камера никогда не крупная (и устаревшее закрепление 'local' не показываем)
 		},
 
 		// Show local screen
@@ -695,6 +705,10 @@ export default {
 			animateTilePromotion(sessionIds, previousSessionIds ?? [])
 		},
 
+		heldSpeakerId() {
+			this._setPromotedParticipant()
+		},
+
 		speakers: {
 			deep: true,
 			handler() {
@@ -759,6 +773,9 @@ export default {
 	},
 
 	created() {
+		this.k4SpeakerHold = createSpeakerHold((peerId) => {
+			this.heldSpeakerId = peerId
+		}) // не реактивное
 		this.k4handToasts = {} // ket4tec (NAS_CLOUD#264): sessionId → плашка «подняла руку», не реактивно
 		// Ensure that data is properly initialized before mounting the
 		// subviews.
@@ -813,6 +830,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		this.k4SpeakerHold.dispose()
 		this.k4TileDebounced.clear?.()
 		this.k4DprMq?.removeEventListener('change', this.k4DprFn)
 		this.k4StackObs?.disconnect() // ket4tec (NAS_CLOUD#270 п.1)
@@ -907,6 +925,7 @@ export default {
 				delete this.sharedDatas[removedModelId]
 
 				this.speakingUnwatchers[removedModelId]()
+				this.k4SpeakerHold.remove(removedModelId)
 				// Not reactive, but not a problem
 				delete this.speakingUnwatchers[removedModelId]
 
@@ -965,6 +984,7 @@ export default {
 		},
 
 		_setSpeaking(peerId, speaking) {
+			this.k4SpeakerHold.setSpeaking(peerId, speaking)
 			if (speaking) {
 				// Move the speaker to the first element of the list
 				const index = this.speakers.findIndex((speaker) => speaker.id === peerId)
@@ -1051,8 +1071,12 @@ export default {
 				// promoting them as soon as they speak would mark a tile that is
 				// still in the stripe as promoted.
 				promotedPeerIds = this.promotedSpeakerModels.map((model) => model.attributes.peerId)
-			} else if (this.speakers.length) {
-				promotedPeerIds = [this.speakers[0].id]
+			} else if (this.heldSpeakerId) {
+				// ket4tec (NAS_CLOUD#159): не speakers[0] - тот прыгал на любой короткий звук (_setSpeaking); тут говорящий 2 с подряд, затем последний говоривший
+				promotedPeerIds = [this.heldSpeakerId]
+			} else if (this.callParticipantModels.length) {
+				// пока никто не прошёл удержание, крупно первый (promotedParticipantModel) - ему же флаг и качество HIGH
+				promotedPeerIds = [this.callParticipantModels[0].attributes.peerId]
 			}
 
 			promotedPeerIds = promotedPeerIds.filter((peerId) => this.sharedDatas[peerId])
@@ -1140,23 +1164,7 @@ export default {
 		},
 
 		handleClickLocalVideo() {
-			// DO nothing if no video
-			if (!this.hasLocalVideo || this.isSidebar) {
-				return
-			}
-			if (this.selectedVideoPeerId === 'local') {
-				if (!isTouchDevice()) {
-					this.unpin() // ket4tec (NAS_CLOUD#153)
-				}
-				return
-			}
-			this.callViewStore.setSelectedVideoPeerId('local')
-			this.callViewStore.setCallViewMode({
-				token: this.token,
-				isGrid: false,
-				isStripeOpen: stripeOpenForced(), // ket4tec (NAS_CLOUD#108 п.1): полоса камер открыта — своя камера видна при показе и выборе
-				clearLast: false,
-			})
+			// ket4tec (NAS_CLOUD#159): своя камера не закрепляется — иначе она показана дважды (крупно и в ряду «Вы»)
 		},
 
 		async fetchPeers() {
@@ -1230,6 +1238,7 @@ export default {
 				const big = tiles <= K4_GRID_HIGH_MAX && this.k4TileBig
 				callParticipantModel.setSimulcastVideoQuality(big ? SIMULCAST.HIGH : SIMULCAST.MEDIUM, SIMULCAST.HIGH)
 			} else if (this.sharedDatas[callParticipantModel.attributes.peerId]?.promoted
+				|| callParticipantModel === this.promotedParticipantModel // ket4tec (NAS_CLOUD#159): одна точка истины - кто показан крупно
 				|| this.selectedVideoPeerId === callParticipantModel.attributes.peerId
 				|| this.promotedSpeakerPeerIds.has(callParticipantModel.attributes.peerId)) {
 				callParticipantModel.setSimulcastVideoQuality(SIMULCAST.HIGH, SIMULCAST.HIGH)

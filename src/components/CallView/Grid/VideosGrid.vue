@@ -33,7 +33,7 @@
 			<div v-if="!isStripe || stripeOpen" class="videos-wrapper" :class="{ 'videos-wrapper--stripe': isStripe }">
 				<div :class="[isStripe ? 'stripe-wrapper' : 'grid-wrapper']">
 					<NcButton
-						v-if="!isStripe && hasPreviousPage && gridWidth > 0"
+						v-if="!isStripe && !k4More && hasPreviousPage && gridWidth > 0"
 						variant="tertiary-no-background"
 						class="grid-navigation grid-navigation__previous"
 						:aria-label="t('spreed', 'Previous page of videos')"
@@ -107,13 +107,14 @@
 							v-if="k4More"
 							type="button"
 							class="k4-more-tile"
+							:style="tileStyle(displayedVideos.length + 1)"
 							:aria-label="'+' + k4More + ' — все участники'"
 							@click="sidebarStore.showSidebar({ activeTab: 'participants' })">
 							+{{ k4More }}
 						</button>
 					</div>
 					<NcButton
-						v-if="!isStripe && hasNextPage && gridWidth > 0"
+						v-if="!isStripe && !k4More && hasNextPage && gridWidth > 0"
 						variant="tertiary-no-background"
 						class="grid-navigation grid-navigation__next"
 						:aria-label="t('spreed', 'Next page of videos')"
@@ -190,12 +191,14 @@ import {
 	computeTilePlacements,
 	getHalfColumnCount,
 	GRID_GAP,
+	PHONE_MAX_TILES,
 	TARGET_ASPECT_RATIO,
 	TILE_COLUMN_SPAN,
 } from './gridLayout.ts'
 import { placeholderImage, placeholderModel, placeholderName, placeholderSharedData } from './gridPlaceholders.ts'
 import { useGridDimensions } from './useGridDimensions.ts'
 import { usePagination } from './usePagination.ts'
+import { usePhoneShown } from './usePhoneShown.ts'
 import { useTileOrdering } from './useTileOrdering.ts'
 
 // Max number of videos per page. `0`, the default value, means no cap
@@ -307,14 +310,20 @@ export default {
 		// (recording mode).
 		const noLocalVideoReserve = computed(() => props.isRecording)
 
+		// ket4tec (NAS_CLOUD#159): тот же media, что у полосы в k7call.scss
+		const k4PhonePortrait = useMediaQuery('(max-width: 500px) and (orientation: portrait)')
+		const phoneGrid = computed(() => k4PhonePortrait.value && !props.isStripe && !devMode.value)
+
 		const gridDimensions = useGridDimensions({
 			wrapper: gridWrapper,
 			grid,
 			isStripe: toRef(() => props.isStripe),
 			isSidebar: toRef(() => props.isSidebar),
 			noLocalVideoReserve,
-			videoCount: cappedVideosCount,
+			// на телефоне сетка не больше шести мест: остальные уходят в «+N»
+			videoCount: computed(() => (phoneGrid.value ? Math.min(cappedVideosCount.value, PHONE_MAX_TILES - 1) : cappedVideosCount.value)),
 			stripeOpen,
+			phonePortrait: phoneGrid,
 		})
 
 		// Number of grid slots (videos per page) at any given moment, clamped to
@@ -331,6 +340,10 @@ export default {
 			}
 			const gridSlots = gridDimensions.rows.value * gridDimensions.columns.value
 			const slots = noLocalVideoReserve.value ? gridSlots : gridSlots - 1
+			// ket4tec (NAS_CLOUD#159): с седьмого участника на телефоне - 4 собеседника, «Вы» и «+N», без страниц
+			if (phoneGrid.value && cappedVideosCount.value > PHONE_MAX_TILES - 1) {
+				return PHONE_MAX_TILES - 2
+			}
 			return videosCap ? Math.min(videosCap, slots) : slots
 		})
 
@@ -366,7 +379,20 @@ export default {
 		} = usePagination(videosCount, slots)
 
 		// The window of the ordered videos shown on the current page
-		const displayedVideos = computed(() => orderedVideos.value.slice(...currentPageBounds.value))
+		// ket4tec (NAS_CLOUD#159): телефон вертикально, 7+ участников - 4 собеседника без страниц, говорящий всегда среди них
+		const phoneMore = computed(() => phoneGrid.value && !noLocalVideoReserve.value && !devMode.value && orderedVideos.value.length > PHONE_MAX_TILES - 1)
+		const phoneShown = usePhoneShown(
+			computed(() => (devMode.value ? [] : orderedVideos.value)),
+			computed(() => orderedVideos.value.find((model) => props.sharedDatas[model.attributes?.peerId]?.promoted)?.attributes.peerId ?? null),
+			PHONE_MAX_TILES - 2,
+		)
+		watch(phoneMore, (on) => {
+			if (on) {
+				currentPage.value = 0
+			}
+		}, { immediate: true })
+
+		const displayedVideos = computed(() => (phoneMore.value ? phoneShown.value : orderedVideos.value.slice(...currentPageBounds.value)))
 
 		// Reset current page when switching between stripe and full grid,
 		// as the previous page is meaningless in the new mode.
@@ -384,13 +410,14 @@ export default {
 			hasPreviousPage,
 			next,
 			previous,
+			phoneMore,
 			devMode,
 			dummies,
 			screenshotMode,
 			videosCap,
 			callViewStore,
 			sidebarStore: useSidebarStore(), // ket4tec (NAS_CLOUD#195)
-			k4PhonePortrait: useMediaQuery('(max-width: 500px) and (orientation: portrait)'), // тот же media, что у полосы в k7call.scss
+			k4PhonePortrait,
 			gridWrapper,
 			grid,
 			stripeOpen,
@@ -439,7 +466,7 @@ export default {
 			}
 
 			return computeTilePlacements({
-				totalTiles: this.totalTiles,
+				totalTiles: this.totalTiles + (!this.isStripe && this.k4More ? 1 : 0),
 				rows: this.rows,
 				columns: this.columns,
 			})
@@ -456,7 +483,15 @@ export default {
 
 		// ket4tec (NAS_CLOUD#195 п.3): больше шести — 4 собеседника, «Вы» и «+N» (скрытые собеседники)
 		k4More() {
-			return this.isStripe && this.k4PhonePortrait && this.totalTiles > 6 ? this.totalTiles - 5 : 0
+			if (!this.k4PhonePortrait) {
+				return 0
+			}
+			if (!this.isStripe) {
+				// сетка: «Вы» + все собеседники > 6 (в записи своей плитки нет)
+				return this.phoneMore ? this.orderedVideos.length - (PHONE_MAX_TILES - 2) : 0
+			}
+			// ket4tec (NAS_CLOUD#159): без показа экрана полоса - один ряд с прокруткой, «+N» не нужен
+			return this.screens.length && this.totalTiles > 6 ? this.totalTiles - 5 : 0
 		},
 
 		// ket4tec (NAS_CLOUD#195 п.3): квадраты полосы на iPhone вертикально (применяет k7call.scss в своём media)
@@ -476,7 +511,7 @@ export default {
 			}
 			return {
 				gridTemplateColumns: `repeat(${getHalfColumnCount(this.columns)}, ${(this.side - GRID_GAP) / 2}px)`,
-				gridTemplateRows: `repeat(${this.rows}, ${this.side}px)`,
+				gridTemplateRows: `repeat(${this.rows}, ${this.tileHeight || this.side}px)`,
 				justifyContent: 'center',
 				alignContent: 'center',
 			}
@@ -571,6 +606,10 @@ export default {
 			if (this.isStripe) {
 				this.grid.scrollLeft += event.deltaY // ket4tec (NAS_CLOUD#159): колесо листает полосу
 				return
+			}
+
+			if (this.phoneMore) {
+				return // ket4tec (NAS_CLOUD#159): без страниц
 			}
 
 			if (event.deltaY < 0 && this.hasPreviousPage) {

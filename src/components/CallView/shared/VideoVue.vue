@@ -631,6 +631,20 @@ export default {
 			},
 		},
 
+		// ket4tec (NAS_CLOUD#159): крупная плитка переиспользуется при смене говорящего - счётчик видимости переходит к новому
+		sharedData(value, oldValue) {
+			oldValue.remoteVideoBlocker.decreaseVisibleCounter()
+			value.remoteVideoBlocker.increaseVisibleCounter()
+		},
+
+		// ket4tec (NAS_CLOUD#159): VideoVue крупной плитки переиспользуется для другого участника. «Оставить прежний кадр»
+		// (_setStream) верно только для того же участника: у нового потока нет - чужой кадр убираем
+		model(model, oldModel) {
+			if (model !== oldModel && !model.attributes.stream && this.$refs.video) {
+				this.$refs.video.srcObject = null
+			}
+		},
+
 		'model.attributes.stream': function(stream) {
 			this._setStream(stream)
 		},

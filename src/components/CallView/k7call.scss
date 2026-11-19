@@ -461,9 +461,9 @@ $glass: blur(24px) saturate(180%);
 }
 
 // ket4tec (NAS_CLOUD#159): камеры — квадраты (решение владельца 12.11); показ экрана и доска — в своих пропорциях
-// крупный кадр камеры (закреплённый, говорящий): квадрат по центру главной области
+// крупный кадр камеры (закреплённый, говорящий): весь прямоугольник главной области, кадр режется по центру (NAS_CLOUD#159, 19.11: квадрат оставлял пустоту по бокам)
 #call-container .video__promoted { container-type: size; }
-#call-container .video__promoted > .video-container-big { position: absolute !important; inset: 0 !important; margin: auto !important; padding: 0 !important; width: 100cqmin !important; height: 100cqmin !important; max-width: none !important; }
+#call-container .video__promoted > .video-container-big { position: absolute !important; inset: 0 !important; margin: auto !important; padding: 0 !important; width: 100cqw !important; height: 100cqh !important; max-width: none !important; }
 // кадр камеры заполняет квадрат без полей: «Выкл» и откат дают широкий кадр, он режется по центру (NAS_CLOUD#172); обёртка VideoVue не сжимается по пропорции кадра
 #call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) { width: 100% !important; height: 100% !important; margin: 0 !important; }
 #call-container .video__promoted > .video-container-big .videoWrapper:not(.presenter-overlay) > video { object-fit: cover; object-position: center; }
@@ -568,6 +568,24 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	#call-container:not(.k7-alone) .video__promoted:has(> .screenContainer) { flex: 0 1 auto; height: auto; aspect-ratio: var(--k4-ar, 16 / 10); max-height: 100%; overflow: hidden; }
 }
 #call-container .k4-more-tile { display: none; }
+// ket4tec (NAS_CLOUD#159): iPhone вертикально, «Говорящий крупно» (без показа экрана): крупная плитка - вся ширина и вся высота над одним рядом
+// маленьких (ряд у нижней панели, листается пальцем, «Вы» последняя), без «+N». Крупная плитка - весь прямоугольник области (общее правило выше).
+@media (max-width: 500px) and (orientation: portrait) {
+	#call-container:not(.k7-alone) #videos:not(:has(> .video__promoted > .screenContainer)) {
+		.grid-main-wrapper:not(.is-grid) {
+			--stripe-height: calc(var(--k4-sq, 110px) + 16px) !important;
+			.grid { grid-template-columns: none !important; grid-auto-flow: column !important; grid-auto-columns: var(--k4-sq, 110px) !important; grid-template-rows: var(--k4-sq, 110px) !important; grid-auto-rows: auto !important; justify-content: start !important; align-content: start; overflow-x: auto !important; overflow-y: hidden !important; overscroll-behavior-x: contain; scrollbar-width: none; }
+			.grid > .localVideoContainer { order: 1; }
+		}
+	}
+}
+// ket4tec (NAS_CLOUD#159): в сетке «Классика» на телефоне «+N» - обычная ячейка сетки
+@media (max-width: 500px) and (orientation: portrait) {
+	#call-container .grid-main-wrapper.is-grid .k4-more-tile {
+		display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--k7-r-tile);
+		background: var(--k7-glass); color: var(--k7-fg); font-size: 26px; font-weight: 700; box-shadow: inset 0 0 0 1px var(--k7-line2); cursor: pointer;
+	}
+}
 // ket4tec (NAS_CLOUD#195 п.6): кнопки по тапу встают по центру плитки — надпись NO SIGNAL уходит вниз, над именем
 // (iPad и десктоп: имя под плиткой — надпись к самому низу, иначе на 111 px её закрывает кнопка микрофона; телефон: над полосой имени)
 #call-container .k4-tapped .k4-nosig { align-items: flex-end; padding-bottom: 8px; }

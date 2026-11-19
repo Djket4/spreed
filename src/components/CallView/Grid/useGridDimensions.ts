@@ -7,7 +7,7 @@ import type { Ref } from 'vue'
 
 import debounce from 'debounce'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { computeSquareLayout, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
+import { computePhoneLayout, computeSquareLayout, getMinTileHeight, getMinTileWidth } from './gridLayout.ts'
 
 type UseGridDimensionsOptions = {
 	/** Element to observe for size changes (its child grid is measured) */
@@ -24,6 +24,8 @@ type UseGridDimensionsOptions = {
 	videoCount: Readonly<Ref<number>>
 	/** Whether the stripe is expanded (only relevant in stripe mode) */
 	stripeOpen: Readonly<Ref<boolean>>
+	/** ket4tec (NAS_CLOUD#159): iPhone vertically, smaller minimum square */
+	phonePortrait?: Readonly<Ref<boolean>>
 }
 
 /**
@@ -40,6 +42,7 @@ type UseGridDimensionsOptions = {
  * @param options.noLocalVideoReserve - whether no slot must be reserved for the local video
  * @param options.videoCount - number of tiles to lay out (already clamped to any cap)
  * @param options.stripeOpen - whether the stripe is expanded
+ * @param options.phonePortrait - ket4tec (NAS_CLOUD#159): iPhone vertically, smaller minimum square
  */
 export function useGridDimensions({
 	wrapper,
@@ -49,12 +52,14 @@ export function useGridDimensions({
 	noLocalVideoReserve,
 	videoCount,
 	stripeOpen,
+	phonePortrait,
 }: UseGridDimensionsOptions) {
 	const gridWidth = ref(0)
 	const gridHeight = ref(0)
 	const columns = ref(0)
 	const rows = ref(0)
 	const side = ref(0)
+	const tileHeight = ref(0)
 
 	const dpiFactor = computed(() => {
 		if (isStripe.value) {
@@ -112,11 +117,12 @@ export function useGridDimensions({
 		// ket4tec (NAS_CLOUD#159): квадратные плитки; полоса - одна строка, сторона = её высота
 		const dimensions = isStripe.value
 			? { columns: videoCount.value + 1, rows: 1, side: height }
-			: computeSquareLayout({ gridWidth: width, gridHeight: height, total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1) })
+			: (phonePortrait?.value ? computePhoneLayout : computeSquareLayout)({ gridWidth: width, gridHeight: height, total: videoCount.value + (noLocalVideoReserve.value ? 0 : 1) })
 
 		columns.value = dimensions.columns
 		rows.value = dimensions.rows
 		side.value = dimensions.side
+		tileHeight.value = 'tileHeight' in dimensions ? dimensions.tileHeight : dimensions.side
 	}
 
 	const debouncedRecompute = debounce(recompute, 200)
@@ -166,6 +172,7 @@ export function useGridDimensions({
 		columns,
 		rows,
 		side,
+		tileHeight,
 		dpiFactor,
 		minWidth,
 		minHeight,

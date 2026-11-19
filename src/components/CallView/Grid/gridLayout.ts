@@ -221,6 +221,8 @@ export function getJustifyContent({
 // ket4tec (NAS_CLOUD#159): плитка камеры - всегда квадрат. Сетка из квадратов: перебираем число столбцов и строк,
 // берём самую крупную сторону, при которой помещаются все (иначе - больше мест, дальше листание страниц).
 export const MIN_TILE_SIDE = 150
+// Больше шести (с собой) - 4 собеседника, «Вы» и «+N» (NAS_CLOUD#195 п.3)
+export const PHONE_MAX_TILES = 6
 
 /**
  *
@@ -264,4 +266,29 @@ export function computeSquareLayout({ gridWidth, gridHeight, total, minSide = MI
 		return wide >= tall ? { columns: 2, rows: 1, side: wide } : { columns: 1, rows: 2, side: tall }
 	}
 	return best
+}
+
+// Самая высокая плитка телефона: 3:4 портрет; выше - плитку не вытягиваем (object-fit: cover режет кадр)
+export const PHONE_MAX_TILE_RATIO = 4 / 3
+
+/**
+ * ket4tec (NAS_CLOUD#159): iPhone вертикально, «Классика». Плитки занимают всю область, не обязательно квадраты:
+ * 1-2 - в столбик на всю ширину, 3-4 - 2x2, 5-6 - 2x3.
+ *
+ * @param root0
+ * @param root0.gridWidth
+ * @param root0.gridHeight
+ * @param root0.total
+ */
+export function computePhoneLayout({ gridWidth, gridHeight, total }: {
+	gridWidth: number
+	gridHeight: number
+	total: number
+}): { columns: number, rows: number, side: number, tileHeight: number } {
+	const need = Math.min(Math.max(total, 1), PHONE_MAX_TILES)
+	const columns = need <= 2 ? 1 : 2
+	const rows = Math.ceil(need / columns)
+	const side = Math.floor((gridWidth - GRID_GAP * (columns - 1)) / columns)
+	const fill = Math.floor((gridHeight - GRID_GAP * (rows - 1)) / rows)
+	return { columns, rows, side, tileHeight: Math.min(fill, Math.floor(side * PHONE_MAX_TILE_RATIO)) }
 }
