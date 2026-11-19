@@ -45,7 +45,10 @@ export async function fileToBoard(file) {
 	}
 	const uploads = useUploadStore()
 	const uploadId = 'k4board' + Date.now()
+	// initialiseUpload перехватывает currentUploadId: вернём выбор вложений из поля сообщения
+	const prev = uploads.currentUploadId
 	uploads.initialiseUpload({ uploadId, token, files: [file] })
+	uploads.currentUploadId = prev
 	const ref = uploads.getInitialisedUploads(uploadId)[0][1].temporaryMessage.referenceId
 	await uploads.uploadFiles({ token, uploadId, caption: null, options: null, allowUpdate: undefined, compressImages: false })
 	// настоящее сообщение приходит по тому же referenceId
