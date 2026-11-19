@@ -9,18 +9,13 @@ import { t } from '@nextcloud/l10n'
 import { computed, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
-import NcButton from '@nextcloud/vue/components/NcButton'
-import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
-import IconPlus from 'vue-material-design-icons/Plus.vue'
+import HomeActions from '../components/Dashboard/HomeActions.vue'
 import IconTalk from '../../img/app-dark.svg?raw'
-import { getTalkConfig } from '../services/CapabilitiesManager.ts'
-import { EventBus } from '../services/EventBus.ts'
 
-// ket4tec (NAS_CLOUD#332): штатный экран-«панель» (встречи/упоминания/напоминания) убран, одинаково для всех ролей
-const canStartConversations = getTalkConfig('local', 'conversations', 'can-create')
-
+// ket4tec (NAS_CLOUD#332): штатный экран-«панель» (встречи/упоминания/напоминания) убран, остались четыре кнопки (HomeActions)
 const store = useStore()
 const router = useRouter()
 const route = useRoute()
@@ -76,13 +71,8 @@ watchEffect(async () => {
 			<NcLoadingIcon v-if="isCreatingConversationForCallUser" />
 			<NcIconSvgWrapper v-else :svg="IconTalk" />
 		</template>
-		<template v-if="canStartConversations && !isCreatingConversationForCallUser" #action>
-			<NcButton variant="primary" @click="EventBus.emit('new-conversation-dialog:show')">
-				<template #icon>
-					<IconPlus :size="20" />
-				</template>
-				Новое обсуждение
-			</NcButton>
+		<template v-if="!isCreatingConversationForCallUser" #action>
+			<HomeActions />
 		</template>
 	</NcEmptyContent>
 </template>
