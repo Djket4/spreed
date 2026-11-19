@@ -184,18 +184,20 @@ CallParticipantModel.prototype = {
 	},
 
 	forceMute() {
-		if (!this.get('peer')) {
+		// ket4tec (NAS_CLOUD#154): по peerId, без Peer: у участника без медиапотоков в MCU peer === null
+		const id = this.get('peer')?.id ?? this.get('peerId')
+		if (!id) {
 			return
 		}
 
 		this._webRtc.sendToAll('control', {
 			action: 'forceMute',
-			peerId: this.get('peer').id,
+			peerId: id,
 		})
 
 		// Mute locally too, as even when sending to all the sender will not
 		// receive the message.
-		this._handleMute({ id: this.get('peer').id })
+		this._handleMute({ id })
 	},
 
 	// ket4tec (NAS_CLOUD#154): просьба включить микрофон, тот же канал «control», что у forceMute

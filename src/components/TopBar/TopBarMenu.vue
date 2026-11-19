@@ -23,7 +23,7 @@
 					<template #icon>
 						<NcIconSvgWrapper :svg="IconMicrophoneOffOutline" :size="20" />
 					</template>
-					{{ t('spreed', 'Mute others') }}
+					{{ t('spreed', 'Mute all microphones') }}
 				</NcActionButton>
 			</template>
 
@@ -208,6 +208,7 @@ import { useSidebarStore } from '../../stores/sidebar.ts'
 import { isChannelConversation, isClassifiedConversation } from '../../utils/conversation.ts'
 import { generateAbsoluteUrl } from '../../utils/handleUrl.ts'
 import { callParticipantCollection } from '../../utils/webrtc/index.js'
+import { muteAllOthers } from '../../utils/webrtc/muteAll.js'
 import { appPost, inApp, isMac, openInApp } from '../CallView/k4draw/macBridge.js'
 
 export default {
@@ -367,9 +368,7 @@ export default {
 	methods: {
 		t,
 		forceMuteOthers() {
-			callParticipantCollection.callParticipantModels.forEach((callParticipantModel) => {
-				callParticipantModel.forceMute()
-			})
+			muteAllOthers(callParticipantCollection.callParticipantModels) // ket4tec (NAS_CLOUD#154)
 		},
 
 		showMediaSettingsDialog() {
