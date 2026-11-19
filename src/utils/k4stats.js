@@ -64,7 +64,7 @@ const round = (v, n = 0) => (v === null ? null : Math.round(v * 10 ** n) / 10 **
  * @param {'in'|'out'} dir входящий pc (чужой участник) или исходящий (свой)
  */
 function read(report, dir) {
-	const r = { ts: 0, bytes: 0, pkts: 0, lost: 0, ab: 0, vb: 0, jit: null, fps: null, rtt: null, lt: null, rt: null, proto: null, top: null, layers: 0, qlim: null, qw: -1, encfps: 0 }
+	const r = { ts: 0, bytes: 0, pkts: 0, lost: 0, ab: 0, vb: 0, jit: null, fps: null, rtt: null, lt: null, rt: null, proto: null, top: null, layers: 0, hv: false, qlim: null, qw: -1, encfps: 0 }
 	let rirRtt = null
 	report.forEach((s) => {
 		r.ts = Math.max(r.ts, num(s.timestamp) || 0)
@@ -85,6 +85,7 @@ function read(report, dir) {
 			r.pkts += s.packetsSent || 0
 			// ket4tec (NAS_CLOUD#160): видеобитрейт отправки отдельно, причина ограничения широкого слоя, кадры/с кодера
 			if (kind === 'video') {
+				r.hv = true
 				r.vb += s.bytesSent || 0
 				r.encfps += num(s.framesPerSecond) || 0
 				if (s.active !== false && (s.frameWidth || 0) > r.qw) {
@@ -151,6 +152,7 @@ export function sample(prevReport, report, dir = 'in') {
 		rt: c.rt,
 		ab: ok && c.ab >= p.ab ? c.ab - p.ab : null,
 		vb: ok && c.vb >= p.vb ? c.vb - p.vb : null,
+		hv: dir === 'out' ? c.hv : null, // есть ли исходящий видео-RTP в отчёте
 		qlim: c.qlim,
 		encfps: dir === 'out' && c.qw >= 0 ? round(c.encfps) : null,
 	}
@@ -236,11 +238,12 @@ let zeroTick = -1000
 const LAG_MS = 1000
 const STALL_MS = 3000
 const hidden = () => (typeof document !== 'undefined' && document.hidden ? 1 : 0)
-let seenTr = new WeakSet()
-let seenPc = new WeakSet()
+const subs = new Map() // дорожка/pc -> снять подписки
+let curPc = null
+let flowed = false // в этом соединении видео уже уходило (vb > 0)
 const per = {} // id -> { report, st, key, last }
 
-const EMPTY = { kbps: null, loss: null, rtt: null, jit: null, fps: null, out: null, path: null, proto: null, lt: null, rt: null, ab: null, vb: null, qlim: null, encfps: null }
+const EMPTY = { kbps: null, loss: null, rtt: null, jit: null, fps: null, out: null, path: null, proto: null, lt: null, rt: null, ab: null, vb: null, hv: null, qlim: null, encfps: null }
 const lvlOf = (q) => (q >= 4 ? 'red' : q === 3 ? 'yellow' : null)
 const clean = (d) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !== null && v !== undefined))
 
@@ -320,33 +323,42 @@ const localVideo = () => ctx?.localMedia?.attributes?.localStream?.getVideoTrack
 
 /** Раз в шаг 1 с: подписаться на новые локальные дорожки и исходящий pc; ловит провал цикла событий. */
 function lagStep() {
-	const now = Date.now()
+	const now = performance.now() // не Date.now: перевод системных часов не должен давать ложный stall
 	const step = now - lagLast
 	lagLast = now
 	lagMax = Math.max(lagMax, step - LAG_MS, 0)
 	if (step > STALL_MS) {
-		calllog('stall', { ms: step, hidden: hidden() })
+		calllog('stall', { ms: Math.round(step), hidden: hidden() })
 	}
 	try {
-		const st = ctx?.localMedia?.attributes?.localStream
-		for (const t of st?.getTracks?.() || []) {
-			if (!seenTr.has(t)) {
-				seenTr.add(t)
-				for (const ev of ['mute', 'unmute', 'ended']) {
-					const fn = () => calllog('track_state', { kind: t.kind, st: ev })
-					t.addEventListener(ev, fn)
-					stopWatch.push(() => t.removeEventListener(ev, fn))
-				}
+		const tracks = ctx?.localMedia?.attributes?.localStream?.getTracks?.() || []
+		const pc = ctx?.local?.get('peer')?.pc || null
+		// снять подписки с дорожек и pc, которых больше нет
+		for (const [o, off] of subs) {
+			if (o !== pc && !tracks.includes(o)) {
+				off()
+				subs.delete(o)
 			}
 		}
-		const pc = ctx?.local?.get('peer')?.pc
-		if (pc && !seenPc.has(pc)) {
-			seenPc.add(pc)
-			const fn = () => calllog('pc_state', clean({ ice: pc.iceConnectionState, conn: pc.connectionState }))
-			for (const ev of ['iceconnectionstatechange', 'connectionstatechange']) {
-				pc.addEventListener(ev, fn)
-				stopWatch.push(() => pc.removeEventListener(ev, fn))
+		for (const t of tracks) {
+			if (!subs.has(t)) {
+				const offs = ['mute', 'unmute', 'ended'].map((ev) => {
+					const fn = () => calllog('track_state', { kind: t.kind, st: ev })
+					t.addEventListener(ev, fn)
+					return () => t.removeEventListener(ev, fn)
+				})
+				subs.set(t, () => offs.forEach((f) => f()))
 			}
+		}
+		if (pc !== curPc) {
+			curPc = pc
+			flowed = false
+		}
+		if (pc && !subs.has(pc)) {
+			const fn = () => calllog('pc_state', clean({ ice: pc.iceConnectionState, conn: pc.connectionState }))
+			const evs = ['iceconnectionstatechange', 'connectionstatechange']
+			evs.forEach((ev) => pc.addEventListener(ev, fn))
+			subs.set(pc, () => evs.forEach((ev) => pc.removeEventListener(ev, fn)))
 		}
 	} catch (e) {
 		// журнал не должен влиять на звонок
@@ -361,7 +373,10 @@ function lagStep() {
  */
 function checkSendZero(lpc, lconn) {
 	const up = per.local?.last
-	if (up?.vb !== 0 || !ctx?.localMedia?.attributes?.videoEnabled || tickN - zeroTick < LOG_EVERY) {
+	if (up?.vb > 0) {
+		flowed = true
+	}
+	if (!flowed || !up?.hv || up.vb !== 0 || !ctx?.localMedia?.attributes?.videoEnabled || tickN - zeroTick < LOG_EVERY) {
 		return
 	}
 	zeroTick = tickN
@@ -427,10 +442,10 @@ export function startK4stats(c) {
 	stopK4stats()
 	ctx = c
 	timer = setInterval(tick, STEP_MS)
-	lagLast = Date.now()
+	lagLast = performance.now()
 	lagTimer = setInterval(lagStep, LAG_MS)
 	if (typeof document !== 'undefined') {
-		for (const [target, ev, name] of [[document, 'visibilitychange'], [document, 'freeze', 'freeze'], [document, 'resume', 'resume'], [window, 'pagehide', 'pagehide']]) {
+		for (const [target, ev, name] of [[document, 'visibilitychange'], [document, 'freeze', 'freeze'], [document, 'resume', 'resume']]) {
 			const fn = () => calllog('page_state', { st: name || (document.hidden ? 'hidden' : 'visible') })
 			target.addEventListener(ev, fn)
 			stopWatch.push(() => target.removeEventListener(ev, fn))
@@ -478,8 +493,10 @@ export function stopK4stats() {
 	timer = ctx = lagTimer = null
 	lagMax = 0
 	zeroTick = -1000
-	seenTr = new WeakSet()
-	seenPc = new WeakSet()
+	subs.forEach((off) => off())
+	subs.clear()
+	curPc = null
+	flowed = false
 	tickN = 0
 	busy = false
 	stopWatch.forEach((f) => f())
