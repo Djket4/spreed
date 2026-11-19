@@ -5,6 +5,7 @@
  * Safari не пускает (mixed content), CSP Talk — тоже.
  */
 import { showWarning } from '@nextcloud/dialogs'
+import { getRootUrl } from '@nextcloud/router'
 import { reactive, watch as vueWatch } from 'vue'
 import { consoleCmd, consoleFrame, consoleRtc, consoleTick, inCall, stopConsole } from './macConsole.js'
 import { downloadSnapshot, screenSnapshot } from './snapshot.js'
@@ -14,16 +15,16 @@ const ORIGIN = 'http://127.0.0.1:47811'
 const URL = ORIGIN + '/'
 const APP_WAIT = 8000 // в приложении K4Draw: столько ждём ready от окна моста
 /** Страница скачивания приложения с инструкцией (статика облака, без входа) */
-export const MAC_DL = 'https://cloud.ket4tec.online/k4draw/'
+export const MAC_DL = getRootUrl() + '/k4draw/' // относительно текущего облака (боевое, test2)
 const TOOLS = ['laser', 'fade', 'marker', 'arrow', 'frame']
 const AUTO = 'k4draw.mac'
 const SIZES = ['s', 'm', 'l']
 const num = (v) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : null)
 
-/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (приложения нет: скачать) | on | lost (окно моста закрыто или приложение вышло) */
+/** Для кнопки в доке: idle | wait (ждём окно моста) | launch (приложение не ответило) | start (запуск попросили, нажать ещё раз) | noapp (схема не сработала: плашка «Приложение не найдено» со «Скачать») | on | lost (окно моста закрыто или приложение вышло) */
 export const mac = reactive({ st: 'idle' })
 /** Подпись кнопки «Рисовать на экране» по состоянию (док и плашка показа) */
-export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Скачать приложение для Мака', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
+export const macLabel = { idle: 'Рисовать на экране', wait: 'Подключаю…', launch: 'Запустить приложение', start: 'Подключить приложение', noapp: 'Рисовать на экране', allow: 'Подключаю…', denied: 'Рисовать на экране', unverified: 'Рисовать на экране', blocked: 'Рисовать на экране', on: 'На экране ✓', lost: 'Связь потеряна — переподключить' }
 export const isMac = () => /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1) // iPad тоже «Mac», но с тачем
 
 /** Страница открыта внутри приложения K4Draw (его WKWebView; NAS_CLOUD#177) */
@@ -62,6 +63,7 @@ let watch = 0
 let launched = false
 const GRACE = 10000 // обрыв связи с приложением (не выход): столько ждём, пока окно моста переподключится, показ не трогаем
 let graceT = 0
+let gen = 0 // поколение звонка: отложенные итоги запуска после finish() игнорируем
 
 const show = myShow // по ключу показа: id сессии сигналинга мог смениться посреди показа
 const send = (m) => pop && !pop.closed && pop.postMessage(m, ORIGIN)
@@ -155,12 +157,16 @@ function finish() {
 	clearTimeout(graceT)
 	clearInterval(watch)
 	clearTimeout(timer)
+	pingAc?.abort()
 	stopConsole()
 	const s = show()
 	cur && s && strokeEnd(s, cur)
 	cur = null
 	pop && !pop.closed && pop.close()
 	pop = null
+	gen++
+	busy = false
+	launched = false
 	mac.st = 'idle'
 }
 
@@ -294,36 +300,135 @@ function retry() {
 	}, 1500)
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+let busy = false
+let pingAc = null // текущий fetch-ping: сбрасывается при выходе из звонка и закрытии плашки
+
 /**
- * Кнопка «Рисовать на экране» (только из клика: окно и запуск приложения требуют жеста).
+ * Запуск устарел: другой звонок/плашку закрыли, либо вышли из звонка (тогда всё сбрасываем).
+ *
+ * @param g поколение на старте
  */
-export function openMac() {
-	if (!off) {
-		off = onDraw(onEv)
-		window.addEventListener('message', onMsg)
-		window.addEventListener('pagehide', finish)
+function stale(g) {
+	if (g !== gen) {
+		return true
 	}
-	if (mac.st === 'on' && pop && !pop.closed) {
-		pop.focus()
-		return
+	if (!inCall()) {
+		finish()
+		return true
 	}
-	if (mac.st === 'noapp') {
-		window.open(MAC_DL, '_blank', 'noopener')
-		mac.st = 'idle'
-		return
+	return false
+}
+
+/**
+ * Приложение запущено? Запрос без окна: no-cors, ответ не читаем (старое приложение 1.6 CORS-заголовков не шлёт, и не надо).
+ * Нужен connect-src http://127.0.0.1:47811 в CSP (PageController/CSPListener). Safari может блокировать как mixed content:
+ * тогда всегда false, а «приложения нет» от «не смогли проверить» не отличить.
+ */
+export async function pingApp() {
+	const ac = new AbortController()
+	pingAc = ac
+	const t = setTimeout(() => ac.abort(), 800)
+	try {
+		await fetch(URL, { mode: 'no-cors', cache: 'no-store', signal: ac.signal })
+		return 'ok'
+	} catch (e) {
+		// не успел за 800 мс = браузер ждёт ответа пользователя на запрос доступа к локальной сети; быстрая ошибка = приложения нет или доступ запрещён
+		return ac.signal.aborted ? 'wait' : 'no'
+	} finally {
+		clearTimeout(t)
+		pingAc === ac && (pingAc = null)
 	}
-	const launch = !inApp && mac.st === 'launch'
-	launched = mac.st === 'start'
-	pop?.close() // всегда свежее окно: окно, где Safari показал ошибку, больше не загрузится
+}
+
+/** Доступ к локальной сети запрещён в браузере? Только Chromium (Permissions API); иначе ''. */
+export async function netPerm() {
+	for (const name of ['loopback-network', 'local-network-access']) {
+		try {
+			return (await navigator.permissions.query({ name })).state
+		} catch (e) { // имя не поддерживается
+		}
+	}
+	return ''
+}
+
+/**
+ * Запуск по k4draw:// в скрытом iframe: страница звонка не навигируется ни при каком исходе (нет приложения —
+ * браузер молчит или ругается внутри iframe; схема в CSP frame-src, CSPListener). Успех = только ответ приложения на ping.
+ * Пока браузер ждёт ответа пользователя на запрос доступа к локальной сети (ping не укладывается в 800 мс) —
+ * ждём, плашка «разрешите доступ»; «приложения нет» считается только по быстрым отказам (до 8 с).
+ *
+ * @param g поколение звонка на старте
+ * @param first итог первого ping
+ * @return {Promise<{r: 'ok'|'noapp'|'denied'|'allow'|'unverified'|'stale', waited?: boolean}>} waited = ждали ответа на запрос браузера
+ */
+async function launchApp(g, first) {
+	if (first === 'no') {
+		const np = await netPerm()
+		if (stale(g)) {
+			return { r: 'stale' }
+		}
+		if (np === 'denied') {
+			return { r: 'denied' }
+		}
+	}
+	const f = document.createElement('iframe')
+	f.style.display = 'none'
+	f.src = 'k4draw://open'
+	document.body.appendChild(f)
+	setTimeout(() => f.remove(), 5000)
+	let waited = first === 'wait'
+	let no = 0
+	let pending = first === 'wait'
+	const t0 = Date.now()
+	while (no < 27 && Date.now() - t0 < 120000) {
+		pending && (mac.st = 'allow')
+		await sleep(300)
+		if (stale(g)) {
+			return { r: 'stale' }
+		}
+		const r = await pingApp()
+		if (stale(g)) {
+			return { r: 'stale' }
+		}
+		if (r === 'ok') {
+			return { r: 'ok', waited }
+		}
+		if (r === 'wait') {
+			waited = true
+			pending = true
+			mac.st = 'allow'
+			continue
+		}
+		pending = false
+		mac.st = 'wait'
+		const np = await netPerm()
+		if (stale(g)) {
+			return { r: 'stale' }
+		}
+		if (np === 'denied') {
+			return { r: 'denied' }
+		}
+		no++
+	}
+	if (pending) {
+		return { r: 'allow' } // всё время ждали ответа на запрос браузера: плашка остаётся, «не найдено» не пишем
+	}
+	// без Permissions API (Safari) быстрый отказ fetch не отличить от mixed content: «не удалось проверить»
+	return { r: await netPerm() === '' ? 'unverified' : 'noapp' }
+}
+
+/** Окно моста: только когда приложение уже ответило (или пользователь сам нажал «подключить»). */
+function openBridge() {
+	pop?.close()
 	// Safari: если вкладка в полноэкранном режиме, окно всё равно откроется на весь экран (размер игнорируется), поэтому ещё и left/top
 	const W = 380
 	const H = 170
 	const left = Math.max(0, Math.round((window.screen.availLeft || 0) + window.screen.availWidth - W - 24))
 	const top = Math.max(0, Math.round((window.screen.availTop || 0) + 80))
-	pop = window.open(launch ? 'k4draw://open' : URL, 'k4draw', `popup=yes,width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=no`)
-	if (launch || !pop) {
-		// запуск: Safari спросит, открыть ли приложение; после запуска — ещё раз нажать (панель приложения подскажет)
-		mac.st = launch && pop ? 'start' : 'idle' // !pop: окно заблокировано
+	pop = window.open(URL, 'k4draw', `popup=yes,width=${W},height=${H},left=${left},top=${top},resizable=yes,scrollbars=no`)
+	if (!pop) {
+		mac.st = inApp ? 'idle' : 'blocked' // окно заблокировано: плашка с кнопкой, клик откроет мост синхронно (в приложении плашки нет)
 		return
 	}
 	mac.st = 'wait'
@@ -361,6 +466,71 @@ export function openMacReady() {
 	})
 }
 
+/** Плашка «Приложение не найдено»: закрыть. */
+export function closeMissing() {
+	if (['noapp', 'blocked', 'denied', 'allow', 'unverified'].includes(mac.st)) {
+		mac.st === 'allow' && (gen++, busy = false, pingAc?.abort()) // ждали запрос браузера: прекращаем ждать
+		mac.st = 'idle'
+	}
+}
+
+/** «Уже установлено — подключить»: открыть окно моста вручную (когда признаков запуска не видно, например в Safari). */
+export function connectAnyway() {
+	launched = true
+	openBridge()
+}
+
+/**
+ * Кнопка «Рисовать на экране» (только из клика: окно и запуск приложения требуют жеста).
+ * Ответило → окно моста; нет → запуск по схеме без окна; после запуска кнопка «Подключить приложение».
+ */
+export async function openMac() {
+	if (!off) {
+		off = onDraw(onEv)
+		window.addEventListener('message', onMsg)
+		window.addEventListener('pagehide', finish)
+	}
+	if (busy) {
+		return
+	}
+	if (mac.st === 'on' && pop && !pop.closed) {
+		pop.focus()
+		return
+	}
+	if (mac.st === 'start') {
+		launched = true
+		return openBridge()
+	}
+	if (inApp) {
+		launched = false
+		return openBridge() // в приложении ping и схема не нужны, окно — сразу из клика (жест нужен синхронно)
+	}
+	launched = false
+	busy = true
+	mac.st = 'wait'
+	const g = gen
+	try {
+		const first = await pingApp()
+		if (stale(g)) {
+			return
+		}
+		if (first === 'ok') {
+			return openBridge()
+		}
+		const { r, waited } = await launchApp(g, first)
+		if (r !== 'stale' && !stale(g)) {
+			if (r === 'ok' && waited) {
+				return openBridge() // пользователь ответил на запрос браузера: мост сразу, без второго клика
+			}
+			mac.st = r === 'ok' ? 'start' : r
+		}
+	} finally {
+		if (g === gen) {
+			busy = false
+		}
+	}
+}
+
 /**
  * Начало показа на Маке (из клика «Показать экран», жест ещё действует): если приложение в этом браузере уже
  * подключали — подключаем само, без второй кнопки. Без этого ведущий рисовал «локально» и не видел пометок зрителей.
@@ -371,7 +541,7 @@ export function autoOpenMac() {
 		used = localStorage.getItem(AUTO) === '1'
 	} catch (e) { // хранилище закрыто: без автоподключения
 	}
-	if (used && isMac() && mac.st !== 'on' && mac.st !== 'wait') {
+	if (used && isMac() && !['on', 'wait', 'allow'].includes(mac.st)) {
 		openMac()
 	}
 }

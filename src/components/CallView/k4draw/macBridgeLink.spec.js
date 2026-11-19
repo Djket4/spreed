@@ -25,8 +25,9 @@ describe('macBridge: связь с окном моста', () => {
 		C.cmd.mockClear()
 		pop = { closed: false, close: vi.fn(), focus: vi.fn(), postMessage: vi.fn() }
 		vi.spyOn(window, 'open').mockReturnValue(pop)
+		vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({}))) // приложение отвечает на ping — окно моста открывается
 		m = await import('./macBridge.js')
-		m.openMac()
+		await m.openMac()
 		msg({ t: 'hi' })
 		expect(pop.postMessage).toHaveBeenCalledWith({ t: 'hi' }, 'http://127.0.0.1:47811')
 		msg({ t: 'ready' })
@@ -35,6 +36,7 @@ describe('macBridge: связь с окном моста', () => {
 	afterEach(() => {
 		vi.useRealTimers()
 		vi.restoreAllMocks()
+		vi.unstubAllGlobals()
 	})
 
 	it('drop и возврат за грейс: показ не останавливается, связь снова on', () => {
