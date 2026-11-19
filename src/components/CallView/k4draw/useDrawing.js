@@ -923,6 +923,10 @@ function apply(d, from) {
 					if (!r || !idOk(r.id) || typeof r.author !== 'string' || r.author.length > 300 || (r.tool !== 'text' && !PERM.includes(r.tool))) {
 						return
 					}
+					if (!state.gd && isGuestSid(from) && isGuestSid(r.author)) {
+						return // гости не рисуют: показывающий гость не протащит чужие и свои пометки через `r` мимо запрета (NAS_CLOUD#110 А2)
+						// ponytail: `author` в `r` пишет сам показывающий; подделку автора под модератора клиент не отличит, нужен ретранслятор сигналинга, проверяющий from
+					}
 					const txt = r.tool === 'text'
 					if (txt ? (num(r.x) === null || num(r.y) === null || typeof r.text !== 'string' || !r.text.trim() || r.text.length > MAX_TEXT || !TSIZE.includes(r.size)) : !okPts(r.pts, MAX_PTS_STROKE)) {
 						return
