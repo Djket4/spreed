@@ -280,7 +280,7 @@ export default {
 		},
 	},
 
-	emits: ['selectVideo', 'clickLocalVideo'],
+	emits: ['selectVideo', 'clickLocalVideo', 'tileSize'],
 
 	setup(props) {
 		// Developer mode: If enabled it allows to debug the grid using dummy videos
@@ -489,6 +489,16 @@ export default {
 
 			set(value) {
 				this.callViewStore.setCallViewMode({ token: this.token, isGrid: !value, clearLast: false, manual: true })
+			},
+		},
+	},
+
+	watch: {
+		// ket4tec (NAS_CLOUD#375): ширина плитки (CSS px) наружу, CallView выбирает по ней слой simulcast
+		side: {
+			immediate: true,
+			handler(side) {
+				this.$emit('tileSize', side)
 			},
 		},
 	},

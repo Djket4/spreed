@@ -84,7 +84,7 @@ function read(report, dir) {
 			r.bytes += s.bytesSent || 0
 			r.pkts += s.packetsSent || 0
 			// ket4tec (NAS_CLOUD#375): разрешение и кадры/с отправки: верхний активный слой simulcast (самый широкий) и число слоёв
-			if (kind === 'video' && s.frameWidth > 0 && s.framesPerSecond !== 0) {
+			if (kind === 'video' && s.frameWidth > 0 && s.active !== false && s.framesPerSecond > 0) {
 				r.layers++
 				if (!r.top || s.frameWidth > r.top.w) {
 					r.top = { w: s.frameWidth, h: s.frameHeight, fps: num(s.framesPerSecond) }

@@ -7,6 +7,7 @@ import { subscribe } from '@nextcloud/event-bus'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { reactive } from 'vue'
 import CallView from './CallView.vue'
 import { useCallViewStore } from '../../stores/callView.ts'
 import { callParticipantCollection, localMediaModel } from '../../utils/webrtc/index.js'
@@ -89,18 +90,79 @@ describe('CallView.vue', () => {
 		expect(unpinVideo).toHaveBeenCalledWith(TOKEN, false)
 	})
 
-	test('grid: верхний слой simulcast при <= 4 участников, средний при большем числе (NAS_CLOUD#375)', async () => {
-		useCallViewStore().setCallViewMode({ token: TOKEN, isGrid: true })
+	describe('grid: слой simulcast (NAS_CLOUD#375)', () => {
+		const dpr = window.devicePixelRatio
+		beforeEach(() => {
+			vi.useFakeTimers()
+			window.devicePixelRatio = 1
+			useCallViewStore().setCallViewMode({ token: TOKEN, isGrid: true })
+		})
+		afterEach(() => {
+			vi.useRealTimers()
+			window.devicePixelRatio = dpr
+			callParticipantCollection.callParticipantModels = []
+		})
 		const m = () => ({ attributes: { peerId: 'p' }, setSimulcastVideoQuality: vi.fn() })
-		for (const [n, spatial] of [[4, 2], [5, 1]]) {
-			callParticipantCollection.callParticipantModels = Array.from({ length: n }, m)
-			wrapper = mountCallView()
-			const model = callParticipantCollection.callParticipantModels[0]
-			wrapper.vm.adjustSimulcastQualityForParticipant(model)
-			expect(model.setSimulcastVideoQuality).toHaveBeenLastCalledWith(spatial, 2)
-			wrapper.unmount()
+		const tileSize = async (width) => {
+			wrapper.findComponent({ name: 'VideosGrid' }).vm.$emit('tileSize', width)
+			await vi.advanceTimersByTimeAsync(300)
 		}
-		callParticipantCollection.callParticipantModels = []
+		const spatials = (models) => models.map((model) => model.setSimulcastVideoQuality.mock.lastCall?.[0])
+
+		test('состав 3 -> 4 -> 5 -> 4 плитки (со своей) меняет слой у всех моделей', async () => {
+			const models = reactive([m(), m()]) // 2 удалённых + своя = 3 плитки
+			callParticipantCollection.callParticipantModels = models
+			wrapper = mountCallView()
+			await tileSize(1500)
+			expect(spatials(models)).toEqual([2, 2])
+
+			models.push(m()) // 4 плитки
+			await flushPromises()
+			expect(spatials(models)).toEqual([2, 2, 2])
+
+			models.push(m()) // 5 плиток: все получают MEDIUM
+			await flushPromises()
+			expect(spatials(models)).toEqual([1, 1, 1, 1])
+
+			models.pop() // снова 4
+			await flushPromises()
+			expect(spatials(models)).toEqual([2, 2, 2])
+		})
+
+		test('в записи своей плитки нет: 4 удалённых = 4 плитки, HIGH', async () => {
+			const models = reactive([m(), m(), m(), m()])
+			callParticipantCollection.callParticipantModels = models
+			wrapper = mountCallView({ isRecording: true })
+			await tileSize(1500)
+			expect(spatials(models)).toEqual([2, 2, 2, 2])
+		})
+
+		test('узкая плитка: MEDIUM даже при двух участниках; расширение даёт HIGH, гистерезис не дёргает', async () => {
+			const models = reactive([m()])
+			callParticipantCollection.callParticipantModels = models
+			wrapper = mountCallView()
+			await tileSize(500)
+			expect(spatials(models)).toEqual([1])
+
+			await tileSize(1020) // выше 1000, но внутри гистерезиса (< 1050)
+			expect(spatials(models)).toEqual([1])
+			await tileSize(1100)
+			expect(spatials(models)).toEqual([2])
+
+			await tileSize(980) // выше нижней границы 950: слой держится
+			expect(spatials(models)).toEqual([2])
+			await tileSize(900)
+			expect(spatials(models)).toEqual([1])
+		})
+
+		test('физическая ширина: CSS-ширина x devicePixelRatio', async () => {
+			window.devicePixelRatio = 2
+			const models = reactive([m()])
+			callParticipantCollection.callParticipantModels = models
+			wrapper = mountCallView()
+			await tileSize(600) // 1200 физ. px
+			expect(spatials(models)).toEqual([2])
+		})
 	})
 
 	test('pin, unpin via k4-unpin-video event: pin is cleared and the view is restored', async () => {
