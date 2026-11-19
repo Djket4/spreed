@@ -51,6 +51,6 @@ class ClassifiedRoomAutoDeleteListener implements IEventListener {
 			return;
 		}
 
-		$this->roomService->setObject($room, Room::OBJECT_TYPE_CLASSIFIED, (string)$this->timeFactory->getTime());
+		$this->roomService->setObject($room, Room::OBJECT_TYPE_CLASSIFIED, (string)($event->getEndedAt() ?? $this->timeFactory->getTime()));
 	}
 }

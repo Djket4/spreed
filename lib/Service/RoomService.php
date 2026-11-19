@@ -15,6 +15,7 @@ use OCA\Talk\Config;
 use OCA\Talk\Events\AParticipantModifiedEvent;
 use OCA\Talk\Events\ARoomModifiedEvent;
 use OCA\Talk\Events\ARoomSyncedEvent;
+use OCA\Talk\BackgroundJob\EndEmptyCall;
 use OCA\Talk\Events\BeforeCallEndedEvent;
 use OCA\Talk\Events\BeforeCallStartedEvent;
 use OCA\Talk\Events\BeforeLobbyModifiedEvent;
@@ -1251,6 +1252,24 @@ class RoomService {
 	 */
 	public function resetActiveSinceInModelOnly(Room $room): void {
 		$room->resetActiveSince();
+	}
+
+	/**
+	 * ket4tec (NAS_CLOUD#201): звонок опустел и ждёт задачу EndEmptyCall. Если с опустения прошло не меньше GRACE
+	 * секунд, это новый звонок: завершаем старый на момент опустения до setActiveSince (иначе длительность
+	 * завышена, а входящий не получит звонок). Меньше GRACE — переключение устройства, звонок продолжается.
+	 * Вызывать перед любым входом в звонок (REST, HPB/SIP, федерация).
+	 */
+	public function endEmptyCallBeforeJoin(Room $room): void {
+		$emptySince = $this->participantService->getEmptyCallSince($room);
+		if ($emptySince <= 0) {
+			return;
+		}
+
+		if ($this->timeFactory->getTime() - $emptySince >= EndEmptyCall::GRACE
+			&& !$this->participantService->hasActiveSessionsInCall($room)) {
+			$this->resetActiveSince($room, null, $emptySince);
+		}
 	}
 
 	public function resetActiveSince(Room $room, ?Participant $participant, ?int $endedAt = null): void {

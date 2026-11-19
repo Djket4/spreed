@@ -55,6 +55,21 @@ class ClassifiedRoomAutoDeleteListenerTest extends TestCase {
 		$this->listener->handle($this->callEndedEvent($room));
 	}
 
+	public function testDeletionTimerStartsAtEmptyMomentNotAtJobRun(): void {
+		// NAS_CLOUD#201: отсроченное завершение не сдвигает срок автоудаления на тик cron
+		$room = $this->createRoom(classified: true);
+		$this->timeFactory->method('getTime')->willReturn(1234567890);
+		$event = $this->createMock(ACallEndedEvent::class);
+		$event->method('getRoom')->willReturn($room);
+		$event->method('getEndedAt')->willReturn(1234567800);
+
+		$this->roomService->expects($this->once())
+			->method('setObject')
+			->with($room, Room::OBJECT_TYPE_CLASSIFIED, '1234567800');
+
+		$this->listener->handle($event);
+	}
+
 	public function testIgnoresNonClassifiedRoom(): void {
 		$room = $this->createRoom(classified: false);
 		$this->roomService->expects($this->never())->method('setObject');

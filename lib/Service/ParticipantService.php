@@ -2390,6 +2390,13 @@ class ParticipantService {
 	}
 
 	/**
+	 * ket4tec (NAS_CLOUD#201): момент опустения звонка (отметка EndEmptyCall) или 0, если звонок не ждёт завершения.
+	 */
+	public function getEmptyCallSince(Room $room): int {
+		return $this->serverAppConfig->getValueInt('spreed', EndEmptyCall::key($room->getId()), 0);
+	}
+
+	/**
 	 * @param Room $room
 	 * @return bool
 	 */
