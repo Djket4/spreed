@@ -853,7 +853,7 @@ export default {
 					this.k4StackObs = null
 				}
 			})
-			this.k4StackObs.observe(document.body, { childList: true })
+			this.k4StackObs.observe(document.body, { childList: true, subtree: true })
 		},
 
 		t,

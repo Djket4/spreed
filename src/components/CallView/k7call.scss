@@ -625,6 +625,13 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 		#call-container .stripe-controls-position:not(.stripe-controls-position--collapsed) .stripe-controls { padding: 0; }
 	}
 	#{$k4s} { --stripe-height: 110px; }
+	// ket4tec (NAS_CLOUD#270 п.2): полосы под уведомления тут нет (main.js её выключает) — стопка вверху по центру показа
+	// (между левой колонкой 200 px и кнопками справа 60 px), поверх плиток, а не на 128 px по умолчанию
+	html.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts {
+		top: max(12px, env(safe-area-inset-top, 0px)) !important;
+		translate: 70px 0;
+		max-width: calc(100vw - 280px);
+	}
 }
 
 // ket4tec (NAS_CLOUD#195 п.7): связь пропала у меня — звонок приглушён, сверху один знак «Переподключаемся…»
