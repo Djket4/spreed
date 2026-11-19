@@ -47,6 +47,7 @@ afterEach(() => {
 	delete vproto.videoWidth
 	delete vproto.videoHeight
 	delete vproto.readyState
+	delete vproto.getVideoPlaybackQuality
 	vi.useRealTimers()
 	vi.restoreAllMocks()
 })
@@ -70,6 +71,29 @@ describe('FaceFrame: сторож выхода', () => {
 	test('кадры идут -> отката нет', async () => {
 		for (let i = 0; i < 20; i++) {
 			probeTime += 0.5
+			await vi.advanceTimersByTimeAsync(500)
+		}
+		expect(ff._digital.published).toBe(true)
+		expect(ff.path).toBe('digital')
+		expect(stallCalls()).toHaveLength(0)
+	})
+
+	// currentTime у MediaStream растёт и без кадров: при наличии счётчика кадров он в метку не входит
+	test('счётчик кадров стоит, а currentTime растёт -> откат', async () => {
+		vproto.getVideoPlaybackQuality = () => ({ totalVideoFrames: 7 })
+		await vi.advanceTimersByTimeAsync(2500)
+		expect(ff._digital.published).toBe(true)
+		for (let i = 0; i < 20; i++) {
+			probeTime += 0.5
+			await vi.advanceTimersByTimeAsync(500)
+		}
+		expect(ff.path).toBe('fallback')
+		expect(stallCalls()).toHaveLength(1)
+	})
+
+	test('счётчик кадров растёт при замершем currentTime -> отката нет', async () => {
+		vproto.getVideoPlaybackQuality = () => ({ totalVideoFrames: Math.floor(performance.now() / 33) })
+		for (let i = 0; i < 20; i++) {
 			await vi.advanceTimersByTimeAsync(500)
 		}
 		expect(ff._digital.published).toBe(true)

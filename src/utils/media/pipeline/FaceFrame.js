@@ -26,9 +26,17 @@ const NO_FRAMES_MS = 2000
 export const STALL_MS = 3000
 // ket4tec (NAS_CLOUD#271): первый кадр рисуем сразу в итоговом кадрировании — ждём первую детекцию не дольше этого
 const HOLD_MS = 1500
-const MIN_FPS = 15
+// ket4tec (NAS_CLOUD#160): «мало кадров» — только когда отрисовка отстаёт от входа (камера в слабом свете даёт 10–14 к/с — это не сбой конвейера)
+const LOW_FPS_RATIO = 0.7 // отрисовка < 70 % входа
 const LOW_FPS_MS = 2000
+const MIN_FPS = 15 // вход не измерить (нет getVideoPlaybackQuality) — прежнее правило: отрисовка < 15 к/с
 const STATS_LOG_MS = 5000
+const STATS_CALLLOG_MS = 10000 // framing_stats в журнал звонка
+// ket4tec (NAS_CLOUD#160): детектор MediaPipe на CPU не должен видеть полный кадр 1080p — рисуем в канвас постоянного размера (длинная сторона, px).
+// Полный кадр — 320: BlazeFace short-range сам работает на 128×128, больше смысла нет. Плитка — 480: вырезка исходных пикселей
+// (далёкое лицо в плитке 40 % кадра остаётся крупным), но не апскейл до размера кадра.
+const DETECT_FULL_PX = 320
+const DETECT_TILE_PX = 480
 // ket4tec (NAS_CLOUD#271): было 2000 — рука у лица или контровой свет на 2+ с уводили окно в общий план и обратно (скачок общий↔крупный)
 const LOST_AFTER_MS = 8000
 // Подстройка «Авто» (рамка детектора — лоб..подбородок, без макушки и шеи):
@@ -200,6 +208,25 @@ function getDetector() {
 	return detectorPromise
 }
 
+const round1 = (v) => Math.round(v * 10) / 10
+
+// ket4tec (NAS_CLOUD#160): сервер журнала принимает ключи /^[a-z]{1,12}$/, до 12 на событие, значения скалярные —
+// поэтому ключи без «_» и заглавных, а null/undefined не отправляем вовсе
+const logEv = (name, fields) => calllog(name, Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== null && v !== undefined)))
+
+/**
+ * Среднее и 95-й перцентиль времени детекции по последним замерам, мс.
+ *
+ * @param {object} d состояние конвейера
+ */
+function detStats(d) {
+	const sorted = [...(d.durs || [])].sort((a, b) => a - b)
+	return {
+		detAvg: sorted.length ? round1(sorted.reduce((a, b) => a + b, 0) / sorted.length) : 0,
+		detP95: sorted.length ? round1(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]) : 0,
+	}
+}
+
 /**
  * Узел: «кадр по лицу». Уровень берётся из общей настройки (getFaceFrameLevel).
  *
@@ -211,8 +238,13 @@ function getDetector() {
  *        -----------
  */
 export default class FaceFrame extends TrackSinkSource {
-	constructor() {
+	/**
+	 * @param {'call'|'preview'} [inst] метка экземпляра в журнале клиента (в звонке и в превью свои конвейеры)
+	 */
+	constructor(inst = 'preview') {
 		super()
+		this._inst = inst
+		this._mode = 'off' // ket4tec (NAS_CLOUD#160): последний записанный в журнал путь
 
 		this._addInputTrackSlot()
 		this._addOutputTrackSlot()
@@ -227,6 +259,15 @@ export default class FaceFrame extends TrackSinkSource {
 			this._frozen = null
 			this._apply()
 		})
+	}
+
+	// ket4tec (NAS_CLOUD#160): смена пути (off/digital/frozen/fallback) — в журнал с причиной
+	_setPath(mode, why) {
+		this.path = mode
+		if (mode !== this._mode) {
+			this._mode = mode
+			logEv('framing_mode', { inst: this._inst, mode, why })
+		}
 	}
 
 	_handleInputTrack(trackId, newTrack) {
@@ -248,7 +289,7 @@ export default class FaceFrame extends TrackSinkSource {
 		if (!enabled) {
 			this._stopDigital()
 			this._setOutput(this.getInputTrack())
-			this.path = 'off'
+			this._setPath('off', 'камера выключена')
 			return
 		}
 		if (!early) {
@@ -274,7 +315,7 @@ export default class FaceFrame extends TrackSinkSource {
 
 		if (!input || !input.enabled || lvl === 'off') {
 			this._stopDigital()
-			this.path = 'off'
+			this._setPath('off', !input || !input.enabled ? 'нет включённого трека' : 'уровень выкл')
 			this._setOutput(input)
 			return
 		}
@@ -288,7 +329,7 @@ export default class FaceFrame extends TrackSinkSource {
 			this._fallback({ input, stopped: false }, 'error', 'запуск конвейера: ' + e.message)
 			return
 		}
-		this.path = this._frozen ? 'frozen' : 'digital'
+		this._setPath(this._frozen ? 'frozen' : 'digital', this._frozen ? 'остановлено: ' + this._frozen : 'запуск')
 	}
 
 	_startDigital(input) {
@@ -296,6 +337,9 @@ export default class FaceFrame extends TrackSinkSource {
 			return // уровень читается покадрово
 		}
 		this._stopDigital()
+		// ket4tec (NAS_CLOUD#160): каждый новый запуск (камера выкл→вкл, смена устройства) пробует слежение заново;
+		// «остаёмся без слежения» (#271) действует только внутри одного запуска
+		this._frozen = null
 
 		const video = document.createElement('video')
 		video.muted = true
@@ -353,8 +397,17 @@ export default class FaceFrame extends TrackSinkSource {
 			lowSince: 0,
 			lastLog: t0,
 			frozen: !!this._frozen, // слежение остановлено: окно стоит, детекций нет
+			inTotal: 0, // кадров на входе (totalVideoFrames исходного video) на прошлом замере fps
+			inFps: null, // fps входа; null — не измерить или счётчик входа ещё ни разу не вырос (тогда порог прежний, MIN_FPS)
+			inSeen: false,
+			qSeen: false, // счётчик кадров пробы хоть раз вырос
+			qLast: 0,
+			lastCb: 0,
+			gapMax: 0, // макс. разрыв между колбэками кадра за интервал журнала, мс
+			st: { t: t0, in: 0, draw: 0, out: 0, outq: 0 }, // отметки прошлой записи framing_stats
 		}
 		this._digital = d
+		logEv('framing_start', { inst: this._inst, w: sw || 0, h: sh || 0, cfgfps: input.getSettings?.().frameRate, sched: d.useRaf ? 'raf' : 'rvfc', frozen: d.frozen })
 		// выход — сразу канвас: до первой отрисовки кадров нет, на плитках держится облако
 		d.output = canvas.captureStream().getVideoTracks()[0]
 		if (!d.output) {
@@ -396,6 +449,9 @@ export default class FaceFrame extends TrackSinkSource {
 					return
 				}
 				d.rvfcFired = d.rvfcFired || !d.useRaf
+				const cb = performance.now()
+				d.gapMax = Math.max(d.gapMax, d.lastCb ? cb - d.lastCb : 0)
+				d.lastCb = cb
 				try {
 					this._renderFrame(d, performance.now())
 				} catch (e) {
@@ -428,18 +484,34 @@ export default class FaceFrame extends TrackSinkSource {
 			return
 		}
 		const now = performance.now()
+		// ket4tec (NAS_CLOUD#160): вход измеряем по кадрам исходного video (totalVideoFrames считает декодированные кадры камеры
+		// независимо от нашего rVFC/rAF). Счётчик наших отрисовок для этого не годится: rVFC при перегрузке сам теряет кадры,
+		// и «камера даёт мало» не отличить от «мы не успеваем рисовать». Нет getVideoPlaybackQuality — inFps остаётся null.
+		const inNow = d.video.getVideoPlaybackQuality?.()?.totalVideoFrames
+		// счётчик кадров пробы: пригоден для сторожа выхода только после первого роста (бывает вечным нулём)
+		const pq = d.probe?.getVideoPlaybackQuality?.()?.totalVideoFrames
+		if (typeof pq === 'number') {
+			d.qSeen = d.qSeen || pq > d.qLast
+			d.qLast = pq
+		}
 		if (now - d.fpsT >= 1000) {
+			if (typeof inNow === 'number') {
+				// счётчик входа считаем измеренным только после первого роста: вечный 0 дал бы нулевой порог
+				d.inSeen = d.inSeen || inNow > d.inTotal
+				d.inFps = d.inSeen ? (inNow - d.inTotal) * 1000 / (now - d.fpsT) : null
+				d.inTotal = inNow
+			}
 			d.fps = d.fpsFrames * 1000 / (now - d.fpsT)
 			d.fpsT = now
 			d.fpsFrames = 0
 		}
-		const sorted = [...d.durs].sort((a, b) => a - b)
+		const { detAvg, detP95 } = detStats(d)
 		const stats = {
 			path: this.path,
 			level: getFaceFrameLevel(),
 			fps: Math.round(d.fps * 10) / 10,
-			detAvg: sorted.length ? Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length * 10) / 10 : 0,
-			detP95: sorted.length ? Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] * 10) / 10 : 0,
+			detAvg,
+			detP95,
 			detCount: d.detCount,
 			frames: d.frames,
 			scheduler: d.useRaf ? 'raf' : 'rvfc',
@@ -449,6 +521,26 @@ export default class FaceFrame extends TrackSinkSource {
 		if (now - d.lastLog >= STATS_LOG_MS) {
 			d.lastLog = now
 			console.debug('FaceFrame', stats)
+		}
+
+		// ket4tec (NAS_CLOUD#160): сводка раз в 10 с в журнал звонка — разбор «не кадрирует» без догадок
+		if (now - d.st.t >= STATS_CALLLOG_MS) {
+			const sec = (now - d.st.t) / 1000
+			const rate = (cur, prev) => (typeof cur === 'number' ? round1((cur - prev) / sec) : null)
+			// выход: оба счётчика (rVFC пробы и playback quality), в журнал — больший прирост
+			const outRates = [rate(d.outFrames || 0, d.st.out), rate(pq, d.st.outq)].filter((v) => v !== null)
+			logEv('framing_stats', {
+				inst: this._inst,
+				infps: rate(inNow, d.st.in),
+				drawfps: rate(d.frames, d.st.draw),
+				outfps: outRates.length ? Math.max(...outRates) : null,
+				detavg: detAvg,
+				detp: detP95,
+				gapmax: Math.round(d.gapMax),
+				hidden: document.hidden,
+			})
+			d.st = { t: now, in: inNow ?? 0, draw: d.frames, out: d.outFrames || 0, outq: pq ?? 0 }
+			d.gapMax = 0
 		}
 
 		// вкладка в фоне: rAF/rVFC стоят, fps 0 — это не поломка, страховку не судим
@@ -468,11 +560,12 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 			return
 		}
-		// ket4tec (NAS_CLOUD#160): постоянный сторож выхода. Прогресс пробы: кадры rVFC / счётчик кадров / currentTime —
-		// любой сдвиг считается живым. Исходная камера должна быть живой и включённой, иначе откат не поможет.
-		const p = d.probe
-		const q = p?.getVideoPlaybackQuality?.()
-		const mark = `${d.outFrames || 0}|${q?.totalVideoFrames ?? ''}|${p?.currentTime ?? ''}`
+		// ket4tec (NAS_CLOUD#160): постоянный сторож выхода. Прогресс пробы: кадры rVFC / счётчик кадров — любой сдвиг считается живым.
+		// currentTime у MediaStream растёт и без кадров, поэтому он — только последний запасной вариант, когда счётчиков кадров нет.
+		// Исходная камера должна быть живой и включённой, иначе откат не поможет.
+		// Счётчик годится, только если хоть раз вырос: вечный 0 (проба без rVFC) не должен исключать currentTime.
+		const hasCounter = !!d.outFrames || d.qSeen
+		const mark = `${d.outFrames || 0}|${pq ?? ''}|${hasCounter ? '' : d.probe?.currentTime ?? ''}`
 		if (mark !== d.outMark) {
 			d.outMark = mark
 			d.outAt = now
@@ -480,10 +573,12 @@ export default class FaceFrame extends TrackSinkSource {
 			this._fallback(d, 'output', `выходной трек встал через ${Math.round((now - d.outAt) / 1000)} с`)
 			return
 		}
-		if (d.fps < MIN_FPS && !d.frozen) {
+		// ket4tec (NAS_CLOUD#160): сбой — отрисовка заметно отстаёт от входа; вход сам по себе 12 к/с — не сбой
+		const lowLimit = d.inFps === null ? MIN_FPS : d.inFps * LOW_FPS_RATIO
+		if (d.fps < lowLimit && !d.frozen) {
 			d.lowSince = d.lowSince || now
 			if (now - d.lowSince >= LOW_FPS_MS) {
-				this._fallback(d, 'lowFps', `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс`)
+				this._fallback(d, 'lowFps', d.inFps === null ? `fps выхода ${stats.fps} < ${MIN_FPS} в течение ${LOW_FPS_MS} мс` : `отрисовка ${stats.fps} к/с при входе ${round1(d.inFps)} к/с (< ${LOW_FPS_RATIO * 100}%) в течение ${LOW_FPS_MS} мс`)
 			}
 		} else {
 			d.lowSince = 0
@@ -496,7 +591,14 @@ export default class FaceFrame extends TrackSinkSource {
 		if (d.stopped) {
 			return
 		}
-		calllog('framing_error', { reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100) })
+		logEv('framing_error', {
+			reason: String(reason?.message ?? reason).split('\n')[0].slice(0, 100),
+			inst: this._inst,
+			kind,
+			infps: (d.inFps ?? null) === null ? null : round1(d.inFps),
+			drawfps: round1(d.fps || 0),
+			detp: detStats(d).detP95,
+		})
 		console.error('FaceFrame: кадр по лицу —', reason)
 		// ket4tec (NAS_CLOUD#271): нет детектора или мощности — остаёмся на канвасе с текущим кадром, без слежения.
 		// Исходная камера — только если сам канвас-выход не даёт кадров (плитки проявят её по первому кадру).
@@ -505,7 +607,7 @@ export default class FaceFrame extends TrackSinkSource {
 				d.frozen = true
 				d.target = { ...d.win }
 				this._frozen = kind
-				this.path = 'frozen'
+				this._setPath('frozen', kind)
 				showWarning(FALLBACK_TEXT[kind])
 			}
 			return
@@ -514,13 +616,14 @@ export default class FaceFrame extends TrackSinkSource {
 		this._stopDigital()
 		setFaceFrameLevel('off', { persist: false })
 		this._setOutput(input)
-		this.path = 'fallback'
+		this._setPath('fallback', kind)
 		if (window.__k4ffStats) {
 			window.__k4ffStats.path = 'fallback'
 		}
 		showWarning(FALLBACK_TEXT[kind] ?? FALLBACK_TEXT.error)
 	}
 
+	// рамки приходят в пикселях источника (канваса детекции) и делятся на его размер — выходят в долях кадра
 	_detectBoxes(d, source, W, H, now) {
 		const res = d.detector.detectForVideo(source, nextTs(now))
 		return res.detections
@@ -531,6 +634,21 @@ export default class FaceFrame extends TrackSinkSource {
 				w: x.boundingBox.width / W,
 				h: x.boundingBox.height / H,
 			}))
+	}
+
+	// ket4tec (NAS_CLOUD#160): канвас детекции постоянного размера (длинная сторона = px, пропорции кадра); размер меняется
+	// только если сменились пропорции кадра, не на каждый вызов
+	_detectCanvas(d, key, px) {
+		const { videoWidth: vw, videoHeight: vh } = d.video
+		const k = px / Math.max(vw, vh)
+		const w = Math.round(vw * k)
+		const h = Math.round(vh * k)
+		const c = d[key] ||= document.createElement('canvas')
+		if (c.width !== w || c.height !== h) {
+			c.width = w
+			c.height = h
+		}
+		return c
 	}
 
 	// не больше одной детекции за кадр: полный кадр (до 8 раз/с), а когда лица нет — плитка (до 2 раз/с)
@@ -547,16 +665,16 @@ export default class FaceFrame extends TrackSinkSource {
 			let faces
 			let tile = null
 			if (full) {
-				faces = this._detectBoxes(d, video, video.videoWidth, video.videoHeight, now)
+				const fc = this._detectCanvas(d, 'fullCanvas', DETECT_FULL_PX)
+				fc.getContext('2d').drawImage(video, 0, 0, fc.width, fc.height)
+				faces = this._detectBoxes(d, fc, fc.width, fc.height, now)
 			} else {
-				// плитка апскейлится до размера кадра: далёкое лицо становится крупнее
+				// плитка — вырезка исходных пикселей в канвас DETECT_TILE_PX: далёкое лицо крупнее, чем в полном кадре
 				tile = TILES[d.tileIdx % TILES.length]
-				const tc = d.tileCanvas ||= document.createElement('canvas')
+				const tc = this._detectCanvas(d, 'tileCanvas', DETECT_TILE_PX)
 				const vw = video.videoWidth
 				const vh = video.videoHeight
-				tc.width = vw
-				tc.height = vh
-				tc.getContext('2d').drawImage(video, tile.x * vw, tile.y * vh, tile.w * vw, tile.h * vh, 0, 0, vw, vh)
+				tc.getContext('2d').drawImage(video, tile.x * vw, tile.y * vh, tile.w * vw, tile.h * vh, 0, 0, tc.width, tc.height)
 				faces = this._detectBoxes(d, tc, tc.width, tc.height, now).map((b) => tileToFrame(b, tile))
 			}
 			if (full) {

@@ -304,7 +304,7 @@ export const useDevices = createSharedComposable(function() {
 		// ket4tec #43: объекты конвейера не реактивны. Через Proxy ref() источник запоминался как Proxy,
 		// а события шли от сырого объекта (обработчики привязаны в конструкторе) — TrackToStream
 		// отбрасывал трек от VirtualBackground, и превью оставалось пустым.
-		faceFrame.value = markRaw(new FaceFrame())
+		faceFrame.value = markRaw(new FaceFrame('preview'))
 		virtualBackground.value = markRaw(new VirtualBackground())
 		faceFrame.value.connectTrackSink('default', virtualBackground.value)
 		// The virtual background should be enabled and disabled as needed by components
