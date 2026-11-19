@@ -17,6 +17,8 @@ use OCA\Talk\Service\RoomService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Calendar\IManager as ICalendarManager;
 use OCP\EventDispatcher\IEventDispatcher;
+use OCP\DB\QueryBuilder\IExpressionBuilder;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IL10N;
 use OCP\ISession;
@@ -40,10 +42,18 @@ class RoomServiceEmptyCallTest extends TestCase {
 		$time->method('getTime')->willReturn(1000);
 		$this->participantService = $this->createMock(ParticipantService::class);
 		return $this->getMockBuilder(RoomService::class)
-			->setConstructorArgs([
+			->setConstructorArgs($this->ctorArgs($this->createMock(IDBConnection::class), $time))
+			->onlyMethods(['resetActiveSince'])
+			->getMock();
+	}
+
+	private function ctorArgs(IDBConnection $db, ?ITimeFactory $time = null): array {
+		$time ??= $this->createMock(ITimeFactory::class);
+		$this->participantService ??= $this->createMock(ParticipantService::class);
+		return [
 				$this->createMock(Manager::class),
 				$this->participantService,
-				$this->createMock(IDBConnection::class),
+				$db,
 				$time,
 				$this->createMock(IShareManager::class),
 				$this->createMock(Config::class),
@@ -55,9 +65,7 @@ class RoomServiceEmptyCallTest extends TestCase {
 				$this->createMock(ICalendarManager::class),
 				$this->createMock(IUserManager::class),
 				$this->createMock(ISession::class),
-			])
-			->onlyMethods(['resetActiveSince'])
-			->getMock();
+		];
 	}
 
 	public function testReturnBeforeGraceKeepsCall(): void {
@@ -72,8 +80,10 @@ class RoomServiceEmptyCallTest extends TestCase {
 		$emptySince = 1000 - EndEmptyCall::GRACE - 5;
 		$this->participantService->method('getEmptyCallSince')->willReturn($emptySince);
 		$this->participantService->method('hasActiveSessionsInCall')->willReturn(false);
+		$activeSince = new \DateTime('@500');
 		$room = $this->createMock(Room::class);
-		$service->expects($this->once())->method('resetActiveSince')->with($room, null, $emptySince);
+		$room->method('getActiveSince')->willReturn($activeSince);
+		$service->expects($this->once())->method('resetActiveSince')->with($room, null, $emptySince, $activeSince);
 		$service->endEmptyCallBeforeJoin($room);
 	}
 
@@ -90,5 +100,34 @@ class RoomServiceEmptyCallTest extends TestCase {
 		$this->participantService->method('getEmptyCallSince')->willReturn(0);
 		$service->expects($this->never())->method('resetActiveSince');
 		$service->endEmptyCallBeforeJoin($this->createMock(Room::class));
+	}
+
+	public function testResetInDatabaseOnlyFiltersByExpectedActiveSince(): void {
+		$expr = $this->createMock(IExpressionBuilder::class);
+		$expr->method('eq')->willReturnCallback(fn ($f) => 'eq:' . $f);
+		$expr->method('isNotNull')->willReturn('notnull');
+		$qb = $this->createMock(IQueryBuilder::class);
+		$qb->method('expr')->willReturn($expr);
+		$qb->method('update')->willReturnSelf();
+		$qb->method('set')->willReturnSelf();
+		$qb->method('where')->willReturnSelf();
+		$qb->method('createNamedParameter')->willReturn('p');
+		$qb->method('executeStatement')->willReturn(1);
+		$wheres = [];
+		$qb->method('andWhere')->willReturnCallback(function ($w) use (&$wheres, $qb) {
+			$wheres[] = $w;
+			return $qb;
+		});
+		$db = $this->createMock(IDBConnection::class);
+		$db->method('getQueryBuilder')->willReturn($qb);
+		$service = new RoomService(...$this->ctorArgs($db));
+		$room = $this->createMock(Room::class);
+
+		$service->resetActiveSinceInDatabaseOnly($room);
+		$this->assertSame(['notnull'], $wheres);
+
+		$wheres = [];
+		$service->resetActiveSinceInDatabaseOnly($room, new \DateTime('@500'));
+		$this->assertSame(['notnull', 'eq:active_since'], $wheres);
 	}
 }

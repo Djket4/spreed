@@ -99,7 +99,7 @@ class Listener implements IEventListener {
 				'guests' => $numGuests,
 				'duration' => $duration,
 			],
-		]), $this->timeFactory->getDateTime('@' . $endedAt), false);
+		]), $this->timeFactory->getDateTime(), false);
 
 		if (empty($userIds)) {
 			return;

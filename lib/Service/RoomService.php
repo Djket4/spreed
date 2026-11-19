@@ -1234,7 +1234,7 @@ class RoomService {
 	 * when "End call for everyone" is used where we print the chat messages before testing the race condition,
 	 * so that no other participant leaving would trigger a call summary
 	 */
-	public function resetActiveSinceInDatabaseOnly(Room $room): bool {
+	public function resetActiveSinceInDatabaseOnly(Room $room, ?\DateTime $expectedActiveSince = null): bool {
 		$update = $this->db->getQueryBuilder();
 		$update->update('talk_rooms')
 			->set('active_since', $update->createNamedParameter(null, IQueryBuilder::PARAM_DATETIME_MUTABLE))
@@ -1242,6 +1242,10 @@ class RoomService {
 			->set('call_permissions', $update->createNamedParameter(Attendee::PERMISSIONS_DEFAULT, IQueryBuilder::PARAM_INT))
 			->where($update->expr()->eq('id', $update->createNamedParameter($room->getId(), IQueryBuilder::PARAM_INT)))
 			->andWhere($update->expr()->isNotNull('active_since'));
+		if ($expectedActiveSince !== null) {
+			// ket4tec (NAS_CLOUD#201): не сбрасывать новый звонок, начатый другим запросом
+			$update->andWhere($update->expr()->eq('active_since', $update->createNamedParameter($expectedActiveSince, IQueryBuilder::PARAM_DATETIME_MUTABLE), IQueryBuilder::PARAM_DATETIME_MUTABLE));
+		}
 
 		return (bool)$update->executeStatement();
 	}
@@ -1261,6 +1265,7 @@ class RoomService {
 	 * Вызывать перед любым входом в звонок (REST, HPB/SIP, федерация).
 	 */
 	public function endEmptyCallBeforeJoin(Room $room): void {
+		$expectedActiveSince = $room->getActiveSince();
 		$emptySince = $this->participantService->getEmptyCallSince($room);
 		if ($emptySince <= 0) {
 			return;
@@ -1268,11 +1273,11 @@ class RoomService {
 
 		if ($this->timeFactory->getTime() - $emptySince >= EndEmptyCall::GRACE
 			&& !$this->participantService->hasActiveSessionsInCall($room)) {
-			$this->resetActiveSince($room, null, $emptySince);
+			$this->resetActiveSince($room, null, $emptySince, $expectedActiveSince);
 		}
 	}
 
-	public function resetActiveSince(Room $room, ?Participant $participant, ?int $endedAt = null): void {
+	public function resetActiveSince(Room $room, ?Participant $participant, ?int $endedAt = null, ?\DateTime $expectedActiveSince = null): void {
 		$oldActiveSince = $room->getActiveSince();
 		$oldCallFlag = $room->getCallFlag();
 
@@ -1283,7 +1288,7 @@ class RoomService {
 		$event = new BeforeCallEndedEvent($room, $participant, $oldActiveSince);
 		$this->dispatcher->dispatchTyped($event);
 
-		$result = $this->resetActiveSinceInDatabaseOnly($room);
+		$result = $this->resetActiveSinceInDatabaseOnly($room, $expectedActiveSince);
 		$this->resetActiveSinceInModelOnly($room);
 
 		if (!$result) {
