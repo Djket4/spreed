@@ -41,3 +41,12 @@ jobs:
       - name: Красные штатные тесты (справочно, не блокируют)
         continue-on-error: true
         run: npx vitest run $RED
+      # NAS_CLOUD#139 п.2: слитое в ket4tec/25.0.7 само уходит на test2. Ключ раннера на S18 привязан к приёмнику
+      # ket4tec-test2-recv.sh (forced command): умеет только разложить сборку в test2, до боевого не достаёт.
+      # Идёт звонок на test2 — приёмник пропускает выкладку (код 3), шаг жёлтый, сборка зелёная. Боевое — только руками по «да» владельца.
+      - name: Выкладка на test2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/ket4tec/25.0.7'
+        continue-on-error: true
+        run: |
+          mkdir -p img/k4stk && rsync -rt ~/talk-media/k4stk/ img/k4stk/
+          tar -c js css lib appinfo l10n img | ssh -i ~/.ssh/s18_talk_test2 -o IdentitiesOnly=yes -o BatchMode=yes dev@192.168.88.246 "$(git rev-parse --short HEAD)"
