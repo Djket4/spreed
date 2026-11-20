@@ -116,6 +116,26 @@ describe('HomeActions', () => {
 		return wrapper
 	}
 
+	test('share refusal turns «My call» itself into «Copy link», grid keeps its cells', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+		const writeText = vi.fn(() => Promise.resolve())
+		Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+		const before = (await setup(vi.fn(() => Promise.resolve()))).findAll('.talk-dashboard__actions > *').length
+		const wrapper = await offerCopy()
+		expect(wrapper.findAll('.talk-dashboard__actions > *').length).toBe(before)
+		expect(wrapper.find('.k7-mycall').classes()).toContain('k7-mycall-copy')
+		expect(wrapper.find('.k7-mycall').text()).toContain('Copy link')
+		await wrapper.find('.k7-mycall').trigger('click')
+		await flushPromises()
+		expect(writeText).toHaveBeenCalledWith('https://x/call')
+		expect(wrapper.findAll('.talk-dashboard__actions > *').length).toBe(before)
+		expect(wrapper.find('.k7-mycall').text()).toContain('Copied')
+		vi.advanceTimersByTime(2100)
+		await flushPromises()
+		expect(wrapper.find('.k7-mycall').text()).toContain('My call link')
+		vi.useRealTimers()
+		wrapper.unmount()
+	})
 	test('copy button writes the link to the clipboard', async () => {
 		const writeText = vi.fn(() => Promise.resolve())
 		Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })

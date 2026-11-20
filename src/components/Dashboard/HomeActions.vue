@@ -18,6 +18,7 @@ import { useStore } from 'vuex'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import IconCheck from 'vue-material-design-icons/Check.vue'
 import IconClose from 'vue-material-design-icons/Close.vue'
+import IconContentCopy from 'vue-material-design-icons/ContentCopy.vue'
 import IconMicrophoneOutline from 'vue-material-design-icons/MicrophoneOutline.vue'
 import IconPhoneOutline from 'vue-material-design-icons/PhoneOutline.vue'
 import IconPlus from 'vue-material-design-icons/Plus.vue'
@@ -58,6 +59,10 @@ onBeforeUnmount(() => meetingTrap?.deactivate())
 // Берём заранее: iOS Safari пускает «Поделиться» и буфер только прямо в обработчике нажатия.
 const myCallLink = ref('')
 const myCallCopyOffer = ref(false)
+// после копирования кнопка на ~2 с показывает «Скопировано», потом снова «Мой звонок» (одна ячейка, сетка 2x2)
+const myCallCopied = ref(false)
+let myCallCopiedTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(myCallCopiedTimer))
 const myCallManual = ref(false)
 const myCallManualInput = ref<HTMLInputElement | null>(null)
 fetch(generateUrl('/apps/ket4tec_launchpad/api/links'), { headers: { Accept: 'application/json', requesttoken: getRequestToken() ?? '' } })
@@ -70,6 +75,11 @@ fetch(generateUrl('/apps/ket4tec_launchpad/api/links'), { headers: { Accept: 'ap
  */
 function shareMyCall() {
 	const url = myCallLink.value
+	if (myCallCopyOffer.value) {
+		// «Поделиться» уже отказал — эта же кнопка теперь «Копировать ссылку» (новый жест, буфер пустит)
+		copyMyCall(url)
+		return
+	}
 	if (navigator.share && (isMobile.value || matchMedia('(pointer: coarse)').matches)) {
 		myCallCopyOffer.value = false
 		navigator.share({ title: t('spreed', 'Personal call'), url }).catch((e) => {
@@ -108,6 +118,9 @@ async function copyMyCall(url: string) {
 	if (ok) {
 		myCallCopyOffer.value = false
 		myCallManual.value = false
+		myCallCopied.value = true
+		clearTimeout(myCallCopiedTimer)
+		myCallCopiedTimer = setTimeout(() => { myCallCopied.value = false }, 2000)
 		showSuccess(t('spreed', 'Link copied'))
 	} else {
 		// последняя попытка: показать ссылку выделенной, чтобы скопировать руками
@@ -280,32 +293,28 @@ async function joinMeeting() {
 			</template>
 			{{ t('spreed', 'Start meeting') }}
 		</NcButton>
-		<NcButton
-			v-if="myCallLink && isCallEnabled"
-			class="talk-dashboard__action k7-mycall"
-			variant="secondary"
-			:title="t('spreed', 'Permanent link to your personal call')"
-			@click="shareMyCall">
-			<template #icon>
-				<IconPhoneOutline :size="20" />
-			</template>
-			{{ t('spreed', 'My call link') }}
-		</NcButton>
-		<NcButton
-			v-if="myCallLink && myCallCopyOffer"
-			class="talk-dashboard__action k7-mycall-copy"
-			variant="secondary"
-			@click="copyMyCall(myCallLink)">
-			{{ t('spreed', 'Copy link') }}
-		</NcButton>
 		<input
-			v-if="myCallLink && myCallManual"
+			v-if="myCallLink && isCallEnabled && myCallManual"
 			ref="myCallManualInput"
 			class="talk-dashboard__action k7-mycall-manual"
 			type="text"
 			readonly
 			:value="myCallLink"
 			@focus="($event.target as HTMLInputElement).select()">
+		<NcButton
+			v-else-if="myCallLink && isCallEnabled"
+			class="talk-dashboard__action k7-mycall"
+			:class="{ 'k7-mycall-copy': myCallCopyOffer }"
+			variant="secondary"
+			:title="t('spreed', 'Permanent link to your personal call')"
+			@click="shareMyCall">
+			<template #icon>
+				<IconCheck v-if="myCallCopied" :size="20" />
+				<IconContentCopy v-else-if="myCallCopyOffer" :size="20" />
+				<IconPhoneOutline v-else :size="20" />
+			</template>
+			{{ myCallCopied ? t('spreed', 'Copied') : myCallCopyOffer ? t('spreed', 'Copy link') : t('spreed', 'My call link') }}
+		</NcButton>
 		<NcButton
 			v-if="canStartConversations"
 			class="talk-dashboard__action"
