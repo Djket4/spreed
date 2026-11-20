@@ -35,7 +35,7 @@ jobs:
       # Зелёный остаток блокирует, красные гоняются отдельно справочно. Убрать RED, когда починят.
       - name: Тесты (vitest, без красных файлов)
         run: |
-          RED="src/components/CallView/CallView.spec.js src/components/CallView/shared/VideoVue.spec.js src/components/LeftSidebar/ConversationsList/Conversation.spec.js src/components/LeftSidebar/LeftSidebar.spec.js src/components/RightSidebar/Participants/Participant.spec.js src/stores/__tests__/callView.spec.js"
+          RED="src/components/CallView/CallView.spec.js src/components/LeftSidebar/ConversationsList/Conversation.spec.js src/components/LeftSidebar/LeftSidebar.spec.js src/components/RightSidebar/Participants/Participant.spec.js src/stores/__tests__/callView.spec.js"
           echo "RED=$RED" >> "$GITHUB_ENV"
           /usr/bin/time -f 'vitest %es, пик %M КБ' npx vitest run $(for f in $RED; do echo --exclude "$f"; done)
       - name: Красные штатные тесты (справочно, не блокируют)
