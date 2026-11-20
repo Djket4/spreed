@@ -444,6 +444,8 @@ async function joinMeeting() {
 		font-weight: 600;
 	}
 	.button-vue__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	// #79: «Копировать ссылку» на 360 px не влезает в строку (145 из 130 px) — переносится на вторую в той же кнопке, без многоточия
+	.k7-mycall-copy .button-vue__text { white-space: normal; line-height: 1.15; }
 	.button-vue--primary {
 		background: var(--k7u-acc) !important;
 		color: #fff !important;
