@@ -93,8 +93,9 @@ watchEffect(async () => {
 	@media (max-width: 1023px) {
 		justify-content: flex-start;
 		height: auto;
-		// бока +12px к прежним: кнопки по краям карточек списка (16px от экрана, #502)
-		padding: calc(var(--default-grid-baseline) * 2) calc(var(--default-grid-baseline) * 5) 0;
+		// кнопки по краям карточек списка (16px от экрана, #502); &.empty-content — иначе побеждает
+		// padding 4px из .empty-content NcEmptyContent (чанк NotificationsApp грузится позже, специфичность равна)
+		&.empty-content { padding: calc(var(--default-grid-baseline) * 2) calc(var(--default-grid-baseline) * 4) 0; }
 
 		:deep(.empty-content__action) { margin-top: 0; width: 100%; }
 		:deep(.talk-dashboard__actions) { margin-block-start: 0; }
