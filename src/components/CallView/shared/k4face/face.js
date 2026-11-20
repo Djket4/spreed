@@ -383,6 +383,9 @@ const SP_RAMP = 1.2 // с: разгон/остановка облака при �
  * @param dt
  */
 export function draw(g, W, H, f, src, on, dt) {
+	if (!g) {
+		return // нет 2d-контекста (jsdom, отказ браузера): не рисуем
+	}
 	if (f.ver !== ver) {
 		const i = slot(f.seed)
 		Object.assign(f, LOOKS[i % NL])

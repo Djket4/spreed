@@ -116,12 +116,19 @@ describe('VideoVue.vue', () => {
 		 * @param {string} expectedText Expected connection label
 		 */
 		function assertConnectionMessageLabel(expectedText) {
+			// ket4tec (#376): после потери связи (k4Recon) вместо .connection-message плитка рисует K4NoSignal
+			// с единой подписью; текст upstream остаётся только для первого подключения (до первой связи).
 			const connectionMessageLabel = wrapper.find('.connection-message')
-			if (expectedText) {
+			const noSignal = wrapper.find('.k4-nosig')
+			if (expectedText && noSignal.exists()) {
+				expect(connectionMessageLabel.exists()).toBe(false)
+				expect(noSignal.attributes('aria-label')).toBe('Связь потеряна, возвращается…')
+			} else if (expectedText) {
 				expect(connectionMessageLabel.exists()).toBe(true)
 				expect(connectionMessageLabel.text()).toBe(expectedText)
 			} else {
 				expect(connectionMessageLabel.exists()).toBe(false)
+				expect(noSignal.exists()).toBe(false)
 			}
 		}
 
