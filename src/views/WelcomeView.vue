@@ -6,6 +6,7 @@
 <script lang="ts" setup>
 import { showError } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
+import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { computed, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
@@ -20,6 +21,8 @@ const store = useStore()
 const router = useRouter()
 const route = useRoute()
 
+// ket4tec (NAS_CLOUD#502): на телефоне над кнопками нет заглушки «Выберите обсуждение»
+const isMobile = useIsMobile()
 const isCreatingConversationForCallUser = ref(false)
 const callUser = computed(() => route.query.callUser as string)
 
@@ -29,6 +32,10 @@ const text = computed(() => {
 			name: t('spreed', 'Creating and joining a conversation with "{userid}"', { userid: callUser.value ?? '' }),
 			description: '',
 		}
+	}
+
+	if (isMobile.value) {
+		return { name: '', description: '' }
 	}
 
 	return {
@@ -67,7 +74,7 @@ watchEffect(async () => {
 		class="empty-view k7-welcome"
 		:name="text.name"
 		:description="text.description">
-		<template #icon>
+		<template v-if="isCreatingConversationForCallUser || !isMobile" #icon>
 			<NcLoadingIcon v-if="isCreatingConversationForCallUser" />
 			<NcIconSvgWrapper v-else :svg="IconTalk" />
 		</template>
@@ -81,5 +88,17 @@ watchEffect(async () => {
 .k7-welcome {
 	height: 100%;
 	padding: calc(var(--default-grid-baseline) * 4);
+
+	// ket4tec (NAS_CLOUD#502): телефон — кнопки сразу под шапкой, а не по центру высоты
+	@media (max-width: 1023px) {
+		justify-content: flex-start;
+		height: auto;
+		// кнопки по краям карточек списка (16px от экрана, #502); &.empty-content — иначе побеждает
+		// padding 4px из .empty-content NcEmptyContent (чанк NotificationsApp грузится позже, специфичность равна)
+		&.empty-content { padding: calc(var(--default-grid-baseline) * 2) calc(var(--default-grid-baseline) * 4) 0; }
+
+		:deep(.empty-content__action) { margin-top: 0; width: 100%; }
+		:deep(.talk-dashboard__actions) { margin-block-start: 0; }
+	}
 }
 </style>

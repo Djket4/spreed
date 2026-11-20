@@ -222,21 +222,25 @@ async function joinMeeting() {
 		<NcButton
 			v-if="canStartConversations"
 			class="talk-dashboard__action"
+			:aria-label="t('spreed', 'New conversation')"
+			:title="t('spreed', 'New conversation')"
 			@click="EventBus.emit('new-conversation-dialog:show')">
 			<template #icon>
 				<IconPlus :size="20" />
 			</template>
-			{{ t('spreed', 'New conversation') }}
+			{{ isMobile ? t('spreed', 'Conversation') : t('spreed', 'New conversation') }}
 		</NcButton>
 		<NcButton
 			v-if="isCallEnabled"
 			class="talk-dashboard__action"
 			variant="secondary"
+			:aria-label="t('spreed', 'Check devices')"
+			:title="t('spreed', 'Check devices')"
 			@click="emit('talk:media-settings:show', 'device-check')">
 			<template #icon>
 				<IconMicrophoneOutline :size="20" />
 			</template>
-			{{ t('spreed', 'Check devices') }}
+			{{ isMobile ? t('spreed', 'Check') : t('spreed', 'Check devices') }}
 		</NcButton>
 	</div>
 	<Teleport to="body">
@@ -342,6 +346,17 @@ async function joinMeeting() {
 	.button-vue--primary {
 		background: var(--k7u-acc) !important;
 		color: #fff !important;
+	}
+
+	// ket4tec (NAS_CLOUD#502): телефон (360-402 px) — зазор 8, поля 8, шрифт 14, значок 20: самая длинная подпись (~110 px) влезает в кнопку 160 px
+	@media (max-width: 1023px) {
+		gap: 8px;
+		.button-vue {
+			--button-padding: 0 8px;
+			font-size: 14px;
+		}
+		.button-vue__icon { width: 20px; min-width: 20px; height: 20px; min-height: 20px; }
+		.button-vue__text { padding-inline-start: 4px; }
 	}
 }
 // ket4tec: «Стол» v7 — окно новой встречи. Токены темы облака (--tk-*), запасные — цвета Стола (тёмная).
