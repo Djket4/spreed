@@ -71,6 +71,21 @@ describe('WelcomeView.vue (ket4tec NAS_CLOUD#332: четыре кнопки)', (
 		expect(labels(wrapper)).toHaveLength(4)
 	})
 
+	test('телефон: короткие подписи, полные в title и aria-label; компьютер: полные', async () => {
+		mobile.value = true
+		const phone = await mountView(LINK)
+		expect(labels(phone)).toEqual(['Start meeting', 'My call link', 'Conversation', 'Check'])
+		const full = phone.findAll('.talk-dashboard__actions button').map((b) => b.attributes('aria-label'))
+		expect(full).toContain('New conversation')
+		expect(full).toContain('Check devices')
+		mobile.value = false
+		expect(labels(await mountView(LINK))).toEqual(['Start meeting', 'My call link', 'New conversation', 'Check devices'])
+	})
+
+	test('короткие подписи телефона переведены', () => {
+		expect(['Conversation', 'Check'].map((k) => ru.translations[k])).toEqual(['Обсуждение', 'Проверка'])
+	})
+
 	test('подписи кнопок переведены на русский', () => {
 		expect(['Start meeting', 'My call link', 'New conversation', 'Check devices'].map((k) => ru.translations[k]))
 			.toEqual(['Начать встречу', 'Мой звонок', 'Новое обсуждение', 'Проверка устройств'])

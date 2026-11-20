@@ -88,5 +88,15 @@ watchEffect(async () => {
 .k7-welcome {
 	height: 100%;
 	padding: calc(var(--default-grid-baseline) * 4);
+
+	// ket4tec (NAS_CLOUD#502): телефон — кнопки сразу под шапкой, а не по центру высоты
+	@media (max-width: 1023px) {
+		justify-content: flex-start;
+		height: auto;
+		padding: calc(var(--default-grid-baseline) * 2) calc(var(--default-grid-baseline) * 2) 0;
+
+		:deep(.empty-content__action) { margin-top: 0; width: 100%; }
+		:deep(.talk-dashboard__actions) { margin-block-start: 0; }
+	}
 }
 </style>

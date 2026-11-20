@@ -6,7 +6,7 @@
 <template>
 	<NcAppNavigation ref="leftSidebar" :aria-label="t('spreed', 'Conversation list')">
 		<template #search>
-			<div class="navigation-top">
+			<div class="navigation-top" :class="{ 'navigation-top--phone': isMobile }">
 				<div class="navigation-buttons-container">
 					<!-- ket4tec (NAS_CLOUD#502): на телефоне строка поиска, фильтра, нового обсуждения и настроек скрыта -->
 					<div v-show="!isMobile" class="new-conversation">
@@ -1258,6 +1258,12 @@ export default {
 	padding-block: calc(2 * var(--default-grid-baseline)) var(--default-grid-baseline);
 }
 
+// ket4tec (NAS_CLOUD#502): телефон — строки поиска нет, пустые контейнеры не должны давать полосу из отступов и зазоров
+.navigation-top--phone {
+	gap: 0;
+	padding-block: 0;
+}
+
 .navigation-bottom {
 	padding-block: var(--default-grid-baseline) calc(2 * var(--default-grid-baseline));
 }
@@ -1362,6 +1368,11 @@ export default {
 :deep(.empty-content) {
 	text-align: center;
 	padding: 20% 10px 0;
+
+	// ket4tec (NAS_CLOUD#502): телефон — пустой список аккуратно под кнопками, без отступа в 20% ширины
+	@media (max-width: 1023px) {
+		padding-top: calc(var(--default-grid-baseline) * 4);
+	}
 }
 
 :deep(.app-navigation__list) {
