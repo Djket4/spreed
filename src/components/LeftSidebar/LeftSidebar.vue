@@ -8,7 +8,8 @@
 		<template #search>
 			<div class="navigation-top">
 				<div class="navigation-buttons-container">
-					<div class="new-conversation">
+					<!-- ket4tec (NAS_CLOUD#502): на телефоне строка поиска, фильтра, нового обсуждения и настроек скрыта -->
+					<div v-show="!isMobile" class="new-conversation">
 						<div
 							class="conversations-search"
 							:class="{ 'conversations-search--expanded': isSearching }">

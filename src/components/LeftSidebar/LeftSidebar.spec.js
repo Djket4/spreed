@@ -20,6 +20,11 @@ import { useActorStore } from '../../stores/actor.ts'
 import { findNcActionButton, findNcButton, generateOCSResponse } from '../../test-helpers.js'
 import { requestTabLeadership } from '../../utils/requestTabLeadership.js'
 
+const mobile = vi.hoisted(() => ({ value: false }))
+vi.mock('@nextcloud/vue/composables/useIsMobile', async () => {
+	const { ref } = await import('vue')
+	return { useIsMobile: () => ref(mobile.value) }
+})
 vi.mock('../../utils/requestTabLeadership.js', { spy: true })
 vi.mock('../../services/conversationsService', () => ({
 	searchListedConversations: vi.fn(),
@@ -78,6 +83,7 @@ describe('LeftSidebar.vue', () => {
 	}
 
 	beforeEach(() => {
+		mobile.value = false
 		vi.useFakeTimers()
 
 		setActivePinia(createPinia())
@@ -108,6 +114,21 @@ describe('LeftSidebar.vue', () => {
 	afterEach(() => {
 		localCapabilities.spreed.config.conversations['can-create'] = true
 		vi.clearAllMocks()
+	})
+
+	describe('search row (ket4tec NAS_CLOUD#502)', () => {
+		beforeEach(() => conversationsListMock.mockReturnValue([]))
+
+		test('на компьютере строка поиска, фильтра и настроек показана', () => {
+			const wrapper = mountComponent()
+			expect(wrapper.find('.new-conversation').isVisible()).toBe(true)
+		})
+
+		test('на телефоне строка скрыта', () => {
+			mobile.value = true
+			const wrapper = mountComponent()
+			expect(wrapper.find('.new-conversation').isVisible()).toBe(false)
+		})
 	})
 
 	describe('conversation list', () => {
