@@ -11,7 +11,8 @@ import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
 import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
-import { nextTick, ref } from 'vue'
+import { createFocusTrap } from 'focus-trap'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -45,11 +46,20 @@ const meetingPassword = ref('')
 // 'copied' | 'ready' (clipboard write failed: user has to tap "Copy")
 const meetingCopyState = ref<'copied' | 'ready'>('copied')
 const meetingInput = ref<HTMLInputElement | null>(null)
+const meetingSheet = ref<HTMLElement | null>(null)
+const meetingCopyBtn = ref<HTMLButtonElement | null>(null)
+// ket4tec (NAS_CLOUD#378): ловушка фокуса окна и возврат фокуса на кнопку, открывшую окно
+let meetingTrap: ReturnType<typeof createFocusTrap> | null = null
+let meetingOpener: HTMLElement | null = null
+onBeforeUnmount(() => meetingTrap?.deactivate())
 
 // ket4tec: «Мой звонок» — постоянная ссылка на личную открытую беседу «Личные переговоры» (NAS_CLOUD#100).
 // Ссылку выдаёт приложение «Стол» (/apps/ket4tec_launchpad/api/links, создаёт беседу при первом обращении); нет приложения — нет кнопки.
 // Берём заранее: iOS Safari пускает «Поделиться» и буфер только прямо в обработчике нажатия.
 const myCallLink = ref('')
+const myCallCopyOffer = ref(false)
+const myCallManual = ref(false)
+const myCallManualInput = ref<HTMLInputElement | null>(null)
 fetch(generateUrl('/apps/ket4tec_launchpad/api/links'), { headers: { Accept: 'application/json', requesttoken: getRequestToken() ?? '' } })
 	.then((r) => (r.ok ? r.json() : null))
 	.then((d) => { myCallLink.value = d?.call || '' })
@@ -61,10 +71,11 @@ fetch(generateUrl('/apps/ket4tec_launchpad/api/links'), { headers: { Accept: 'ap
 function shareMyCall() {
 	const url = myCallLink.value
 	if (navigator.share && (isMobile.value || matchMedia('(pointer: coarse)').matches)) {
+		myCallCopyOffer.value = false
 		navigator.share({ title: t('spreed', 'Personal call'), url }).catch((e) => {
-			if (e?.name !== 'AbortError') {
-				copyMyCall(url)
-			}
+			// Safari: жест уже потрачен, буфер из .catch не пустит — предлагаем кнопку (NAS_CLOUD#378).
+			// AbortError тоже: может значить «нет получателей». В буфер сами не пишем.
+			myCallCopyOffer.value = true
 		})
 		return
 	}
@@ -74,21 +85,82 @@ function shareMyCall() {
 /**
  * @param url ссылка на беседу
  */
-function copyMyCall(url: string) {
-	navigator.clipboard.writeText(url).then(() => showSuccess(t('spreed', 'Link copied')), () => showError(t('spreed', 'The link could not be copied')))
+async function copyMyCall(url: string) {
+	let ok = false
+	try {
+		await navigator.clipboard.writeText(url)
+		ok = true
+	} catch {
+		// нет API (небезопасный контекст) или отказ — пробуем execCommand
+		const area = document.createElement('textarea')
+		area.value = url
+		area.style.position = 'fixed'
+		area.style.opacity = '0'
+		document.body.appendChild(area)
+		area.select()
+		try {
+			ok = document.execCommand('copy')
+		} catch {
+			ok = false
+		}
+		area.remove()
+	}
+	if (ok) {
+		myCallCopyOffer.value = false
+		myCallManual.value = false
+		showSuccess(t('spreed', 'Link copied'))
+	} else {
+		// последняя попытка: показать ссылку выделенной, чтобы скопировать руками
+		myCallManual.value = true
+		showError(t('spreed', 'The link could not be copied'))
+		await nextTick()
+		myCallManualInput.value?.select()
+	}
 }
 
 /**
  * Opens the "new meeting" window with an empty form.
+ *
+ * @param event click that opened the window (focus goes back to its button on close)
  */
-async function openMeeting() {
+async function openMeeting(event?: Event) {
+	meetingOpener = (event?.currentTarget as HTMLElement | null) ?? (document.activeElement as HTMLElement | null)
 	meetingGen++
 	conversationName.value = ''
 	meetingToken.value = ''
 	meetingOpen.value = true
 	await nextTick()
+	if (meetingSheet.value && !meetingTrap) {
+		meetingTrap = createFocusTrap(meetingSheet.value, {
+			fallbackFocus: meetingSheet.value,
+			initialFocus: () => meetingInput.value ?? meetingSheet.value!,
+			escapeDeactivates: false,
+			allowOutsideClick: true,
+			returnFocusOnDeactivate: false,
+		})
+		meetingTrap.activate()
+	}
 	meetingInput.value?.focus()
 }
+
+watch(meetingOpen, async (open) => {
+	if (open) {
+		return
+	}
+	meetingTrap?.deactivate()
+	meetingTrap = null
+	await nextTick()
+	meetingOpener?.focus()
+	meetingOpener = null
+})
+
+// после создания кнопка «Создать» исчезает — фокус на «Копировать»
+watch(meetingToken, async (token) => {
+	if (token && meetingOpen.value) {
+		await nextTick()
+		meetingCopyBtn.value?.focus()
+	}
+})
 
 /**
  * Closes the "new meeting" window (a created conversation stays in the list).
@@ -220,6 +292,21 @@ async function joinMeeting() {
 			{{ t('spreed', 'My call link') }}
 		</NcButton>
 		<NcButton
+			v-if="myCallLink && myCallCopyOffer"
+			class="talk-dashboard__action k7-mycall-copy"
+			variant="secondary"
+			@click="copyMyCall(myCallLink)">
+			{{ t('spreed', 'Copy link') }}
+		</NcButton>
+		<input
+			v-if="myCallLink && myCallManual"
+			ref="myCallManualInput"
+			class="talk-dashboard__action k7-mycall-manual"
+			type="text"
+			readonly
+			:value="myCallLink"
+			@focus="($event.target as HTMLInputElement).select()">
+		<NcButton
 			v-if="canStartConversations"
 			class="talk-dashboard__action"
 			:aria-label="t('spreed', 'New conversation')"
@@ -250,7 +337,9 @@ async function joinMeeting() {
 			@keydown.esc.stop="closeMeeting">
 			<div class="k7-meet__scrim" @click="closeMeeting" />
 			<div
+				ref="meetingSheet"
 				class="k7-meet__sheet"
+				tabindex="-1"
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="k7-meet-title">
@@ -297,6 +386,7 @@ async function joinMeeting() {
 						{{ t('spreed', 'Password: {password}', { password: meetingPassword }, { escape: false, sanitize: false }) }}
 					</div>
 					<button
+						ref="meetingCopyBtn"
 						type="button"
 						class="k7-meet__btn k7-meet__btn--soft"
 						@click="copyMeetingAgain">
