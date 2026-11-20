@@ -7,6 +7,7 @@ import util from 'util'
 import adapter from 'webrtc-adapter'
 import WildEmitter from 'wildemitter'
 import { isSafari } from '../../browserCheck.ts'
+import { k4CapSimulcast } from '../../k4simulcast.js'
 
 /**
  * @param {object} stream the stream object.
@@ -506,7 +507,12 @@ Peer.prototype.answer = function() {
 }
 
 Peer.prototype.handleAnswer = function(answer) {
-	this.pc.setRemoteDescription(answer).catch(function(error) {
+	this.pc.setRemoteDescription(answer).then(function() {
+		// NAS_CLOUD#375: в Chrome/Safari simulcast включён SDP munging, потолки слоёв ставим после согласования
+		if (this.enableSimulcast && this.type !== 'screen' && adapter.browserDetails.browser !== 'firefox') {
+			return k4CapSimulcast(this.pc)
+		}
+	}.bind(this)).catch(function(error) {
 		console.warn('setRemoteDescription for answer failed: ', error)
 	})
 }
