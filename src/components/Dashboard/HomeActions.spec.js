@@ -5,6 +5,7 @@
 
 // ket4tec (NAS_CLOUD#378): окно «Новая встреча» — фокус и «Мой звонок» при отказе share.
 
+import { showSuccess } from '@nextcloud/dialogs'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -130,6 +131,7 @@ describe('HomeActions', () => {
 		expect(writeText).toHaveBeenCalledWith('https://x/call')
 		expect(wrapper.findAll('.talk-dashboard__actions > *').length).toBe(before)
 		expect(wrapper.find('.k7-mycall').text()).toContain('Copied')
+		expect(showSuccess).not.toHaveBeenCalled() // без тоста поверх второго ряда
 		vi.advanceTimersByTime(2100)
 		await flushPromises()
 		expect(wrapper.find('.k7-mycall').text()).toContain('My call link')

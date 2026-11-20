@@ -6,7 +6,7 @@
 <!-- ket4tec (NAS_CLOUD#332): четыре кнопки главной «Звонков» + окно новой встречи (вынесено из убранной панели Talk) -->
 <script lang="ts" setup>
 import { getRequestToken } from '@nextcloud/auth'
-import { showError, showSuccess } from '@nextcloud/dialogs'
+import { showError } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
@@ -120,8 +120,10 @@ async function copyMyCall(url: string) {
 		myCallManual.value = false
 		myCallCopied.value = true
 		clearTimeout(myCallCopiedTimer)
-		myCallCopiedTimer = setTimeout(() => { myCallCopied.value = false }, 2000)
-		showSuccess(t('spreed', 'Link copied'))
+		// без тоста: кнопка сама отвечает «Скопировано»
+		myCallCopiedTimer = setTimeout(() => {
+			myCallCopied.value = false
+		}, 2000)
 	} else {
 		// последняя попытка: показать ссылку выделенной, чтобы скопировать руками
 		myCallManual.value = true
