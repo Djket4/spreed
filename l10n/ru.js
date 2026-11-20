@@ -1435,6 +1435,7 @@ OC.L10N.register(
     "New meeting" : "Новая встреча",
     "Meeting name" : "Название встречи",
     "My call link" : "Мой звонок",
+    "Copied" : "Скопировано",
     "Personal call" : "Личный звонок",
     "Permanent link to your personal call" : "Постоянная ссылка на ваш личный звонок",
     "Link copied" : "Ссылка скопирована",
