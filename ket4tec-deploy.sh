@@ -2,6 +2,7 @@
 # ket4tec: сборка Talk из этого форка и выкладка на S18 (облако переехало с NAS 05.11.2026).
 #   TARGET=test ./ket4tec-deploy.sh   — тестовое облако test2.ket4tec.online (~/talkdraw-test)
 #   TARGET=test1 ./ket4tec-deploy.sh  — test1.ket4tec.online (~/nc-spike, SQLite: звонки в БД не проверяются, перед выкладкой полная копия spreed)
+#   TARGET=test3|test4 ./ket4tec-deploy.sh — стенды test3/test4 (NAS_CLOUD#504, ~/stand-testN, t3_app/t4_app)
 #   TARGET=prod ./ket4tec-deploy.sh   — боевое cloud.ket4tec.online, только по слову владельца
 # Версия форка должна совпадать с установленной (appinfo/info.xml), иначе сначала перенести ветку на новый тег.
 # Перед выкладкой: нет активных звонков, копия js/css/lib/appinfo рядом. Откат — вернуть копию и поднять cachebuster.
@@ -13,8 +14,9 @@ cd "$(dirname "$0")"
 case "${TARGET:-}" in
   test) BASE=/home/dev/talkdraw-test; APP=tdtest_app; DB=tdtest_db ;;
   test1) BASE=/home/dev/nc-spike; APP=ncspike_app; DB= ;;
+  test3|test4) N=${TARGET#test}; BASE=/home/dev/stand-$TARGET; APP=t${N}_app; DB=t${N}_db ;;
   prod) BASE=/home/dev/nextcloud; APP=nextcloud_app; DB=nextcloud_db ;;
-  *) echo "TARGET=test|prod"; exit 1 ;;
+  *) echo "TARGET=test|test3|test4|prod"; exit 1 ;;
 esac
 H=s18; R=$BASE/html/custom_apps/spreed
 n() { ssh "$H" "$@"; }
