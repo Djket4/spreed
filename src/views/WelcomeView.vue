@@ -6,6 +6,7 @@
 <script lang="ts" setup>
 import { showError } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
+import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { computed, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
@@ -20,6 +21,8 @@ const store = useStore()
 const router = useRouter()
 const route = useRoute()
 
+// ket4tec (NAS_CLOUD#502): на телефоне над кнопками нет заглушки «Выберите обсуждение»
+const isMobile = useIsMobile()
 const isCreatingConversationForCallUser = ref(false)
 const callUser = computed(() => route.query.callUser as string)
 
@@ -29,6 +32,10 @@ const text = computed(() => {
 			name: t('spreed', 'Creating and joining a conversation with "{userid}"', { userid: callUser.value ?? '' }),
 			description: '',
 		}
+	}
+
+	if (isMobile.value) {
+		return { name: '', description: '' }
 	}
 
 	return {
@@ -67,7 +74,7 @@ watchEffect(async () => {
 		class="empty-view k7-welcome"
 		:name="text.name"
 		:description="text.description">
-		<template #icon>
+		<template v-if="isCreatingConversationForCallUser || !isMobile" #icon>
 			<NcLoadingIcon v-if="isCreatingConversationForCallUser" />
 			<NcIconSvgWrapper v-else :svg="IconTalk" />
 		</template>
