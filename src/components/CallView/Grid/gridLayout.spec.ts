@@ -66,10 +66,13 @@ describe('gridLayout', () => {
 			expect(layout.tileHeight).toBeLessThanOrEqual(layout.side * 4 / 3)
 		})
 
-		test('two participants: two tiles one under the other, full width and the whole height', () => {
-			const { side, tileHeight } = computePhoneLayout({ ...area, total: 2 })
-			expect(side).toBe(440)
-			expect(2 * tileHeight + GRID_GAP).toBe(460)
+		test.each([
+			[340, 355, 173],
+			[382, 352, 172],
+			[382, 780, 382],
+		])('two participants in a %ix%i area have two %ipx squares', (gridWidth, gridHeight, side) => {
+			expect(computePhoneLayout({ gridWidth, gridHeight, total: 2 }))
+				.toEqual({ columns: 1, rows: 2, side, tileHeight: side })
 		})
 
 		test('six tiles fill the height of the area', () => {
