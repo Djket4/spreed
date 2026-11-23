@@ -151,7 +151,8 @@ class Listener implements IEventListener {
 		}
 
 		if ($event instanceof TaskSuccessfulEvent) {
-			$this->recordingService->storeTranscript($task->getUserId(), $roomToken, $fileId, $task->getOutput()['output'] ?? '', $aiType);
+			$job = $task->getInput()['job'] ?? null;
+			$this->recordingService->storeTranscript($task->getUserId(), $roomToken, $fileId, $task->getOutput()['output'] ?? '', $aiType, $task->getTaskTypeId(), is_string($job) ? $job : null);
 		} elseif ($event instanceof TaskFailedEvent) {
 			if (!$isRetry && $this->recordingService->retryTask($task)) {
 				return;

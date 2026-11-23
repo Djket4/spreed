@@ -13,6 +13,8 @@ use OC\User\NoUserException;
 use OCA\Talk\AppInfo\Application;
 use OCA\Talk\Chat\ChatManager;
 use OCA\Talk\Config;
+use OCA\Talk\Events\BeforeRecordingTranscriptionScheduledEvent;
+use OCA\Talk\Events\BeforeRecordingTranscriptSavedEvent;
 use OCA\Talk\Exceptions\ParticipantNotFoundException;
 use OCA\Talk\Exceptions\RecordingNotFoundException;
 use OCA\Talk\Manager;
@@ -381,14 +383,28 @@ class RecordingService {
 		}
 
 		$supportedTaskTypeIds = $this->taskProcessingManager->getAvailableTaskTypeIds();
-		if (!in_array(AudioToText::ID, $supportedTaskTypeIds, true)) {
+		$taskTypeId = AudioToText::ID;
+		$taskInput = ['input' => $fileNode->getId()];
+		try {
+			$selection = new BeforeRecordingTranscriptionScheduledEvent($owner, $room->getToken(), $fileNode);
+			$this->eventDispatcher->dispatchTyped($selection);
+			$selectedType = $selection->getTaskTypeId();
+			if ($selectedType !== null && $selectedType !== AudioToText::ID
+				&& $selection->getJob() !== null && in_array($selectedType, $supportedTaskTypeIds, true)) {
+				$taskTypeId = $selectedType;
+				$taskInput['job'] = $selection->getJob();
+			}
+		} catch (\Throwable $e) {
+			// Optional extensions must not interrupt ordinary transcription.
+		}
+		if (!in_array($taskTypeId, $supportedTaskTypeIds, true)) {
 			$this->logger->error('Can not transcribe call recording as no Audio2Text task provider is available');
 			return;
 		}
 
 		$task = new Task(
-			AudioToText::ID,
-			['input' => $fileNode->getId()],
+			$taskTypeId,
+			$taskInput,
 			Application::APP_ID,
 			$owner,
 			'call/transcription/' . $room->getToken(),
@@ -405,7 +421,7 @@ class RecordingService {
 	/**
 	 * @param 'transcript'|'summary' $aiTask
 	 */
-	public function storeTranscript(string $owner, string $roomToken, int $recordingFileId, string $output, string $aiTask): void {
+	public function storeTranscript(string $owner, string $roomToken, int $recordingFileId, string $output, string $aiTask, ?string $taskTypeId = null, ?string $job = null): void {
 		$userFolder = $this->rootFolder->getUserFolder($owner);
 		$recordingNodes = $userFolder->getById($recordingFileId);
 
@@ -457,10 +473,21 @@ class RecordingService {
 				$warning = $l->t('Summary is AI generated and may contain mistakes');
 			}
 
+			$fileOutput = $output;
+			if ($aiTask === 'transcript' && $recording instanceof File) {
+				try {
+					$event = new BeforeRecordingTranscriptSavedEvent($owner, $roomToken, $recording, $output, $taskTypeId, $job);
+					$this->eventDispatcher->dispatchTyped($event);
+					$fileOutput = $event->getFileContent();
+				} catch (\Throwable $e) {
+					// Leave both the file and the summary on the ordinary transcript.
+				}
+			}
+
 			try {
 				$fileNode = $recordingFolder->newFile(
 					$transcriptFileName,
-					$output . "\n\n$warning\n",
+					$fileOutput . "\n\n$warning\n",
 				);
 				$this->systemTagMapper->assignGeneratedByAITag((string)$fileNode->getId(), 'files');
 				$this->notifyStoredTranscript($room, $participant, $fileNode, $aiTask);

@@ -18,6 +18,7 @@ use OCP\Files\Folder;
 use OCP\Files\Node;
 use OCP\IUserSession;
 use OCP\TaskProcessing\Events\TaskFailedEvent;
+use OCP\TaskProcessing\Events\TaskSuccessfulEvent;
 use OCP\TaskProcessing\Task;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
@@ -175,4 +176,12 @@ class ListenerTest extends TestCase {
 
 		$this->listener->handle(new TaskFailedEvent($task, 'error'));
 	}
+	public function testSuccessfulTranscriptionPassesTaskBinding(): void {
+		$task = new Task('local:recording', ['input' => 42, 'job' => 'job_123'], 'spreed', 'owner', 'call/transcription/abc123/retry');
+		$task->setOutput(['output' => 'plain']);
+		$this->recordingService->expects($this->once())->method('storeTranscript')
+			->with('owner', 'abc123', 42, 'plain', 'transcript', 'local:recording', 'job_123');
+		$this->listener->handle(new TaskSuccessfulEvent($task));
+	}
+
 }
