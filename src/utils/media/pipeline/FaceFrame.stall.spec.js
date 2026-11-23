@@ -48,6 +48,8 @@ afterEach(() => {
 	delete vproto.videoHeight
 	delete vproto.readyState
 	delete vproto.getVideoPlaybackQuality
+	delete vproto.requestVideoFrameCallback
+	delete vproto.cancelVideoFrameCallback
 	vi.useRealTimers()
 	vi.restoreAllMocks()
 })
@@ -55,6 +57,61 @@ afterEach(() => {
 const stallCalls = () => calllog.mock.calls.filter(([k, d]) => k === 'framing_error' && /встал/.test(d.reason))
 
 describe('FaceFrame: сторож выхода', () => {
+	test('после фона заново запрашивает колбэки входа и пробы выхода', async () => {
+		ff.destroy()
+		let hidden = false
+		vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
+		const requestFrame = vi.fn((callback) => setTimeout(() => {
+			if (!hidden) {
+				callback(performance.now(), { mediaTime: performance.now() / 1000 })
+			}
+		}, 33))
+		vproto.requestVideoFrameCallback = requestFrame
+		vproto.cancelVideoFrameCallback = (id) => clearTimeout(id)
+		ff = new FaceFrame('call')
+		const track = { id: 'cam', kind: 'video', enabled: true, readyState: 'live', addEventListener() {}, removeEventListener() {} }
+		ff._setInputTrack('default', track)
+		await vi.advanceTimersByTimeAsync(2500)
+		const digital = ff._digital
+		const output = ff.getOutputTrack()
+		expect(digital.published).toBe(true)
+
+		for (let i = 0; i < 2; i++) {
+			hidden = true
+			document.dispatchEvent(new Event('visibilitychange'))
+			await vi.advanceTimersByTimeAsync(12000)
+			const draws = digital.frames
+			const probeFrames = digital.outFrames
+			hidden = false
+			document.dispatchEvent(new Event('visibilitychange'))
+			await vi.advanceTimersByTimeAsync(4500)
+
+			expect(digital.frames - draws).toBe(Math.floor(4500 / 33))
+			expect(digital.outFrames - probeFrames).toBe(5)
+			expect(ff.path).toBe('digital')
+			expect(ff.getOutputTrack()).toBe(output)
+		}
+
+		expect(stallCalls()).toHaveLength(0)
+		expect(showWarning).not.toHaveBeenCalled()
+
+		// После выключения камеры и после выхода события видимости не запускают старые колбэки.
+		ff._setInputTrack('default', null)
+		requestFrame.mockClear()
+		document.dispatchEvent(new Event('visibilitychange'))
+		await vi.advanceTimersByTimeAsync(1500)
+		expect(requestFrame).not.toHaveBeenCalled()
+
+		ff._setInputTrack('default', track)
+		await vi.advanceTimersByTimeAsync(2500)
+		expect(ff._digital.published).toBe(true)
+		ff.destroy()
+		requestFrame.mockClear()
+		document.dispatchEvent(new Event('visibilitychange'))
+		await vi.advanceTimersByTimeAsync(1500)
+		expect(requestFrame).not.toHaveBeenCalled()
+	})
+
 	test('кадры перестали идти -> откат один раз, причина в журнале', async () => {
 		await vi.advanceTimersByTimeAsync(2500)
 		expect(ff._digital.published).toBe(true)

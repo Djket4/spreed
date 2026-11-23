@@ -289,8 +289,8 @@ export function computeSquareLayout({ gridWidth, gridHeight, total, minSide = MI
 export const PHONE_MAX_TILE_RATIO = 4 / 3
 
 /**
- * ket4tec (NAS_CLOUD#159): iPhone вертикально, «Классика». Плитки занимают всю область, не обязательно квадраты:
- * 1-2 - в столбик на всю ширину, 3-4 - 2x2, 5-6 - 2x3.
+ * ket4tec (NAS_CLOUD#159, #533): iPhone вертикально, «Классика». Две камеры — квадраты в столбик.
+ * Одна плитка занимает всю ширину, 3-4 - 2x2, 5-6 - 2x3.
  *
  * @param root0
  * @param root0.gridWidth
@@ -307,6 +307,10 @@ export function computePhoneLayout({ gridWidth, gridHeight, total }: {
 	const rows = Math.ceil(need / columns)
 	const side = Math.floor((gridWidth - GRID_GAP * (columns - 1)) / columns)
 	const fill = Math.floor((gridHeight - GRID_GAP * (rows - 1)) / rows)
+	if (need === 2) {
+		const squareSide = Math.min(side, fill)
+		return { columns, rows, side: squareSide, tileHeight: squareSide }
+	}
 	return { columns, rows, side, tileHeight: Math.min(fill, Math.floor(side * PHONE_MAX_TILE_RATIO)) }
 }
 

@@ -565,6 +565,14 @@ export default class FaceFrame extends TrackSinkSource {
 		d.probe = probe
 		if (probe.requestVideoFrameCallback) {
 			let lastOutPF = null
+			const requestProbeFrame = () => {
+				const id = probe.requestVideoFrameCallback((now, meta) => {
+					if (id === d.probeRequest) {
+						onOut(now, meta)
+					}
+				})
+				d.probeRequest = id
+			}
 			const onOut = (_now, meta) => {
 				if (!d.stopped) {
 					// presentedFrames — счётчик показанных кадров: при редком опросе считаем приращение, а не колбэки; стоячие метаданные (Safari) — не меньше 1 за колбэк
@@ -574,13 +582,14 @@ export default class FaceFrame extends TrackSinkSource {
 					d.outFrames = (d.outFrames || 0) + step
 					// ket4tec (NAS_CLOUD#160): после публикации не декодируем пробу на каждый кадр — один колбэк в секунду
 					if (d.published) {
-						setTimeout(() => !d.stopped && probe.requestVideoFrameCallback(onOut), PROBE_POLL_MS)
+						d.probeTimer = setTimeout(requestProbeFrame, PROBE_POLL_MS)
 					} else {
-						probe.requestVideoFrameCallback(onOut)
+						requestProbeFrame()
 					}
 				}
 			}
-			probe.requestVideoFrameCallback(onOut)
+			d.requestProbeFrame = requestProbeFrame
+			requestProbeFrame()
 		}
 		probe.play?.()?.catch?.(() => {})
 		this._setOutput(d.output)
@@ -619,7 +628,7 @@ export default class FaceFrame extends TrackSinkSource {
 			if (d.useRaf) {
 				requestAnimationFrame(run)
 			} else {
-				video.requestVideoFrameCallback(run)
+				d.frameRequest = video.requestVideoFrameCallback(run)
 			}
 		}
 		schedule()
@@ -630,6 +639,25 @@ export default class FaceFrame extends TrackSinkSource {
 				schedule()
 			}
 		}, RVFC_WAIT_MS)
+		// После ухода в фон ожидающие колбэки кадров могут перестать вызываться.
+		// При возврате запрашиваем их заново и даём сторожу полный интервал проверки.
+		d.handleVisible = () => {
+			if (document.hidden) {
+				return
+			}
+			d.startedAt = d.outAt = performance.now()
+			d.lowSince = 0
+			if (!d.useRaf) {
+				video.cancelVideoFrameCallback?.(d.frameRequest)
+				schedule()
+			}
+			if (d.requestProbeFrame) {
+				clearTimeout(d.probeTimer)
+				probe.cancelVideoFrameCallback?.(d.probeRequest)
+				d.requestProbeFrame()
+			}
+		}
+		document.addEventListener('visibilitychange', d.handleVisible)
 		d.watch = setInterval(() => this._watch(d), 500)
 	}
 
@@ -1062,11 +1090,15 @@ export default class FaceFrame extends TrackSinkSource {
 		d.stopped = true
 		this._lastWin = d.placed && d.lastFace ? { ...d.win } : null
 		clearTimeout(d.rvfcTimer)
+		clearTimeout(d.probeTimer)
 		clearInterval(d.watch)
+		document.removeEventListener('visibilitychange', d.handleVisible)
+		d.video.cancelVideoFrameCallback?.(d.frameRequest)
 		d.video.srcObject = null
 		d.video.remove()
 		d.canvas.remove()
 		if (d.probe) {
+			d.probe.cancelVideoFrameCallback?.(d.probeRequest)
 			d.probe.srcObject = null
 			d.probe.remove()
 		}
