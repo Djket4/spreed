@@ -96,12 +96,14 @@ describe('WelcomeView.vue (ket4tec NAS_CLOUD#332: четыре кнопки)', (
 		expect(labels(wrapper)).toEqual(['Start meeting', 'New conversation', 'Check devices'])
 	})
 
-	test('«Мой звонок» на компьютере кладёт ссылку в буфер', async () => {
+	test('«Мой звонок» на компьютере копирует ссылку и показывает «Скопировано» на кнопке', async () => {
 		const wrapper = await mountView(LINK)
 		await wrapper.find('.k7-mycall').trigger('click')
 		await flushPromises()
 		expect(writeText).toHaveBeenCalledWith(LINK)
-		expect(showSuccess).toHaveBeenCalled()
+		expect(labels(wrapper)).toEqual(['Start meeting', 'Copied', 'New conversation', 'Check devices'])
+		expect(showSuccess).not.toHaveBeenCalled()
+		wrapper.unmount()
 	})
 
 	test('ошибка создания встречи: показана ошибка, необработанных отклонений нет', async () => {
