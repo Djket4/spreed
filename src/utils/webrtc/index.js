@@ -17,6 +17,7 @@ import Signaling from '../signaling.js'
 import SignalingTypingHandler from '../SignalingTypingHandler.js'
 import CallAnalyzer from './analyzers/CallAnalyzer.js'
 import CallParticipantsAudioPlayer from './CallParticipantsAudioPlayer.js'
+import { startK4speak } from './k4speak.js'
 import MediaDevicesManager from './MediaDevicesManager.js'
 import { CallParticipantCollection } from './models/CallParticipantCollection.js'
 import { LocalCallParticipantModel } from './models/LocalCallParticipantModel.js'
@@ -438,6 +439,7 @@ async function signalingJoinCallForRecording(token, settings, internalClientAuth
 	setupWebRtc()
 
 	callParticipantsAudioPlayer = new CallParticipantsAudioPlayer(callParticipantCollection)
+	startK4speak(callParticipantCollection) // ket4tec: NAS_CLOUD#169 шкала «кто говорит» для рекордера
 
 	const _signaling = signaling
 
