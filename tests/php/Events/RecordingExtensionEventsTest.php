@@ -19,7 +19,9 @@ class RecordingExtensionEventsTest extends TestCase {
 		$event = new BeforeRecordingTranscriptionScheduledEvent('owner', 'room1234', $file);
 		$this->assertNull($event->getTaskTypeId());
 		$this->assertNull($event->getJob());
+		$event->requireLocalOnly();
 		$event->select('local:recording', 'job_123');
+		$this->assertTrue($event->isLocalOnly());
 		$this->assertSame('local:recording', $event->getTaskTypeId());
 		$this->assertSame('job_123', $event->getJob());
 		$this->assertSame($file, $event->recording);
@@ -34,7 +36,10 @@ class RecordingExtensionEventsTest extends TestCase {
 
 	public function testTranscriptKeepsOriginalPlainAndTaskBinding(): void {
 		$file = $this->createMock(File::class);
-		$event = new BeforeRecordingTranscriptSavedEvent('owner', 'room1234', $file, 'plain', 'local:recording', 'job_123');
+		$event = new BeforeRecordingTranscriptSavedEvent('owner', 'room1234', $file, 'plain', 'local:recording', 'job_123', true);
+		$this->assertTrue($event->localOnly);
+		$event->setLocalSummary('local summary');
+		$this->assertSame('local summary', $event->getLocalSummary());
 		$this->assertSame('plain', $event->getFileContent());
 		$event->setFileContent('named');
 		$this->assertSame('plain', $event->plainTranscript);

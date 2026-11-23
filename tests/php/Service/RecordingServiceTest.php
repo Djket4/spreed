@@ -581,11 +581,11 @@ class RecordingServiceTest extends TestCase {
 		$this->recordingService->retryFailedTask($room, $participant, 7, 1234);
 	}
 	public function testRetryKeepsCustomTypeAndJob(): void {
-		$task = new Task('local:recording', ['input' => 42, 'job' => 'job_123'], 'spreed', 'owner', 'call/transcription/abc123');
+		$task = new Task('local:recording', ['input' => 42, 'job' => 'job_123', 'summary_policy' => 'local-only'], 'spreed', 'owner', 'call/transcription/abc123');
 		$this->taskProcessingManager->expects($this->once())->method('scheduleTask')
 			->with($this->callback(static function (Task $retry): bool {
 				return $retry->getTaskTypeId() === 'local:recording'
-					&& $retry->getInput() === ['input' => 42, 'job' => 'job_123']
+					&& $retry->getInput() === ['input' => 42, 'job' => 'job_123', 'summary_policy' => 'local-only']
 					&& $retry->getUserId() === 'owner'
 					&& $retry->getAppId() === 'spreed'
 					&& $retry->getCustomId() === 'call/transcription/abc123/retry';

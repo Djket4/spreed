@@ -22,7 +22,7 @@ require __DIR__.'/../../../lib/Events/BeforeRecordingTranscriptSavedEvent.php';
 require __DIR__.'/../../../lib/Service/RecordingService.php';
 class S extends \OCA\Talk\Service\RecordingService { public function notifyStoredRecording(\OCA\Talk\Room $r, \OCA\Talk\Participant $p, \OCP\Files\File $f): void {} public function notifyStoredTranscript(\OCA\Talk\Room $r, \OCA\Talk\Participant $p, \OCP\Files\File $f, string $a): void {} }
 class RFile implements \OCP\Files\File { function __construct(public $parent=null){} function getId(){return 42;} function getName(){return 'rec.ogg';} function getParent(){return $this->parent;} }
-class Folder { public $saved; function getName(){return 'room1234';} function getById($id){return [new RFile($this)];} function newFile($name,$content){$this->saved=$content; return new RFile();} }
+class Folder { public $saved; public $files=[]; function getName(){return 'room1234';} function getById($id){return [new RFile($this)];} function newFile($name,$content){$this->saved=$content; $this->files[$name]=$content; return new RFile();} }
 class Root implements \OCP\Files\IRootFolder { function __construct(public $folder){} function getUserFolder($o){return $this->folder;} }
 class Conf implements \OCP\IConfig { function getAppValue($a,$k,$d){return 'yes';} }
 class AppConf implements \OCP\AppFramework\Services\IAppConfig { function getAppValueString($x){return 'prompt';} }
@@ -46,5 +46,20 @@ foreach (['named','throw'] as $case) {
  $s->storeTranscript('owner','room1234',42,'plain','transcript','custom','job_123');
  check(str_starts_with($folder->saved,$case==='named'?'named':'plain'),$case.' file'); check(task($s)->input===['input'=>"prompt\nplain"],$case.' summary');
 }
-echo "PASS: default/custom/unsupported/throw selection; named file and unchanged plain summary; failed listener fallback\n";
+foreach (['scoped-no-receipt','scoped-throw','scoped-chosen','scoped-chosen-throw'] as $case) {
+ $s=service(function($e)use($case){$e->requireLocalOnly();if($case==='scoped-throw')throw new \Exception();if($case==='scoped-chosen' || $case==='scoped-chosen-throw')$e->select('custom','job_123');if($case==='scoped-chosen-throw')throw new \Exception();});
+ schedule($s);$t=task($s);
+ if($case==='scoped-chosen' || $case==='scoped-chosen-throw')check($t->input===['input'=>42,'job'=>'job_123','summary_policy'=>'local-only'],'scoped input');
+ else check($t===null,$case.' must not fall back to external');
+}
+foreach (['local-ok','local-missing','local-throw','plain-only'] as $case) {
+ $folder=new Folder();$s=service(function($e)use($case){check($e->localOnly,'local flag');if($case!=='plain-only')$e->setFileContent('named');if($case==='local-ok')$e->setLocalSummary('private summary');if($case==='local-throw')throw new \Exception();});
+ put($s,'rootFolder',new Root($folder));put($s,'roomManager',new \OCA\Talk\Manager());put($s,'participantService',new \OCA\Talk\Service\ParticipantService());put($s,'userManager',new U());put($s,'l10nFactory',new L());put($s,'systemTagMapper',new Tags());put($s,'appConfig',new AppConf());
+ $s->storeTranscript('owner','room1234',42,'plain','transcript','custom','job_123','local-only');
+ check(task($s)===null,$case.' must not schedule TextToText');
+ check(isset($folder->files['rec - summary.md'])===($case==='local-ok'),$case.' local summary');
+ if($case==='local-ok')check(str_starts_with($folder->files['rec - summary.md'],"<!-- k4-talk-local-only: v1 -->\nprivate summary"),'summary contents');
+ if($case==='local-throw' || $case==='plain-only')check(str_starts_with($folder->files['rec.md'],"<!-- k4-talk-local-only: v1 -->\nplain"),'plain fallback');
+}
+echo "PASS: default/custom/unsupported/throw selection; named file and unchanged plain summary; failed listener fallback; scoped local-only privacy and summary\n";
 }

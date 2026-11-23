@@ -177,10 +177,10 @@ class ListenerTest extends TestCase {
 		$this->listener->handle(new TaskFailedEvent($task, 'error'));
 	}
 	public function testSuccessfulTranscriptionPassesTaskBinding(): void {
-		$task = new Task('local:recording', ['input' => 42, 'job' => 'job_123'], 'spreed', 'owner', 'call/transcription/abc123/retry');
+		$task = new Task('local:recording', ['input' => 42, 'job' => 'job_123', 'summary_policy' => 'local-only'], 'spreed', 'owner', 'call/transcription/abc123/retry');
 		$task->setOutput(['output' => 'plain']);
 		$this->recordingService->expects($this->once())->method('storeTranscript')
-			->with('owner', 'abc123', 42, 'plain', 'transcript', 'local:recording', 'job_123');
+			->with('owner', 'abc123', 42, 'plain', 'transcript', 'local:recording', 'job_123', 'local-only');
 		$this->listener->handle(new TaskSuccessfulEvent($task));
 	}
 

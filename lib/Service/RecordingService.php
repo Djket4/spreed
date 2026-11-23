@@ -385,17 +385,26 @@ class RecordingService {
 		$supportedTaskTypeIds = $this->taskProcessingManager->getAvailableTaskTypeIds();
 		$taskTypeId = AudioToText::ID;
 		$taskInput = ['input' => $fileNode->getId()];
+		$selection = new BeforeRecordingTranscriptionScheduledEvent($owner, $room->getToken(), $fileNode);
+		$useSelection = true;
 		try {
-			$selection = new BeforeRecordingTranscriptionScheduledEvent($owner, $room->getToken(), $fileNode);
 			$this->eventDispatcher->dispatchTyped($selection);
-			$selectedType = $selection->getTaskTypeId();
-			if ($selectedType !== null && $selectedType !== AudioToText::ID
-				&& $selection->getJob() !== null && in_array($selectedType, $supportedTaskTypeIds, true)) {
-				$taskTypeId = $selectedType;
-				$taskInput['job'] = $selection->getJob();
-			}
 		} catch (\Throwable $e) {
-			// Optional extensions must not interrupt ordinary transcription.
+			// A marked local-only scope may keep an already prepared local job.
+			$useSelection = $selection->isLocalOnly();
+		}
+		$selectedType = $selection->getTaskTypeId();
+		if ($useSelection && $selectedType !== null && $selectedType !== AudioToText::ID
+			&& $selection->getJob() !== null && in_array($selectedType, $supportedTaskTypeIds, true)) {
+			$taskTypeId = $selectedType;
+			$taskInput['job'] = $selection->getJob();
+			if ($selection->isLocalOnly()) {
+				$taskInput['summary_policy'] = 'local-only';
+			}
+		}
+		if ($selection->isLocalOnly() && $taskTypeId === AudioToText::ID) {
+			$this->logger->warning('Cannot schedule local-only recording transcription');
+			return;
 		}
 		if (!in_array($taskTypeId, $supportedTaskTypeIds, true)) {
 			$this->logger->error('Can not transcribe call recording as no Audio2Text task provider is available');
@@ -421,7 +430,7 @@ class RecordingService {
 	/**
 	 * @param 'transcript'|'summary' $aiTask
 	 */
-	public function storeTranscript(string $owner, string $roomToken, int $recordingFileId, string $output, string $aiTask, ?string $taskTypeId = null, ?string $job = null): void {
+	public function storeTranscript(string $owner, string $roomToken, int $recordingFileId, string $output, string $aiTask, ?string $taskTypeId = null, ?string $job = null, ?string $summaryPolicy = null): void {
 		$userFolder = $this->rootFolder->getUserFolder($owner);
 		$recordingNodes = $userFolder->getById($recordingFileId);
 
@@ -461,6 +470,25 @@ class RecordingService {
 			$transcriptFileName = pathinfo($recording->getName(), PATHINFO_FILENAME) . ' - ' . $aiTask . '.md';
 		}
 
+		$isLocalOnly = $summaryPolicy === 'local-only'
+			&& $taskTypeId !== null && $taskTypeId !== AudioToText::ID && $job !== null;
+		$fileOutput = $output;
+		$localSummary = null;
+		if ($aiTask === 'transcript' && ($shouldTranscribe || ($shouldSummarize && $isLocalOnly)) && $recording instanceof File) {
+			try {
+				$event = new BeforeRecordingTranscriptSavedEvent($owner, $roomToken, $recording, $output, $taskTypeId, $job, $isLocalOnly);
+				$this->eventDispatcher->dispatchTyped($event);
+				$fileOutput = $event->getFileContent();
+				$localSummary = $event->getLocalSummary();
+			} catch (\Throwable $e) {
+				// Local-only policy remains in force even if an optional handler fails.
+			}
+		}
+
+		if ($isLocalOnly && !str_starts_with($fileOutput, "<!-- k4-talk-local-only: v1 -->\n")) {
+			$fileOutput = "<!-- k4-talk-local-only: v1 -->\n" . $fileOutput;
+		}
+
 		if (($shouldTranscribe && $aiTask === 'transcript')
 			|| ($shouldSummarize && $aiTask === 'summary')) {
 			$user = $this->userManager->get($owner);
@@ -471,17 +499,6 @@ class RecordingService {
 				$warning = $l->t('Transcript is AI generated and may contain mistakes');
 			} else {
 				$warning = $l->t('Summary is AI generated and may contain mistakes');
-			}
-
-			$fileOutput = $output;
-			if ($aiTask === 'transcript' && $recording instanceof File) {
-				try {
-					$event = new BeforeRecordingTranscriptSavedEvent($owner, $roomToken, $recording, $output, $taskTypeId, $job);
-					$this->eventDispatcher->dispatchTyped($event);
-					$fileOutput = $event->getFileContent();
-				} catch (\Throwable $e) {
-					// Leave both the file and the summary on the ordinary transcript.
-				}
 			}
 
 			try {
@@ -506,6 +523,13 @@ class RecordingService {
 
 		if ($aiTask === 'summary') {
 			// After saving the summary there is nothing more to do
+			return;
+		}
+
+		if ($isLocalOnly) {
+			if ($localSummary !== null) {
+				$this->storeTranscript($owner, $roomToken, $recordingFileId, $localSummary, 'summary', $taskTypeId, $job, 'local-only');
+			}
 			return;
 		}
 

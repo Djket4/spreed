@@ -53,6 +53,7 @@ php "$W/composer.phar" install --no-interaction --no-progress -q
 php ../../occ app:enable spreed
 
 RC=0
+php tests/standalone/recording-hooks/run.php || RC=1
 for f in tests/php/Events/RecordingExtensionEventsTest.php tests/php/Recording/ListenerTest.php tests/php/Service/RecordingServiceTest.php tests/php/Service/ParticipantServiceEmptyCallTest.php tests/php/BackgroundJob/EndEmptyCallTest.php tests/php/BackgroundJob/RemoveEmptyRoomsTest.php tests/php/Controller/CallControllerEmptyCallTest.php tests/php/Activity/ListenerTest.php tests/php/Chat/SystemMessage/ListenerTest.php tests/php/Service/RoomServiceEmptyCallTest.php tests/php/Listener/ClassifiedRoomAutoDeleteListenerTest.php tests/php/Controller/K4DrawPdfTest.php tests/php/Service/ParticipantServiceTest.php tests/php/Service/ParticipantServiceParticipantTypeTest.php; do
 	php vendor/bin/phpunit -c tests/php/phpunit.xml "$f" || RC=1
 done
