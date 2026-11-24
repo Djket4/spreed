@@ -123,6 +123,7 @@ export function setFaceFrameLevel(newLevel, { persist = true } = {}) {
 // ket4tec (NAS_CLOUD#160): текст всплывашки отката — по причине
 const FALLBACK_TAIL = ' Камера работает без него; включить снова можно в настройках камеры.'
 export const FALLBACK_TEXT = {
+	detectorFallback: 'Кадр по лицу выключен: распознаватель лиц недоступен.' + FALLBACK_TAIL,
 	detector: 'Слежение за лицом остановлено: распознаватель лиц не загрузился (браузер без WebGL/WebAssembly или нет связи). Кадр остаётся на месте.',
 	capture: 'Кадр по лицу выключен: этот браузер не умеет передавать обработанное видео.' + FALLBACK_TAIL,
 	input: 'Кадр по лицу выключен: камера не отдала кадры для кадрирования.' + FALLBACK_TAIL,
@@ -377,7 +378,7 @@ export default class FaceFrame extends TrackSinkSource {
 		this._frozen = null // причина остановки слежения (детектор, мощность) — до смены уровня человеком
 		this._unsubscribe = onFaceFrameLevelChange(() => {
 			this._frozen = null
-			this._apply()
+			this._apply({ levelChanged: true })
 		})
 	}
 
@@ -425,7 +426,7 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 	}
 
-	async _apply() {
+	async _apply({ levelChanged = false } = {}) {
 		const token = ++this._applyToken
 		const input = this.getInputTrack()
 		const lvl = getFaceFrameLevel()
@@ -444,7 +445,8 @@ export default class FaceFrame extends TrackSinkSource {
 		// ket4tec (NAS_CLOUD#271): исходную камеру на выход не ставим — её некадрированный кадр и был «скачком».
 		// Выход — канвас с первой отрисовки; плитки (свои и чужие) проявляются по первому настоящему кадру.
 		try {
-			this._startDigital(input)
+			const keepLiveInput = levelChanged && input.readyState === 'live' && this.getOutputTrack() === input
+			this._startDigital(input, keepLiveInput)
 		} catch (e) {
 			this._fallback({ input, stopped: false }, 'error', 'запуск конвейера: ' + e.message)
 			return
@@ -452,7 +454,7 @@ export default class FaceFrame extends TrackSinkSource {
 		this._setPath(this._frozen ? 'frozen' : 'digital', this._frozen ? 'остановлено: ' + this._frozen : 'запуск')
 	}
 
-	_startDigital(input) {
+	_startDigital(input, keepLiveInput) {
 		if (this._digital && this._digital.input === input) {
 			return // уровень читается покадрово
 		}
@@ -487,6 +489,7 @@ export default class FaceFrame extends TrackSinkSource {
 		const last = this._lastWin
 		const d = {
 			input,
+			keepLiveInput,
 			video,
 			canvas,
 			ctx,
@@ -547,7 +550,7 @@ export default class FaceFrame extends TrackSinkSource {
 		} else {
 			d.logStart = logStart
 		}
-		// выход — сразу канвас: до первой отрисовки кадров нет, на плитках держится облако
+		// Кандидат на выход — канвас, который сначала проверяется пробой.
 		d.output = canvas.captureStream().getVideoTracks()[0]
 		if (!d.output) {
 			throw new Error('captureStream без видеотрека')
@@ -592,7 +595,10 @@ export default class FaceFrame extends TrackSinkSource {
 			requestProbeFrame()
 		}
 		probe.play?.()?.catch?.(() => {})
-		this._setOutput(d.output)
+		// При переключении в звонке сохраняем работающую камеру до первой успешной пробы.
+		if (!keepLiveInput) {
+			this._setOutput(d.output)
+		}
 		video.play().catch(() => {})
 		if (!d.frozen) {
 			getDetector().then((detector) => {
@@ -601,6 +607,9 @@ export default class FaceFrame extends TrackSinkSource {
 		}
 
 		const schedule = () => {
+			if (d.stopped) {
+				return
+			}
 			const id = ++d.sid // устаревшие колбэки (rVFC после перехода на rAF) игнорируются
 			const run = (now, meta) => {
 				if (d.stopped || id !== d.sid) {
@@ -884,8 +893,8 @@ export default class FaceFrame extends TrackSinkSource {
 		})
 		console.error('FaceFrame: кадр по лицу —', reason)
 		// ket4tec (NAS_CLOUD#271): нет детектора или мощности — остаёмся на канвасе с текущим кадром, без слежения.
-		// Исходная камера — только если сам канвас-выход не даёт кадров (плитки проявят её по первому кадру).
-		if (kind === 'detector' || kind === 'lowFps') {
+		// При включении поверх работающей камеры сбой детектора возвращает исходный трек.
+		if ((kind === 'detector' && !d.keepLiveInput) || kind === 'lowFps') {
 			if (!d.frozen) {
 				d.frozen = true
 				d.target = { ...d.win }
@@ -903,7 +912,7 @@ export default class FaceFrame extends TrackSinkSource {
 		if (window.__k4ffStats) {
 			window.__k4ffStats.path = 'fallback'
 		}
-		showWarning(FALLBACK_TEXT[kind] ?? FALLBACK_TEXT.error)
+		showWarning(kind === 'detector' ? FALLBACK_TEXT.detectorFallback : FALLBACK_TEXT[kind] ?? FALLBACK_TEXT.error)
 	}
 
 	// рамки приходят в пикселях источника (канваса детекции) и делятся на его размер — выходят в долях кадра
@@ -994,7 +1003,12 @@ export default class FaceFrame extends TrackSinkSource {
 			d.dm = (d.dm || 0) + 1
 			d.dmiss = (d.dmiss || 0) + (faces.length ? 0 : 1)
 			d.dtile = (d.dtile || 0) + (tile ? 1 : 0)
-		} catch (e) { /* пропускаем детекцию */ }
+		} catch (e) {
+			if (d.keepLiveInput) {
+				this._fallback(d, 'detector', 'детектор не обработал кадр: ' + e?.message)
+				return
+			}
+		}
 		const dur = performance.now() - t
 		d.detCount++
 		d.durs.push(dur)
@@ -1046,6 +1060,9 @@ export default class FaceFrame extends TrackSinkSource {
 		// ket4tec (NAS_CLOUD#271): до первой детекции не рисуем; нашли лицо — окно сразу на месте, без пружины
 		if (!d.placed) {
 			this._maybeDetect(d, now)
+			if (d.stopped) {
+				return
+			}
 			if (d.lastFace) {
 				d.win = clampTarget(d.target, W, H)
 			} else if (!d.frozen && now - d.startedAt < HOLD_MS) {
@@ -1071,6 +1088,7 @@ export default class FaceFrame extends TrackSinkSource {
 
 		if (!d.published && d.frames >= MIN_FRAMES && this._probeOk(d)) {
 			d.published = true
+			this._setOutput(d.output)
 		}
 
 		// детекция после отрисовки: кадр от неё не зависит
