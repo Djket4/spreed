@@ -747,6 +747,9 @@ export default {
 					this.blurBackground(true)
 				}
 			} else {
+				if (this.isDialog && this.show) {
+					this.close()
+				}
 				// Reset the flag for the next call
 				this.skipBlurVirtualBackground = false
 			}

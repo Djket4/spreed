@@ -47,12 +47,18 @@ async function joinCall(token: string, flags: number, silent: boolean, recording
  *
  * @param token The token of the call to be left
  * @param all Whether to end the meeting for all
+ * @param serverEnded Whether a server event already ended the call
+ * @return Whether the server confirmed the leave request
  */
-async function leaveCall(token: string, all: boolean = false) {
+async function leaveCall(token: string, all: boolean = false, serverEnded: boolean = false): Promise<boolean> {
 	try {
-		await signalingLeaveCall(token, all)
+		if (serverEnded) {
+			return await signalingLeaveCall(token, false, true)
+		}
+		return await signalingLeaveCall(token, all)
 	} catch (error) {
 		console.debug('Error while leaving call: ', error)
+		return false
 	}
 }
 

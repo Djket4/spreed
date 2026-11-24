@@ -523,6 +523,7 @@ function usersInCallChanged(signaling, users) {
 export function initWebRtc(signaling, _callParticipantCollection, _localCallParticipantModel) {
 	callParticipantCollection = _callParticipantCollection
 	localCallParticipantModel = _localCallParticipantModel
+	let localLeavePending = false
 
 	signaling.on('usersLeft', function(users) {
 		if (!localUserInCall) {
@@ -545,14 +546,14 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 		})
 		usersInCallChanged(signaling, usersInCallMapping)
 	})
-	signaling.on('allUsersChangedInCallToDisconnected', function() {
-		if (!localUserInCall) {
+	signaling.on('allUsersChangedInCallToDisconnected', function(token) {
+		// The organizer's own leave request already handles local cleanup.
+		if (!token || token !== webrtc.roomName || localLeavePending) {
 			return
 		}
 
-		// "End meeting for all" was used, we don't have a user list but everyone disconnects from the call
-		usersInCallMapping = {}
-		usersInCallChanged(signaling, usersInCallMapping)
+		// The server ended the call even if no participant list confirmed our join yet.
+		store.dispatch('leaveCall', { token, participantIdentifier: actorStore.participantIdentifier, serverEnded: true })
 	})
 	signaling.on('participantFlagsChanged', function(event) {
 		if (!localUserInCall) {
@@ -607,6 +608,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 		// takes too long to return and the associated signaling message
 		// is received before the "leave call" request ends.
 		localUserInCall = false
+		localLeavePending = !reconnect
 
 		if (localStateBroadcaster) {
 			localStateBroadcaster.destroy()
@@ -614,6 +616,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 		}
 	})
 	signaling.on('leaveCall', function(token, reconnect) {
+		localLeavePending = false
 		// When the MCU is used and there is a connection error the call is
 		// left and then joined again to perform the reconnection. In those
 		// cases the call should be kept active from the point of view of
@@ -1280,9 +1283,13 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			return
 		}
 
-		const forceReconnectOnceLocalMediaStarted = (constraints) => {
+		const clearPendingMediaReconnect = () => {
 			webrtc.off('localMediaStarted', forceReconnectOnceLocalMediaStarted)
 			webrtc.off('localMediaError', forceReconnectOnceLocalMediaError)
+			webrtc.off('leftRoom', clearPendingMediaReconnect)
+		}
+		const forceReconnectOnceLocalMediaStarted = (constraints) => {
+			clearPendingMediaReconnect()
 
 			let flags = PARTICIPANT.CALL_FLAG.IN_CALL
 			if (constraints) {
@@ -1297,8 +1304,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 			forceReconnect(signaling, flags)
 		}
 		const forceReconnectOnceLocalMediaError = () => {
-			webrtc.off('localMediaStarted', forceReconnectOnceLocalMediaStarted)
-			webrtc.off('localMediaError', forceReconnectOnceLocalMediaError)
+			clearPendingMediaReconnect()
 
 			// If the media fails to start there will be no media, so no need to
 			// reconnect. A reconnection will happen once the user selects a
@@ -1307,6 +1313,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 
 		webrtc.on('localMediaStarted', forceReconnectOnceLocalMediaStarted)
 		webrtc.on('localMediaError', forceReconnectOnceLocalMediaError)
+		webrtc.on('leftRoom', clearPendingMediaReconnect)
 
 		const constraints = {
 			audio: hasPublishAudioPermissions,

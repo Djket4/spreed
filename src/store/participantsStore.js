@@ -9,13 +9,14 @@ import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
-import { ATTENDEE, PARTICIPANT, SIGNALING } from '../constants.ts'
+import { ATTENDEE, MESSAGE, PARTICIPANT, SIGNALING } from '../constants.ts'
 import { banActor } from '../services/banService.ts'
 import {
 	joinCall,
 	leaveCall,
 } from '../services/callsService.ts'
 import { getTalkConfig, hasTalkFeature, setRemoteCapabilities } from '../services/CapabilitiesManager.ts'
+import { fetchConversation } from '../services/conversationsService.ts'
 import { EventBus } from '../services/EventBus.ts'
 import {
 	demoteFromModerator,
@@ -757,6 +758,12 @@ const actions = {
 			handleParticipantsListReceived(payload, 'nextcloudSessionId')
 		}
 
+		const handleLeaveCall = ([leftToken, reconnect]) => {
+			if (leftToken === token && !reconnect) {
+				finishConnecting()
+			}
+		}
+
 		const finishConnecting = () => {
 			commit('finishedConnecting', { token, sessionId })
 			commit('finishedJoiningCall', { token, sessionId })
@@ -764,6 +771,7 @@ const actions = {
 			EventBus.off('signaling-join-call-failed', handleJoinCallFailed)
 			EventBus.off('signaling-users-in-room', handleUsersInRoom)
 			EventBus.off('signaling-users-changed', handleUsersChanged)
+			EventBus.off('signaling-leave-call', handleLeaveCall)
 			clearTimeout(connectingTimeout)
 		}
 
@@ -771,6 +779,7 @@ const actions = {
 		EventBus.once('signaling-join-call-failed', handleJoinCallFailed)
 		EventBus.on('signaling-users-in-room', handleUsersInRoom)
 		EventBus.on('signaling-users-changed', handleUsersChanged)
+		EventBus.on('signaling-leave-call', handleLeaveCall)
 
 		try {
 			const actualFlags = await joinCall(token, flags, silent, recordingConsent, silentFor, options)
@@ -791,19 +800,22 @@ const actions = {
 			const callViewStore = useCallViewStore()
 			callViewStore.handleJoinCall(getters.conversation(token))
 		} catch (e) {
+			if (e?.name === 'AbortError') {
+				return
+			}
 			console.error('Error while joining call: ', e)
 			k4log('call.err', { where: 'join', message: String(e?.message ?? e).slice(0, 150) })
 			calllog('join_blocked', { where: 'join', code: String(e?.response?.status ?? e?.name ?? '').slice(0, 40) })
 		}
 	},
 
-	async leaveCall({ commit, getters }, { token, participantIdentifier, all = false }) {
+	async leaveCall({ commit, dispatch, getters }, { token, participantIdentifier, all = false, serverEnded = false }) {
 		if (!participantIdentifier?.sessionId) {
 			console.error('Trying to leave call without sessionId')
 		}
 
 		const attendee = getters.findParticipant(token, participantIdentifier)
-		if (!attendee) {
+		if (!attendee && !serverEnded) {
 			console.error('Participant not found for conversation', token, participantIdentifier)
 			return
 		}
@@ -819,22 +831,47 @@ const actions = {
 
 		k4log('call.leave', { all })
 		calllog('call_left', { all: !!all })
-		await leaveCall(token, all)
+		const endingConversation = (all || serverEnded) ? getters.conversation(token) : undefined
+		const endingCallStartTime = endingConversation?.callStartTime ?? 0
+		const endingCallMessageId = endingConversation?.lastMessage?.id ?? 0
+		const leftCall = serverEnded ? await leaveCall(token, false, true) : await leaveCall(token, all)
+		if (serverEnded && !leftCall) {
+			return
+		}
 		stopK4Log()
 
 		const updatedData = {
 			inCall: PARTICIPANT.CALL_FLAG.DISCONNECTED,
 		}
-		commit('updateParticipant', { token, attendeeId: attendee.attendeeId, updatedData })
+		if (attendee) {
+			commit('updateParticipant', { token, attendeeId: attendee.attendeeId, updatedData })
+		}
 
 		// clear raised hands as they were specific to the call
 		useParticipantActivityStore().purgeRaisedHandsState()
 
 		commit('setInCall', {
 			token,
-			sessionId: participantIdentifier.sessionId,
+			sessionId: participantIdentifier?.sessionId,
 			flags: PARTICIPANT.CALL_FLAG.DISCONNECTED,
 		})
+
+		if ((all || serverEnded) && leftCall) {
+			try {
+				const response = await fetchConversation(token)
+				const { hasCall, callFlag, callStartTime, lastMessage } = response.data.ocs.data
+				const current = getters.conversation(token)
+				// Keep any newer call already reported by a live update, including a start in the same second.
+				if (current?.hasCall && (current.callStartTime > Math.max(endingCallStartTime, callStartTime)
+					|| (current.lastMessage?.systemMessage === MESSAGE.SYSTEM_TYPE.CALL_STARTED
+						&& current.lastMessage.id > Math.max(endingCallMessageId, lastMessage?.id ?? 0)))) {
+					return
+				}
+				await dispatch('setConversationProperties', { token, properties: { hasCall, callFlag, callStartTime } })
+			} catch (error) {
+				console.error('Error refreshing conversation after ending the call: ', error)
+			}
+		}
 	},
 
 	/**

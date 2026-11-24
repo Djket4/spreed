@@ -618,14 +618,19 @@ const actions = {
 		].includes(message.systemMessage)) {
 			// Overwrite the conversation.hasCall property so people can join
 			// after seeing the message in the chat. Only for new/live messages.
-			if (fromRealtime) {
+			const endedForEveryone = message.systemMessage === MESSAGE.SYSTEM_TYPE.CALL_ENDED_EVERYONE
+			const lastMessage = conversation?.lastMessage
+			const supersededEnd = endedForEveryone && (message.timestamp < (conversation?.callStartTime ?? 0)
+				|| (lastMessage?.systemMessage === MESSAGE.SYSTEM_TYPE.CALL_STARTED && message.id < lastMessage.id))
+			if (fromRealtime && !supersededEnd) {
 				context.dispatch('overwriteHasCallByChat', {
 					token,
 					hasCall: message.systemMessage === MESSAGE.SYSTEM_TYPE.CALL_STARTED,
 					lastActivity: message.timestamp,
 				})
 
-				if (message.systemMessage === MESSAGE.SYSTEM_TYPE.CALL_ENDED_EVERYONE
+				if (endedForEveryone
+					&& context.getters.isInCall(token)
 					&& conversation.type !== CONVERSATION.TYPE.ONE_TO_ONE
 					&& !actorStore.checkIfSelfIsActor(message)) {
 					const callViewStore = useCallViewStore()
@@ -634,6 +639,7 @@ const actions = {
 					context.dispatch('leaveCall', {
 						token,
 						participantIdentifier: actorStore.participantIdentifier,
+						serverEnded: true,
 					})
 				}
 			}

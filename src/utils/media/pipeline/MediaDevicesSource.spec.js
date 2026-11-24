@@ -147,6 +147,47 @@ describe('MediaDevicesSource', () => {
 		vi.restoreAllMocks()
 	})
 
+	test('stops capture that resolves after leave and keeps a later call’s tracks', async () => {
+		const lateStream = newMediaStreamMock('old call')
+		const oldAudio = newMediaStreamTrackMock('old audio', 'audio')
+		const oldVideo = newMediaStreamTrackMock('old video', 'video')
+		lateStream._tracks.push(oldAudio, oldVideo)
+		const { promise, resolve } = Promise.withResolvers()
+		mediaDevicesManager.getUserMedia.mockReturnValueOnce(promise)
+
+		const endingCall = mediaDevicesSource.start(retryNoVideoCallback)
+		mediaDevicesSource.stop()
+
+		getUserMediaAudioTrack = newMediaStreamTrackMock('new audio', 'audio')
+		getUserMediaVideoTrack = newMediaStreamTrackMock('new video', 'video')
+		await expect(mediaDevicesSource.start(retryNoVideoCallback)).resolves.toBe(true)
+		resolve(lateStream)
+		await expect(endingCall).resolves.toBe(false)
+
+		expect(oldAudio.stop).toHaveBeenCalledOnce()
+		expect(oldVideo.stop).toHaveBeenCalledOnce()
+		expect(mediaDevicesSource.getOutputTrack('audio')).toBe(getUserMediaAudioTrack)
+		expect(mediaDevicesSource.getOutputTrack('video')).toBe(getUserMediaVideoTrack)
+		expect(mediaDevicesManager.on).toHaveBeenCalledTimes(2)
+
+		mediaDevicesSource.stop()
+		expect(getUserMediaAudioTrack.stop).toHaveBeenCalledOnce()
+		expect(getUserMediaVideoTrack.stop).toHaveBeenCalledOnce()
+	})
+
+	test('does not retry a failed capture after the call has ended', async () => {
+		const { promise, reject } = Promise.withResolvers()
+		mediaDevicesManager.getUserMedia.mockReturnValueOnce(promise)
+
+		const endingCall = mediaDevicesSource.start(retryNoVideoCallback)
+		mediaDevicesSource.stop()
+		reject(new Error('Permission prompt dismissed'))
+		await expect(endingCall).resolves.toBe(false)
+
+		expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledOnce()
+		expect(mediaDevicesManager.on).not.toHaveBeenCalled()
+	})
+
 	describe('get allowed state', () => {
 		test('audio and video are allowed by default', () => {
 			expect(mediaDevicesSource.isAudioAllowed()).toBe(true)

@@ -184,11 +184,16 @@ function startCall(signaling, configuration, silent, recordingConsent, silentFor
 		}
 	}
 
-	signaling.joinCall(pendingJoinCallToken, flags, silent, recordingConsent, silentFor).then(() => {
-		startedCall(flags)
+	const token = pendingJoinCallToken
+	const resolve = startedCall
+	const reject = failedToStartCall
+	signaling.joinCall(token, flags, silent, recordingConsent, silentFor).then(() => {
+		resolve(flags)
 	}).catch((error) => {
-		signalingLeaveCall(pendingJoinCallToken)
-		failedToStartCall(error)
+		if (error.name !== 'AbortError') {
+			signalingLeaveCall(token)
+		}
+		reject(error)
 	})
 }
 
@@ -307,15 +312,22 @@ async function signalingJoinCall(token, flags, silent, recordingConsent, silentF
 				localMediaModel.setVirtualBackgroundBlur(virtualBackgroundBlurStrength)
 			}
 
-			const startCallOnceLocalMediaStarted = (configuration) => {
+			const clearPendingMediaStart = () => {
 				webRtc.off('localMediaStarted', startCallOnceLocalMediaStarted)
 				webRtc.off('localMediaError', startCallOnceLocalMediaError)
+				webRtc.off('leftRoom', cancelPendingMediaStart)
+			}
+			const cancelPendingMediaStart = () => {
+				clearPendingMediaStart()
+				reject(new DOMException('The call ended', 'AbortError'))
+			}
+			const startCallOnceLocalMediaStarted = (configuration) => {
+				clearPendingMediaStart()
 
 				startCall(_signaling, configuration, silent, recordingConsent, silentFor)
 			}
 			const startCallOnceLocalMediaError = () => {
-				webRtc.off('localMediaStarted', startCallOnceLocalMediaStarted)
-				webRtc.off('localMediaError', startCallOnceLocalMediaError)
+				clearPendingMediaStart()
 
 				startCall(_signaling, null, silent, recordingConsent, silentFor)
 			}
@@ -324,6 +336,7 @@ async function signalingJoinCall(token, flags, silent, recordingConsent, silentF
 			// just one of them is executed.
 			webRtc.on('localMediaStarted', startCallOnceLocalMediaStarted)
 			webRtc.on('localMediaError', startCallOnceLocalMediaError)
+			webRtc.on('leftRoom', cancelPendingMediaStart)
 
 			webRtc.startMedia(token, flags)
 		})
@@ -483,28 +496,44 @@ export const beforeLeaveCall = { fn: null }
  *
  * @param {string} token Conversation to leave the call
  * @param {boolean} all Whether to end the meeting for all
- * @return {Promise<void>}
+ * @param {boolean} serverEnded Whether a server event already ended the call
+ * @return {Promise<boolean>} Whether the server confirmed the leave request
  */
-async function signalingLeaveCall(token, all = false) {
-	await beforeLeaveCall.fn?.() // ket4tec: k4draw — автоснимок доски, пока звонок ещё не покинут
+async function signalingLeaveCall(token, all = false, serverEnded = false) {
+	if (serverEnded) {
+		if (!signaling || webRtc?.roomName !== token) {
+			return false
+		}
+	} else {
+		await beforeLeaveCall.fn?.() // ket4tec: k4draw — автоснимок доски, пока звонок ещё не покинут
+	}
+
 	stopK4stats()
-	sentVideoQualityThrottler.destroy()
+	sentVideoQualityThrottler?.destroy()
 	sentVideoQualityThrottler = null
 
-	speakingStatusHandler.destroy()
+	speakingStatusHandler?.destroy()
 	speakingStatusHandler = null
 
-	callAnalyzer.destroy()
+	callAnalyzer?.destroy()
 	callAnalyzer = null
 
-	callParticipantsAudioPlayer.destroy()
+	callParticipantsAudioPlayer?.destroy()
 	callParticipantsAudioPlayer = null
 
 	localCallParticipantModel.set('askUnmute', false) // ket4tec (NAS_CLOUD#154)
 
+	if (serverEnded) {
+		signaling.leaveCallLocally(token)
+		return true
+	}
+
 	if (tokensInSignaling[token]) {
 		await signaling.leaveCall(token, false, all)
+		return true
 	}
+
+	return false
 }
 
 /**

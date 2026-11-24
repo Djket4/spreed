@@ -10,7 +10,7 @@ import { cloneDeep } from 'es-toolkit'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createStore } from 'vuex'
-import { PARTICIPANT, SIGNALING } from '../constants.ts'
+import { MESSAGE, PARTICIPANT, SIGNALING } from '../constants.ts'
 import {
 	joinCall,
 	leaveCall,
@@ -739,6 +739,90 @@ describe('participantsStore', () => {
 				},
 			])
 			expect(participantActivityStore.purgeRaisedHandsState).toHaveBeenCalledTimes(1)
+		})
+	})
+
+	describe('conversation state after leaving a call', () => {
+		const participantIdentifier = { attendeeId: 1, sessionId: 'session-id-1' }
+		const activeCall = {
+			hasCall: true,
+			callFlag: PARTICIPANT.CALL_FLAG.IN_CALL,
+			callStartTime: 100,
+		}
+		const endedCall = {
+			hasCall: false,
+			callFlag: PARTICIPANT.CALL_FLAG.DISCONNECTED,
+			callStartTime: 0,
+		}
+
+		beforeEach(async () => {
+			store = createStore(cloneDeep(storeConfig))
+			store.commit('addConversation', { token: TOKEN, ...activeCall, lastMessage: { id: 1 } })
+			await store.dispatch('addParticipant', { token: TOKEN, participant: { ...participantIdentifier, inCall: activeCall.callFlag } })
+			leaveCall.mockResolvedValue(true)
+		})
+
+		test('applies the confirmed ended state without a chat event', async () => {
+			fetchConversation.mockResolvedValueOnce(generateOCSResponse({ payload: endedCall }))
+
+			await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier, all: true })
+
+			expect(leaveCall).toHaveBeenCalledWith(TOKEN, true)
+			expect(fetchConversation).toHaveBeenCalledExactlyOnceWith(TOKEN)
+			expect(store.getters.conversation(TOKEN)).toMatchObject({ ...endedCall, lastMessage: { id: 1 } })
+		})
+
+		test('releases the receiving participant and refreshes the room after a server end', async () => {
+			store.commit('setInCall', { token: TOKEN, sessionId: participantIdentifier.sessionId, flags: activeCall.callFlag })
+			fetchConversation.mockResolvedValueOnce(generateOCSResponse({ payload: endedCall }))
+
+			await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier, serverEnded: true })
+
+			expect(leaveCall).toHaveBeenCalledExactlyOnceWith(TOKEN, false, true)
+			expect(store.getters.isInCall(TOKEN)).toBe(false)
+			expect(store.getters.conversation(TOKEN)).toMatchObject(endedCall)
+		})
+
+		test('keeps the call available to join when one participant leaves', async () => {
+			await store.dispatch('addParticipant', {
+				token: TOKEN,
+				participant: { attendeeId: 2, sessionId: 'session-id-2', inCall: activeCall.callFlag },
+			})
+
+			await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier })
+
+			expect(fetchConversation).not.toHaveBeenCalled()
+			expect(store.getters.conversation(TOKEN)).toMatchObject(activeCall)
+		})
+
+		test('keeps the active call when the server did not confirm the leave', async () => {
+			leaveCall.mockResolvedValueOnce(false)
+
+			await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier, all: true })
+
+			expect(fetchConversation).not.toHaveBeenCalled()
+			expect(store.getters.conversation(TOKEN)).toMatchObject(activeCall)
+		})
+
+		test('applies the active state when the room already has another call', async () => {
+			const newCall = { ...activeCall, callStartTime: 101 }
+			fetchConversation.mockResolvedValueOnce(generateOCSResponse({ payload: newCall }))
+
+			await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier, all: true })
+
+			expect(store.getters.conversation(TOKEN)).toMatchObject(newCall)
+		})
+
+		test.each([100, 101])('preserves a new call started at %i while the room request was pending', async (callStartTime) => {
+			const newCall = { ...activeCall, callStartTime, lastMessage: { id: 3, systemMessage: MESSAGE.SYSTEM_TYPE.CALL_STARTED } }
+			fetchConversation.mockImplementationOnce(async () => {
+				await store.dispatch('setConversationProperties', { token: TOKEN, properties: newCall })
+				return generateOCSResponse({ payload: { ...endedCall, lastMessage: { id: 2 } } })
+			})
+
+			await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier, all: true })
+
+			expect(store.getters.conversation(TOKEN)).toMatchObject(newCall)
 		})
 	})
 
