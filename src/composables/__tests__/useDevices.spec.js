@@ -51,7 +51,7 @@ test('returns the active call to the default output when the selected device dis
 	EmitterMixin.apply(participants)
 	participants._superEmitterMixin()
 	const scope = effectScope()
-	const { subscribeToDevices, unsubscribeFromDevices } = scope.run(() => useDevices())
+	const { audioOutputDevices, audioOutputId, subscribeToDevices, unsubscribeFromDevices } = scope.run(() => useDevices())
 	const sounds = useSoundsStore()
 	const permissions = PARTICIPANT.PERMISSIONS.PUBLISH_AUDIO | PARTICIPANT.PERMISSIONS.PUBLISH_VIDEO
 
@@ -60,6 +60,24 @@ test('returns the active call to the default output when the selected device dis
 		subscribeToDevices(permissions, true)
 		subscribeToDevices(permissions, true)
 		await mediaDevicesManager._pendingEnumerateDevicesPromise
+		expect(audioOutputId.value).toBe('')
+		expect(audioOutputDevices.value.map((device) => device.deviceId)).toEqual(['', selected.deviceId])
+		expect(HTMLAudioElement.prototype.setSinkId).not.toHaveBeenCalledWith(selected.deviceId)
+
+		mediaDevices.enumerateDevices.mockResolvedValue([
+			{ kind: 'audiooutput', deviceId: 'default', label: 'Default – additional' },
+			additional,
+			selected,
+			mic,
+		])
+		mediaDevices.dispatchEvent(new Event('devicechange'))
+		await mediaDevicesManager._pendingEnumerateDevicesPromise
+		expect(audioOutputId.value).toBe('')
+		expect(audioOutputDevices.value.map((device) => device.deviceId)).toEqual(['', selected.deviceId, additional.deviceId])
+		expect(HTMLAudioElement.prototype.setSinkId).not.toHaveBeenCalledWith(additional.deviceId)
+
+		audioOutputId.value = selected.deviceId
+		await nextTick()
 		expect(mediaDevicesManager.get('audioOutputId')).toBe(selected.deviceId)
 		expect(HTMLAudioElement.prototype.setSinkId).toHaveBeenLastCalledWith(selected.deviceId)
 
@@ -71,12 +89,12 @@ test('returns the active call to the default output when the selected device dis
 		expect(mediaDevicesManager.get('audioOutputId')).toBe(selected.deviceId)
 		expect(setSinkId).not.toHaveBeenCalled()
 
-		mediaDevices.enumerateDevices.mockResolvedValue([mic])
+		mediaDevices.enumerateDevices.mockResolvedValue([additional, mic])
 		mediaDevices.dispatchEvent(new Event('devicechange'))
 		await mediaDevicesManager._pendingEnumerateDevicesPromise
 		await nextTick()
-		expect(mediaDevicesManager.get('audioOutputId')).toBeUndefined()
-		expect(mediaDevicesManager.get('devices').map((device) => device.deviceId)).toEqual(['mic'])
+		expect(mediaDevicesManager.get('audioOutputId')).toBe('')
+		expect(mediaDevicesManager.get('devices').map((device) => device.deviceId)).toEqual([mic.deviceId, additional.deviceId])
 		expect(setSinkId).toHaveBeenCalledExactlyOnceWith('')
 		expect(player._audioElement.srcObject).toBe(stream)
 		expect(sounds.audioObjects.join.setSinkId).toHaveBeenLastCalledWith('')
@@ -86,6 +104,7 @@ test('returns the active call to the default output when the selected device dis
 		await player.setGeneralAudioOutput(additional.deviceId)
 		expect(setSinkId).toHaveBeenCalledTimes(1)
 	} finally {
+		audioOutputId.value = ''
 		mediaDevicesManager.isAudioOutputSelectSupported = true
 		unsubscribeFromDevices(permissions, true)
 		unsubscribeFromDevices(permissions, true)

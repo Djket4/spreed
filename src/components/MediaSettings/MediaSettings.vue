@@ -175,7 +175,7 @@
 							<MediaDevicesSelector
 								v-if="audioOutputSupported"
 								kind="audiooutput"
-								:devices="devices"
+								:devices="audioOutputDevices"
 								:deviceId="audioOutputId"
 								@refresh="updateDevices"
 								@update:deviceId="handleAudioOutputIdChange">
@@ -359,6 +359,7 @@ export default {
 			videoPreviewAvailable,
 			audioInputId,
 			audioOutputId,
+			audioOutputDevices,
 			videoInputId,
 			audioOutputSupported,
 			updateAudioStream,
@@ -402,6 +403,7 @@ export default {
 			videoPreviewAvailable,
 			audioInputId,
 			audioOutputId,
+			audioOutputDevices,
 			videoInputId,
 			audioOutputSupported,
 			updateAudioStream,
