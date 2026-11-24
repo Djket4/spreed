@@ -87,12 +87,18 @@ document.documentElement.classList.add('k7f')
 {
 	const root = document.documentElement
 	const vv = window.visualViewport
+	const iosPillHeight = 64
 	const ios = /iP(hone|od)/.test(navigator.userAgent) && !navigator.standalone && !window.matchMedia('(display-mode: standalone)').matches
 	const setGap = () => {
 		// --k7-vh — высота области fixed-слоёв: в iOS 26 Safari 100dvh больше неё (считает и место под панелью), шторка уходила под панель
 		root.style.setProperty('--k7-vh', `${window.innerHeight}px`)
-		root.style.setProperty('--k7-vv-gap', `${Math.max(0, Math.round(window.innerHeight - (vv ? vv.height + vv.offsetTop : window.innerHeight)))}px`)
-		if (ios) root.style.setProperty('--k7-ios-pill', screen.height - window.innerHeight < 120 ? '64px' : '0px')
+		const gap = Math.max(0, Math.round(window.innerHeight - (vv ? vv.height + vv.offsetTop : window.innerHeight)))
+		root.style.setProperty('--k7-vv-gap', `${gap}px`)
+		// NAS_CLOUD#567: keyboard-sized gaps are only used by call sheets while editing a field.
+		root.style.setProperty('--k7-call-sheet-gap', `${ios && gap > iosPillHeight ? 0 : gap}px`)
+		if (ios) {
+			root.style.setProperty('--k7-ios-pill', screen.height - window.innerHeight < 120 ? `${iosPillHeight}px` : '0px')
+		}
 	}
 	setGap()
 	vv?.addEventListener('resize', setGap)

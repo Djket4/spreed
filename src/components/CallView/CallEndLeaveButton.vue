@@ -185,7 +185,10 @@ function switchToParentRoom() {
 				{{ leaveCallLabel }}
 			</template>
 		</NcActionButton>
-		<NcActionButton v-if="canEndForAll && !isVoiceRoom" @click="leaveCall(true)">
+		<NcActionButton
+			v-if="canEndForAll && !isVoiceRoom"
+			class="leave-call-for-everyone"
+			@click="leaveCall(true)">
 			<template #icon>
 				<IconPhoneOffOutline :size="20" />
 			</template>
