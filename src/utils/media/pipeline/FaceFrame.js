@@ -632,11 +632,24 @@ export default class FaceFrame extends TrackSinkSource {
 			}
 		}
 		schedule()
-		// rVFC на iOS может не стрелять — тогда рисуем по requestAnimationFrame
+		const waitForVideoFrame = () => {
+			video.cancelVideoFrameCallback?.(d.frameRequest)
+			const id = video.requestVideoFrameCallback(() => {
+				if (d.stopped || !d.useRaf || id !== d.frameRequest) {
+					return
+				}
+				d.useRaf = false
+				schedule() // также отменяет ожидающий колбэк rAF через sid
+			})
+			d.frameRequest = id
+		}
+		// Safari может начать rVFC после тайм-аута. Рисуем по rAF, пока свежий запрос rVFC ждёт первого кадра.
+		// Оставаться на rAF нельзя: totalVideoFrames источника бывает обновлён пачкой из нескольких кадров.
 		d.rvfcTimer = setTimeout(() => {
 			if (!d.stopped && !d.useRaf && !d.rvfcFired) {
 				d.useRaf = true
 				schedule()
+				waitForVideoFrame()
 			}
 		}, RVFC_WAIT_MS)
 		// После ухода в фон ожидающие колбэки кадров могут перестать вызываться.
@@ -650,6 +663,8 @@ export default class FaceFrame extends TrackSinkSource {
 			if (!d.useRaf) {
 				video.cancelVideoFrameCallback?.(d.frameRequest)
 				schedule()
+			} else if (video.requestVideoFrameCallback) {
+				waitForVideoFrame()
 			}
 			if (d.requestProbeFrame) {
 				clearTimeout(d.probeTimer)
