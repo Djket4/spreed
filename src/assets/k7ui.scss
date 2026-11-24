@@ -521,7 +521,11 @@ html.k7-ava-letter .conversation-icon .k7-ava {
 
 // ---------- Шторки над нижней панелью Safari (блок 4) ----------
 // --k7-vv-gap и html.k7-ios-bar ставит main.js. В iOS 26 панель Safari плавает поверх страницы — шторка поднимается над ней
-:root { --k7-sheet-bottom: var(--k7-vv-gap, 0px); --k7-sheet-radius-b: 0px; }
+:root {
+	--k7-sheet-bottom: var(--k7-vv-gap, 0px);
+	--k7-sheet-radius-b: 0px;
+	--k7-call-sheet-bottom: max(var(--k7-ios-pill, 0px), var(--k7-call-sheet-gap, 0px));
+}
 html.k7-ios-bar { --k7-sheet-bottom: max(var(--k7-ios-pill, 0px), var(--k7-vv-gap, 0px)); --k7-sheet-radius-b: 28px; }
 // поле ввода чата — над свёрнутой пилюлей Safari
 html.k7f.k7-ios-bar .new-message-form { margin-bottom: var(--k7-ios-pill, 0px); }
@@ -709,6 +713,9 @@ html.k7f .message--sided.outgoing > .message-body { border-start-end-radius: 8px
 		inset: auto 0 var(--k7-sheet-bottom, 0px) 0 !important;
 		transform: none !important;
 		box-shadow: 0 0 0 100vmax #0006;
+		&:has(.leave-call-for-everyone) {
+			--k7-sheet-bottom: var(--k7-call-sheet-bottom);
+		}
 		.v-popper__arrow-container { display: none !important; }
 		.v-popper__wrapper { width: 100%; }
 		.v-popper__inner {

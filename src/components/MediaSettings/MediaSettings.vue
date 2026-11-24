@@ -155,78 +155,80 @@
 					</div>
 				</div>
 				<div class="media-settings__settings">
-					<!-- Tab panels -->
-					<MediaSettingsTabs v-model:active="tabContent" :tabs="tabs">
-						<template #tab-panel:devices>
-							<MediaDevicesSelector
-								kind="audioinput"
-								:devices="devices"
-								:deviceId="audioInputId"
-								@refresh="updateDevices"
-								@update:deviceId="handleAudioInputIdChange" />
-							<MediaDevicesSelector
-								kind="videoinput"
-								:devices="devices"
-								:deviceId="videoInputId"
-								@refresh="updateDevices"
-								@update:deviceId="handleVideoInputIdChange" />
-							<!-- ket4tec NAS_CLOUD#172: без доступной камеры кадрировать нечего -->
-							<FaceFrameSelector v-if="!videoStreamError && devices.some((d) => d.kind === 'videoinput')" />
-							<MediaDevicesSelector
-								v-if="audioOutputSupported"
-								kind="audiooutput"
-								:devices="audioOutputDevices"
-								:deviceId="audioOutputId"
-								@refresh="updateDevices"
-								@update:deviceId="handleAudioOutputIdChange">
-								<template #extraAction>
-									<MediaDevicesSpeakerTest :disabled="!!audioStreamError" />
-								</template>
-							</MediaDevicesSelector>
-							<NcButton
-								variant="tertiary"
-								wide
-								@click="openAdvancedSettings">
-								<template #icon>
-									<IconTune :size="20" />
-								</template>
-								{{ t('spreed', 'Microphone settings') }}
-							</NcButton>
-						</template>
+					<div class="media-settings__fields">
+						<!-- Tab panels -->
+						<MediaSettingsTabs v-model:active="tabContent" :tabs="tabs">
+							<template #tab-panel:devices>
+								<MediaDevicesSelector
+									kind="audioinput"
+									:devices="devices"
+									:deviceId="audioInputId"
+									@refresh="updateDevices"
+									@update:deviceId="handleAudioInputIdChange" />
+								<MediaDevicesSelector
+									kind="videoinput"
+									:devices="devices"
+									:deviceId="videoInputId"
+									@refresh="updateDevices"
+									@update:deviceId="handleVideoInputIdChange" />
+								<!-- ket4tec NAS_CLOUD#172: без доступной камеры кадрировать нечего -->
+								<FaceFrameSelector v-if="!videoStreamError && devices.some((d) => d.kind === 'videoinput')" />
+								<MediaDevicesSelector
+									v-if="audioOutputSupported"
+									kind="audiooutput"
+									:devices="audioOutputDevices"
+									:deviceId="audioOutputId"
+									@refresh="updateDevices"
+									@update:deviceId="handleAudioOutputIdChange">
+									<template #extraAction>
+										<MediaDevicesSpeakerTest :disabled="!!audioStreamError" />
+									</template>
+								</MediaDevicesSelector>
+								<NcButton
+									variant="tertiary"
+									wide
+									@click="openAdvancedSettings">
+									<template #icon>
+										<IconTune :size="20" />
+									</template>
+									{{ t('spreed', 'Microphone settings') }}
+								</NcButton>
+							</template>
 
-						<template #tab-panel:backgrounds>
-							<VideoBackgroundEditor
-								class="media-settings__tab"
-								:token="token"
-								:skipBlurVirtualBackground="skipBlurVirtualBackground"
-								@updateBackground="handleUpdateVirtualBackground" />
-						</template>
-					</MediaSettingsTabs>
+							<template #tab-panel:backgrounds>
+								<VideoBackgroundEditor
+									class="media-settings__tab"
+									:token="token"
+									:skipBlurVirtualBackground="skipBlurVirtualBackground"
+									@updateBackground="handleUpdateVirtualBackground" />
+							</template>
+						</MediaSettingsTabs>
 
-					<!-- Guest display name setting-->
-					<!-- ket4tec (NAS_CLOUD#161): до звонка имя — поле на странице; здесь только в звонке или если имя было пусто при открытии -->
-					<!-- #172: в звонке имени, «Придумать» и «Войти» нет — это проверка устройств, не вход -->
-					<SetGuestUsername v-if="isGuest && !isInCall && k4NameEmpty" compact />
+						<!-- Guest display name setting-->
+						<!-- ket4tec (NAS_CLOUD#161): до звонка имя — поле на странице; здесь только в звонке или если имя было пусто при открытии -->
+						<!-- #172: в звонке имени, «Придумать» и «Войти» нет — это проверка устройств, не вход -->
+						<SetGuestUsername v-if="isGuest && !isInCall && k4NameEmpty" compact />
 
-					<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
-					<!-- Notify call option-->
-					<NcCheckboxRadioSwitch
-						v-if="false && showNotifyCallOption /* ket4tec v7: без «Уведомить всех» */"
-						v-model="notifyCall"
-						type="switch"
-						class="checkbox"
-						@update:modelValue="setNotifyCall">
-						{{ t('spreed', 'Notify all participants about this call') }}
-					</NcCheckboxRadioSwitch>
+						<!-- ket4tec (NAS_CLOUD#156): «начать запись сразу» убрана у всех, isRecordingFromStart всегда false -->
+						<!-- Notify call option-->
+						<NcCheckboxRadioSwitch
+							v-if="false && showNotifyCallOption /* ket4tec v7: без «Уведомить всех» */"
+							v-model="notifyCall"
+							type="switch"
+							class="checkbox"
+							@update:modelValue="setNotifyCall">
+							{{ t('spreed', 'Notify all participants about this call') }}
+						</NcCheckboxRadioSwitch>
 
-					<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна; имя ввели — подсказка прячется, но место держит (#172: превью не прыгает) -->
-					<p
-						v-if="isBeforeJoinCall && isGuest"
-						class="k4-join-hint"
-						:style="guestNameStore.guestUserName.length ? { visibility: 'hidden' } : null"
-						:aria-hidden="guestNameStore.guestUserName.length ? 'true' : null">
-						Введите имя, чтобы войти
-					</p>
+						<!-- ket4tec 9Б п.26: бледная кнопка без причины непонятна; имя ввели — подсказка прячется, но место держит (#172: превью не прыгает) -->
+						<p
+							v-if="isBeforeJoinCall && isGuest"
+							class="k4-join-hint"
+							:style="guestNameStore.guestUserName.length ? { visibility: 'hidden' } : null"
+							:aria-hidden="guestNameStore.guestUserName.length ? 'true' : null">
+							Введите имя, чтобы войти
+						</p>
+					</div>
 					<!-- #172: в звонке место кнопки занято всегда — превью не меняет размер, когда она появляется; вид как у «Начать звонок» -->
 					<NcButton
 						v-if="showUpdateChangesButton || isInCall"
@@ -1179,6 +1181,10 @@ export default {
 		max-width: 450px; // 1/2 large modal width
 		display: flex;
 		flex-direction: column;
+	}
+
+	&__fields {
+		display: contents;
 	}
 
 	&__guest {
