@@ -55,7 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	ff?.destroy()
-	for (const k of ['videoWidth', 'videoHeight', 'readyState', 'getVideoPlaybackQuality', 'requestVideoFrameCallback', 'paused']) {
+	for (const k of ['videoWidth', 'videoHeight', 'readyState', 'getVideoPlaybackQuality', 'requestVideoFrameCallback', 'cancelVideoFrameCallback', 'paused']) {
 		delete vproto[k]
 	}
 	vi.useRealTimers()
@@ -219,6 +219,35 @@ describe('FaceFrame: защёлка', () => {
 
 // Safari: totalVideoFrames исходного video стоит на 0, rVFC идёт с частотой экрана (screenHz), новый кадр входа — inFps раз в секунду
 describe('FaceFrame: Safari, частота входа по rVFC', () => {
+	test('первый rVFC позднее тайм-аута, пакетный счётчик камеры -> возвращаемся к кадровым колбэкам', async () => {
+		const isCamera = (video) => video.srcObject?.getTracks()[0]?.id === 'cam'
+		vproto.getVideoPlaybackQuality = function() {
+			const frames = Math.floor(performance.now() * 30 / 1000)
+			return { totalVideoFrames: isCamera(this) ? frames - frames % 8 : frames }
+		}
+		vproto.requestVideoFrameCallback = function(cb) {
+			const wait = isCamera(this) ? Math.max(1000 / 30, 1500 - performance.now()) : 1000 / 30
+			return setTimeout(() => {
+				const now = performance.now()
+				const frame = Math.floor(now * 30 / 1000)
+				cb(now, { presentedFrames: frame, mediaTime: frame / 30 })
+			}, wait)
+		}
+		vproto.cancelVideoFrameCallback = clearTimeout
+		start()
+		await vi.advanceTimersByTimeAsync(600)
+		expect(ff._digital.useRaf).toBe(true)
+		await vi.advanceTimersByTimeAsync(1800)
+		ff._digital.detector = { detectForVideo: () => ({ detections: [] }) }
+		await vi.advanceTimersByTimeAsync(9600)
+		expect(ff._digital.useRaf).toBe(false)
+		expect(ff._digital.detCount).toBeGreaterThan(1)
+		expect(ff.path).toBe('digital')
+		const [, stats] = calllog.mock.calls.find(([name]) => name === 'framing_stats')
+		expect(stats.drawfps).toBeGreaterThan(23)
+		expect(calllog.mock.calls.filter(([name]) => ['framing_ease', 'framing_error'].includes(name))).toHaveLength(0)
+	})
+
 	const safari = (inFps, screenHz) => {
 		vproto.getVideoPlaybackQuality = function() {
 			return this.srcObject ? undefined : { totalVideoFrames: 0 }
