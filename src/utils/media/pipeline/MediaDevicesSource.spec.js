@@ -260,7 +260,7 @@ describe('MediaDevicesSource', () => {
 					assertStateAfterStart()
 
 					expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(3)
-					expect(mediaDevicesManager.getUserMedia).toHaveBeenLastCalledWith(expect.objectContaining({ audio: false }))
+					expect(mediaDevicesManager.getUserMedia).toHaveBeenLastCalledWith(expect.objectContaining({ audio: false }), 'callstart')
 					expect(retryNoVideoCallback).not.toHaveBeenCalled()
 				})
 			})
@@ -970,6 +970,23 @@ describe('MediaDevicesSource', () => {
 		})
 	})
 
+	test('requests a replacement microphone after a browser-ended track', async () => {
+		mediaDevicesManager.set('audioInputId', 'audio-device')
+		const initialTrack = newMediaStreamTrackMock('initial-audio', 'audio')
+		getUserMediaAudioTrack = initialTrack
+		mediaDevicesSource.setVideoAllowed(false)
+		await mediaDevicesSource.start(retryNoVideoCallback)
+
+		getUserMediaAudioTrack = newMediaStreamTrackMock('replacement-audio', 'audio')
+		initialTrack._endedEventHandlers.slice().forEach((handler) => handler())
+		expect(mediaDevicesSource.getOutputTrack('audio')).toBe(null)
+		await new Promise(process.nextTick)
+
+		expect(mediaDevicesManager.getUserMedia).toHaveBeenCalledTimes(2)
+		expect(mediaDevicesManager.getUserMedia).toHaveBeenLastCalledWith({ audio: true }, 'callended')
+		expect(mediaDevicesSource.getOutputTrack('audio')).toBe(getUserMediaAudioTrack)
+	})
+
 	// NAS_CLOUD#279: перезахват после ended не кладёт дорожку в уже остановленный источник
 	test('перезахват видео после stop() гасит новую дорожку', async () => {
 		const firstTrack = newMediaStreamTrackMock('video', 'video')
@@ -1006,7 +1023,10 @@ describe('MediaDevicesSource', () => {
 			mediaDevicesSource._setOutputTrack('video', track)
 			mediaDevicesSource._removeTrackWhenEnded(track)
 		}
-		end(); end(); end(); end()
+		end()
+		end()
+		end()
+		end()
 		expect(handler).toHaveBeenCalledTimes(3)
 		vi.advanceTimersByTime(11000)
 		end()

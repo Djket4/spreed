@@ -130,7 +130,8 @@ export const useDevices = createSharedComposable(function() {
 	})
 
 	watch(audioOutputId, (deviceId) => {
-		if (initialized && deviceId !== undefined) {
+		if (initialized) {
+			// A disconnected output may leave no enumerated replacement.
 			soundsStore.setGeneralAudioOutput(deviceId)
 
 			if (callParticipantsAudioPlayer) {
@@ -481,7 +482,7 @@ export const useDevices = createSharedComposable(function() {
 		}
 		pendingGetUserMediaAudioCount = 1
 
-		mediaDevicesManager.getUserMedia({ audio: true })
+		mediaDevicesManager.getUserMedia({ audio: true }, 'preview')
 			.then((stream) => {
 				audioStreamError.value = null
 				if (!initialized || !streamsWanted()) {
