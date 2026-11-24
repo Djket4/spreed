@@ -198,7 +198,7 @@ export default class MediaDevicesSource extends TrackSource {
 		let stream
 
 		try {
-			stream = await mediaDevicesManager.getUserMedia(constraints)
+			stream = await mediaDevicesManager.getUserMedia(constraints, 'callstart')
 		} catch (error) {
 			return [null, error]
 		}
@@ -219,7 +219,7 @@ export default class MediaDevicesSource extends TrackSource {
 		let stream
 
 		try {
-			stream = await mediaDevicesManager.getUserMedia(constraints)
+			stream = await mediaDevicesManager.getUserMedia(constraints, 'callstart')
 		} catch (error) {
 			return [null, error]
 		}
@@ -249,8 +249,11 @@ export default class MediaDevicesSource extends TrackSource {
 			return
 		}
 		this._reacquiredAt.push(now)
-		const handler = kind === 'audio' ? this._handleAudioInputIdChangedBound : this._handleVideoInputIdChangedBound
-		handler(mediaDevicesManager, mediaDevicesManager.get(kind + 'InputId'))
+		if (kind === 'audio') {
+			this._handleAudioInputIdChangedBound(mediaDevicesManager, mediaDevicesManager.get('audioInputId'), 'callended')
+		} else {
+			this._handleVideoInputIdChangedBound(mediaDevicesManager, mediaDevicesManager.get('videoInputId'))
+		}
 	}
 
 	stop() {
@@ -308,7 +311,7 @@ export default class MediaDevicesSource extends TrackSource {
 		constraints.video.frameRate = 60
 	}
 
-	_handleAudioInputIdChanged(mediaDevicesManager, audioInputId) {
+	_handleAudioInputIdChanged(mediaDevicesManager, audioInputId, source = 'callchange') {
 		if (!this._audioAllowed) {
 			return
 		}
@@ -351,7 +354,7 @@ export default class MediaDevicesSource extends TrackSource {
 			}
 		}
 
-		mediaDevicesManager.getUserMedia({ audio: true }).then((stream) => {
+		mediaDevicesManager.getUserMedia({ audio: true }, source).then((stream) => {
 			// ket4tec NAS_CLOUD#279: источник остановлен, пока шёл getUserMedia — дорожку не берём, гасим
 			if (!this._active) {
 				stream.getTracks().forEach((t) => t.stop())

@@ -149,7 +149,7 @@ export const useSoundsStore = defineStore('sounds', {
 			try {
 				for (const key in this.audioObjects) {
 					this.pauseAudio(key)
-					await this.audioObjects[key].setSinkId(deviceId)
+					await this.audioObjects[key].setSinkId(deviceId ?? '')
 				}
 			} catch (error) {
 				console.error(error)

@@ -444,10 +444,7 @@ MediaDevicesManager.prototype = {
 	},
 
 	_removeDevice(removedDevice) {
-		const removedDeviceIndex = this.attributes.devices.findIndex((oldDevice) => oldDevice.deviceId === removedDevice.deviceId && oldDevice.kind === removedDevice.kind)
-		if (removedDeviceIndex >= 0) {
-			this.attributes.devices = this.attributes.devices.splice(removedDeviceIndex, 1)
-		}
+		this.attributes.devices = this.attributes.devices.filter((device) => device.deviceId !== removedDevice.deviceId || device.kind !== removedDevice.kind)
 		if (removedDevice.kind === 'audioinput' && removedDevice.deviceId === this.attributes.audioInputId) {
 			this.attributes.audioInputId = undefined
 		} else if (removedDevice.kind === 'audiooutput' && removedDevice.deviceId === this.attributes.audioOutputId) {
@@ -523,28 +520,22 @@ MediaDevicesManager.prototype = {
 	 *
 	 * @param {object} constraints the constraints specifying
 	 *        the media to request.
+	 * @param {'preview'|'callstart'|'callchange'|'callended'} [source] fixed caller label for the call log
 	 * @return {Promise} resolved with a MediaStream object when successful, or
 	 *          rejected with a DOMException in case of error.
 	 */
-	getUserMedia(constraints) {
+	getUserMedia(constraints, source) {
 		if (!this.isSupported()) {
 			return new Promise((resolve, reject) => {
 				reject(new DOMException('MediaDevicesManager is not supported', 'NotSupportedError'))
 			})
 		}
 
-		if (!this._pendingEnumerateDevicesPromise) {
-			return this._getUserMediaInternal(constraints)
-		}
-
-		return this._pendingEnumerateDevicesPromise.then(() => {
-			return this._getUserMediaInternal(constraints)
-		}).catch(() => {
-			return this._getUserMediaInternal(constraints)
-		})
+		const requestMedia = () => this._getUserMediaInternal(constraints, source)
+		return this._pendingEnumerateDevicesPromise?.then(requestMedia, requestMedia) ?? requestMedia()
 	},
 
-	_getUserMediaInternal(constraints) {
+	_getUserMediaInternal(constraints, source) {
 		// Relaxed constraints or deviceId is not specified
 		if (constraints.audio && (constraints.audio === true || !constraints.audio.deviceId)) {
 			if (this.attributes.audioInputId === null) {
@@ -584,7 +575,7 @@ MediaDevicesManager.prototype = {
 		this._stopIncompatibleTracks(constraints)
 
 		return this._getUserMediaWithCameraFallback(constraints).then((stream) => {
-			calllog('gum_ok', { a: stream.getAudioTracks().length, v: stream.getVideoTracks().length })
+			calllog('gum_ok', { a: stream.getAudioTracks().length, v: stream.getVideoTracks().length, src: source })
 			k4log('media.ok', { tracks: stream.getTracks().map((track) => track.kind + ':' + String(track.label).slice(0, 40)) })
 			this._registerStream(stream)
 
@@ -600,7 +591,7 @@ MediaDevicesManager.prototype = {
 
 			return stream
 		}).catch((error) => {
-			calllog('gum_err', { name: String(error?.name ?? 'Error').slice(0, 40), a: !!constraints.audio, v: !!constraints.video })
+			calllog('gum_err', { name: String(error?.name ?? 'Error').slice(0, 40), a: !!constraints.audio, v: !!constraints.video, src: source })
 			k4log('media.err', { name: error?.name, msg: String(error?.message).slice(0, 100), a: !!constraints.audio, v: !!constraints.video })
 			// The list of devices is also updated in case of failure, as even
 			// if getting the stream failed the permissions may have been
