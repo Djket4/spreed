@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { t } from '@nextcloud/l10n'
 import { createSharedComposable } from '@vueuse/core'
 import createHark from 'hark'
 import { computed, markRaw, onScopeDispose, ref, watch } from 'vue'
@@ -101,6 +102,14 @@ export const useDevices = createSharedComposable(function() {
 	const audioOutputSupported = computed(() => {
 		return mediaDevicesManager.isAudioOutputSelectSupported
 	})
+	const audioOutputDevices = computed(() => {
+		const outputs = devices.value.filter((device) => device.kind === 'audiooutput')
+		const defaultOutput = outputs.find((device) => device.deviceId === 'default')
+			?? outputs.find((device) => device.deviceId === '')
+		const fallbackLabel = t('spreed', 'Default')
+		const systemOutput = { kind: 'audiooutput', deviceId: '', groupId: '', label: defaultOutput?.label || fallbackLabel, fallbackLabel }
+		return [systemOutput, ...outputs.filter((device) => device.deviceId && device.deviceId !== 'default')]
+	})
 
 	const videoInputId = computed({
 		get() {
@@ -131,7 +140,6 @@ export const useDevices = createSharedComposable(function() {
 
 	watch(audioOutputId, (deviceId) => {
 		if (initialized) {
-			// A disconnected output may leave no enumerated replacement.
 			soundsStore.setGeneralAudioOutput(deviceId)
 
 			if (callParticipantsAudioPlayer) {
@@ -622,6 +630,7 @@ export const useDevices = createSharedComposable(function() {
 		videoPreviewAvailable,
 		audioInputId,
 		audioOutputId,
+		audioOutputDevices,
 		videoInputId,
 		audioOutputSupported,
 		updateAudioStream,

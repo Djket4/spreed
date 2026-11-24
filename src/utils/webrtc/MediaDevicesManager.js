@@ -80,7 +80,7 @@ export default function MediaDevicesManager() {
 		devices: [],
 
 		audioInputId: undefined,
-		audioOutputId: undefined,
+		audioOutputId: '',
 		videoInputId: undefined,
 
 		noiseSuppression: BrowserStorage.getItem('noiseSuppression') !== 'false',
@@ -116,6 +116,9 @@ export default function MediaDevicesManager() {
 
 	const audioOutputPreferences = BrowserStorage.getItem('audioOutputPreferences')
 	this._preferenceAudioOutputList = audioOutputPreferences !== null ? JSON.parse(audioOutputPreferences) : []
+	// This key was written on explicit selection. The ranked list also includes automatically discovered devices.
+	const storedAudioOutputId = BrowserStorage.getItem('audioOutputId')
+	this._preferredAudioOutputId = storedAudioOutputId === 'default' || storedAudioOutputId === LOCAL_STORAGE_NULL_DEVICE_ID ? '' : storedAudioOutputId ?? ''
 
 	const videoInputPreferences = BrowserStorage.getItem('videoInputPreferences')
 	this._preferenceVideoInputList = videoInputPreferences !== null ? JSON.parse(videoInputPreferences) : []
@@ -128,9 +131,6 @@ export default function MediaDevicesManager() {
 
 	if (BrowserStorage.getItem('audioInputId') === LOCAL_STORAGE_NULL_DEVICE_ID) {
 		this.attributes.audioInputId = null
-	}
-	if (BrowserStorage.getItem('audioOutputId') === LOCAL_STORAGE_NULL_DEVICE_ID) {
-		this.attributes.audioOutputId = null
 	}
 	if (BrowserStorage.getItem('videoInputId') === LOCAL_STORAGE_NULL_DEVICE_ID) {
 		this.attributes.videoInputId = null
@@ -201,6 +201,10 @@ MediaDevicesManager.prototype = {
 	},
 
 	set(key, value) {
+		if (key === 'audioOutputId') {
+			value = value === 'default' ? '' : value ?? ''
+			this._preferredAudioOutputId = value
+		}
 		this.attributes[key] = value
 
 		this._trigger('change:' + key, [value])
@@ -271,7 +275,6 @@ MediaDevicesManager.prototype = {
 			const previousAudioOutputId = this.attributes.audioOutputId
 			const previousVideoInputId = this.attributes.videoInputId
 			const previousFirstAvailableAudioInputId = getFirstAvailableMediaDevice(this.attributes.devices, this._preferenceAudioInputList)
-			const previousFirstAvailableAudioOutputId = getFirstAvailableMediaDevice(this.attributes.devices, this._preferenceAudioOutputList)
 			const previousFirstAvailableVideoInputId = getFirstAvailableMediaDevice(this.attributes.devices, this._preferenceVideoInputList)
 
 			const previousNoiseSuppression = this.attributes.noiseSuppression
@@ -303,12 +306,10 @@ MediaDevicesManager.prototype = {
 				this.attributes.audioInputId = getFirstAvailableMediaDevice(devices, this._preferenceAudioInputList) || devices.find((device) => device.kind === 'audioinput')?.deviceId
 				deviceIdChanged = true
 			}
-			// ket4tec: output follows preferences only when the selected device is gone,
-			// otherwise a newly connected device (BT, display) steals the sound mid-call
-			if (this.attributes.audioOutputId === undefined || !devices.some((device) => device.kind === 'audiooutput' && device.deviceId === this.attributes.audioOutputId)) {
-				this.attributes.audioOutputId = getFirstAvailableMediaDevice(devices, this._preferenceAudioOutputList) || devices.find((device) => device.kind === 'audiooutput')?.deviceId
-				deviceIdChanged = true
-			}
+			// Only a manual selection overrides the system audio route.
+			const preferredOutput = devices.find((device) => device.kind === 'audiooutput' && device.deviceId === this._preferredAudioOutputId)
+			this.attributes.audioOutputId = preferredOutput?.deviceId ?? ''
+			deviceIdChanged ||= previousAudioOutputId !== this.attributes.audioOutputId
 			if (this.attributes.videoInputId === undefined || this.attributes.videoInputId === previousFirstAvailableVideoInputId) {
 				this.attributes.videoInputId = getFirstAvailableMediaDevice(devices, this._preferenceVideoInputList) || devices.find((device) => device.kind === 'videoinput')?.deviceId
 				deviceIdChanged = true
@@ -447,8 +448,9 @@ MediaDevicesManager.prototype = {
 		this.attributes.devices = this.attributes.devices.filter((device) => device.deviceId !== removedDevice.deviceId || device.kind !== removedDevice.kind)
 		if (removedDevice.kind === 'audioinput' && removedDevice.deviceId === this.attributes.audioInputId) {
 			this.attributes.audioInputId = undefined
-		} else if (removedDevice.kind === 'audiooutput' && removedDevice.deviceId === this.attributes.audioOutputId) {
-			this.attributes.audioOutputId = undefined
+		} else if (removedDevice.kind === 'audiooutput' && this._preferredAudioOutputId && removedDevice.deviceId === this._preferredAudioOutputId) {
+			this._preferredAudioOutputId = ''
+			this._storeDeviceId('audioOutputId', '')
 		} else if (removedDevice.kind === 'videoinput' && removedDevice.deviceId === this.attributes.videoInputId) {
 			this.attributes.videoInputId = undefined
 		}

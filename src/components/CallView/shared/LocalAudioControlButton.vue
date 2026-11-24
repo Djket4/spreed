@@ -78,9 +78,9 @@
 					type="radio"
 					:modelValue="audioOutputId"
 					:value="device.deviceId"
-					:title="device.label"
+					:title="device.label || device.fallbackLabel"
 					@click="handleAudioOutputIdChange(device.deviceId)">
-					{{ device.label }}
+					{{ device.label || device.fallbackLabel }}
 				</NcActionButton>
 			</template>
 
@@ -199,6 +199,7 @@ export default {
 			devices,
 			audioInputId,
 			audioOutputId,
+			audioOutputDevices,
 			audioStreamError,
 			updateDevices,
 			audioOutputSupported,
@@ -232,6 +233,7 @@ export default {
 			devices,
 			audioInputId,
 			audioOutputId,
+			audioOutputDevices,
 			audioStreamError,
 			updateDevices,
 			audioOutputSupported,
@@ -295,14 +297,6 @@ export default {
 					})),
 				{ deviceId: null, label: t('spreed', 'None') },
 			]
-		},
-
-		audioOutputDevices() {
-			return this.devices.filter((device) => device.kind === 'audiooutput')
-				.map((device) => ({
-					deviceId: device.deviceId,
-					label: device.label || device.fallbackLabel,
-				}))
 		},
 	},
 
