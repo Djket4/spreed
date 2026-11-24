@@ -649,6 +649,7 @@ export const K4_FAST_RECONNECT_MS = 2000
 export const K4_CALL_RECONNECT_MS = 5000
 // сокет не открылся за это время — попытка зависла (потерянный SYN ждёт ретрансмита ядра до 15 с), начать заново
 export const K4_OPEN_TIMEOUT_MS = 4000
+const K4_RESUME_HELLO_TIMEOUT_MS = 4000
 
 /**
  * ket4tec (NAS_CLOUD#183): потолок задержки переподключения сигнального сокета. Джиттер оставлен, чтобы при падении
@@ -713,6 +714,7 @@ Signaling.Standalone.prototype.reconnect = function() {
 	if (this.reconnectTimer) {
 		return
 	}
+	clearTimeout(this._k4ResumeHelloTimer)
 
 	// Wiggle interval a little bit to prevent all clients from connecting
 	// simultaneously in case the server connection is interrupted.
@@ -977,6 +979,7 @@ Signaling.Standalone.prototype.sendBye = function() {
 
 Signaling.Standalone.prototype.disconnect = function() {
 	window.removeEventListener('online', this._k4Online) // ket4tec (NAS_CLOUD#183)
+	clearTimeout(this._k4ResumeHelloTimer)
 	this.sendBye()
 	if (this.socket) {
 		this.socket.close()
@@ -1174,6 +1177,18 @@ Signaling.Standalone.prototype.sendHello = async function() {
 				resumeid: this.resumeId,
 			},
 		}
+		// A WebSocket can open while the signaling server still cannot answer.
+		// Keep the resume ID so the next socket can recover the same session.
+		const socket = this.socket
+		clearTimeout(this._k4ResumeHelloTimer)
+		this._k4ResumeHelloTimer = setTimeout(() => {
+			if (!socket || this.socket !== socket || this.connected) {
+				return
+			}
+			k4log('sig.resume_hello_timeout')
+			socket.onopen = socket.onclose = socket.onerror = socket.onmessage = null
+			this.reconnect()
+		}, K4_RESUME_HELLO_TIMEOUT_MS)
 		this.doSend(msg, this.helloResponseReceived.bind(this))
 		return
 	}
@@ -1221,6 +1236,7 @@ Signaling.Standalone.prototype.sendHello = async function() {
 }
 
 Signaling.Standalone.prototype.helloResponseReceived = function(data) {
+	clearTimeout(this._k4ResumeHelloTimer)
 	console.debug('Hello response received', data)
 	if (data.type !== 'hello') {
 		if (this.resumeId) {
