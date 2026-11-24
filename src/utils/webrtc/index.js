@@ -483,7 +483,7 @@ export const beforeLeaveCall = { fn: null }
  *
  * @param {string} token Conversation to leave the call
  * @param {boolean} all Whether to end the meeting for all
- * @return {Promise<void>}
+ * @return {Promise<boolean>} Whether the server confirmed the leave request
  */
 async function signalingLeaveCall(token, all = false) {
 	await beforeLeaveCall.fn?.() // ket4tec: k4draw — автоснимок доски, пока звонок ещё не покинут
@@ -504,7 +504,10 @@ async function signalingLeaveCall(token, all = false) {
 
 	if (tokensInSignaling[token]) {
 		await signaling.leaveCall(token, false, all)
+		return true
 	}
+
+	return false
 }
 
 /**

@@ -9,13 +9,14 @@ import { emit } from '@nextcloud/event-bus'
 import { t } from '@nextcloud/l10n'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
-import { ATTENDEE, PARTICIPANT, SIGNALING } from '../constants.ts'
+import { ATTENDEE, MESSAGE, PARTICIPANT, SIGNALING } from '../constants.ts'
 import { banActor } from '../services/banService.ts'
 import {
 	joinCall,
 	leaveCall,
 } from '../services/callsService.ts'
 import { getTalkConfig, hasTalkFeature, setRemoteCapabilities } from '../services/CapabilitiesManager.ts'
+import { fetchConversation } from '../services/conversationsService.ts'
 import { EventBus } from '../services/EventBus.ts'
 import {
 	demoteFromModerator,
@@ -797,7 +798,7 @@ const actions = {
 		}
 	},
 
-	async leaveCall({ commit, getters }, { token, participantIdentifier, all = false }) {
+	async leaveCall({ commit, dispatch, getters }, { token, participantIdentifier, all = false }) {
 		if (!participantIdentifier?.sessionId) {
 			console.error('Trying to leave call without sessionId')
 		}
@@ -819,7 +820,10 @@ const actions = {
 
 		k4log('call.leave', { all })
 		calllog('call_left', { all: !!all })
-		await leaveCall(token, all)
+		const endingConversation = all ? getters.conversation(token) : undefined
+		const endingCallStartTime = endingConversation?.callStartTime ?? 0
+		const endingCallMessageId = endingConversation?.lastMessage?.id ?? 0
+		const leftCall = await leaveCall(token, all)
 		stopK4Log()
 
 		const updatedData = {
@@ -835,6 +839,23 @@ const actions = {
 			sessionId: participantIdentifier.sessionId,
 			flags: PARTICIPANT.CALL_FLAG.DISCONNECTED,
 		})
+
+		if (all && leftCall) {
+			try {
+				const response = await fetchConversation(token)
+				const { hasCall, callFlag, callStartTime, lastMessage } = response.data.ocs.data
+				const current = getters.conversation(token)
+				// Keep any newer call already reported by a live update, including a start in the same second.
+				if (current?.hasCall && (current.callStartTime > Math.max(endingCallStartTime, callStartTime)
+					|| (current.lastMessage?.systemMessage === MESSAGE.SYSTEM_TYPE.CALL_STARTED
+						&& current.lastMessage.id > Math.max(endingCallMessageId, lastMessage?.id ?? 0)))) {
+					return
+				}
+				await dispatch('setConversationProperties', { token, properties: { hasCall, callFlag, callStartTime } })
+			} catch (error) {
+				console.error('Error refreshing conversation after ending the call: ', error)
+			}
+		}
 	},
 
 	/**
