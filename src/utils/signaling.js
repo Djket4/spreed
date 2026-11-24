@@ -68,6 +68,7 @@ function Base(settings) {
 	this.currentCallSilent = null
 	this.currentCallSilentFor = []
 	this.currentCallRecordingConsent = null
+	this.pendingCallJoin = null
 	this.nextcloudSessionId = null
 	this.handlers = {}
 	this.features = {}
@@ -283,6 +284,9 @@ Signaling.Base.prototype._joinCallSuccess = function(/* token */) {
 
 Signaling.Base.prototype.joinCall = function(token, flags, silent, recordingConsent, silentFor) {
 	return new Promise((resolve, reject) => {
+		const controller = new AbortController()
+		const pendingJoin = { token, controller }
+		this.pendingCallJoin = pendingJoin
 		this._trigger('beforeJoinCall', [token])
 
 		axios.post(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }), {
@@ -290,8 +294,12 @@ Signaling.Base.prototype.joinCall = function(token, flags, silent, recordingCons
 			silent,
 			recordingConsent,
 			silentFor,
-		})
+		}, { signal: controller.signal })
 			.then(function() {
+				if (controller.signal.aborted) {
+					reject(controller.signal.reason)
+					return
+				}
 				this.currentCallToken = token
 				this.currentCallFlags = flags
 				this.currentCallSilent = silent
@@ -302,10 +310,19 @@ Signaling.Base.prototype.joinCall = function(token, flags, silent, recordingCons
 				this._joinCallSuccess(token)
 			}.bind(this))
 			.catch(function(e) {
+				if (controller.signal.aborted) {
+					reject(controller.signal.reason)
+					return
+				}
 				reject(new Error())
 				console.error('Connection failed, reason: ', e)
 				this._trigger('joinCallFailed', [token, e.response?.data?.ocs])
 			}.bind(this))
+			.finally(() => {
+				if (this.pendingCallJoin === pendingJoin) {
+					this.pendingCallJoin = null
+				}
+			})
 	})
 }
 
@@ -366,6 +383,17 @@ Signaling.Base.prototype.leaveCall = function(token, keepToken, all = false) {
 				}
 			}.bind(this))
 	})
+}
+
+Signaling.Base.prototype.leaveCallLocally = function(token) {
+	if (this.pendingCallJoin?.token === token) {
+		this.pendingCallJoin.controller.abort()
+	}
+	this._trigger('beforeLeaveCall', [token, false])
+	this._trigger('leaveCall', [token, false])
+	if (token === this.currentCallToken) {
+		this._resetCurrentCallParameters()
+	}
 }
 
 // Connection to the internal signaling server provided by the app.
@@ -1678,7 +1706,7 @@ Signaling.Standalone.prototype.processRoomParticipantsEvent = function(data) {
 			if (data.event.update.all) {
 			// With `"all": true`
 				if (data.event.update.incall === 0) {
-					this._trigger('allUsersChangedInCallToDisconnected')
+					this._trigger('allUsersChangedInCallToDisconnected', [data.event.update.roomid || this.currentRoomToken])
 				} else {
 					console.error('Unknown room participant event', data)
 				}

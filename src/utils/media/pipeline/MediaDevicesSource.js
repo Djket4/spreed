@@ -60,6 +60,7 @@ export default class MediaDevicesSource extends TrackSource {
 		this._videoAllowed = true
 
 		this._active = false
+		this._captureGeneration = 0
 	}
 
 	isAudioAllowed() {
@@ -117,6 +118,7 @@ export default class MediaDevicesSource extends TrackSource {
 	}
 
 	async start(retryNoVideoCallback) {
+		const generation = ++this._captureGeneration
 		this._active = true
 		this._reacquireOff = false
 		this._reacquiredAt = []
@@ -138,6 +140,9 @@ export default class MediaDevicesSource extends TrackSource {
 		let error
 
 		[stream, error] = await this._startAudioAndVideo(constraints)
+		if (this._discardStaleCapture(generation, stream)) {
+			return false
+		}
 
 		// Fallback for users without a camera or with a camera that can not be
 		// accessed, but only if audio is meant to be used.
@@ -145,6 +150,9 @@ export default class MediaDevicesSource extends TrackSource {
 			const audioAndVideoError = error;
 
 			[stream, error] = await this._startAudioOnly(constraints)
+			if (this._discardStaleCapture(generation, stream)) {
+				return false
+			}
 
 			// ket4tec NAS_CLOUD#98: a microphone that can not be opened
 			// (denied, broken or a virtual device without source) must not
@@ -153,6 +161,9 @@ export default class MediaDevicesSource extends TrackSource {
 				const audioOnlyError = error;
 
 				[stream, error] = await this._startAudioAndVideo({ audio: false, video: this._videoAllowed })
+				if (this._discardStaleCapture(generation, stream)) {
+					return false
+				}
 				if (error) {
 					error = audioOnlyError
 				}
@@ -190,6 +201,15 @@ export default class MediaDevicesSource extends TrackSource {
 
 		mediaDevicesManager.on('change:audioInputId', this._handleAudioInputIdChangedBound)
 		mediaDevicesManager.on('change:videoInputId', this._handleVideoInputIdChangedBound)
+		return true
+	}
+
+	_discardStaleCapture(generation, stream) {
+		if (generation === this._captureGeneration) {
+			return false
+		}
+		stream?.getTracks().forEach((track) => track.stop())
+		return true
 	}
 
 	async _startAudioAndVideo(constraints) {
@@ -207,6 +227,7 @@ export default class MediaDevicesSource extends TrackSource {
 		// are met Edge resolves it if both audio and video are requested but
 		// only audio is available.
 		if (constraints.video && stream.getVideoTracks().length === 0) {
+			stream.getTracks().forEach((track) => track.stop())
 			return [null, Error('Video expected but not received')]
 		}
 
@@ -257,6 +278,11 @@ export default class MediaDevicesSource extends TrackSource {
 	}
 
 	stop() {
+		this._active = false
+		this._captureGeneration++
+		this._pendingAudioInputIdChangedCount = 0
+		this._pendingVideoInputIdChangedCount = 0
+
 		if (this.getOutputTrack('audio')) {
 			this.getOutputTrack('audio').stop()
 			this._setOutputTrack('audio', null)
@@ -269,8 +295,6 @@ export default class MediaDevicesSource extends TrackSource {
 
 		mediaDevicesManager.off('change:audioInputId', this._handleAudioInputIdChangedBound)
 		mediaDevicesManager.off('change:videoInputId', this._handleVideoInputIdChangedBound)
-
-		this._active = false
 	}
 
 	/**
@@ -354,9 +378,12 @@ export default class MediaDevicesSource extends TrackSource {
 			}
 		}
 
+		const generation = this._captureGeneration
 		mediaDevicesManager.getUserMedia({ audio: true }, source).then((stream) => {
-			// ket4tec NAS_CLOUD#279: источник остановлен, пока шёл getUserMedia — дорожку не берём, гасим
-			if (!this._active) {
+			if (this._discardStaleCapture(generation, stream)) {
+				return
+			}
+			if (!this._audioAllowed) {
 				stream.getTracks().forEach((t) => t.stop())
 				resetPendingAudioInputIdChangedCount()
 
@@ -377,6 +404,9 @@ export default class MediaDevicesSource extends TrackSource {
 
 			resetPendingAudioInputIdChangedCount()
 		}).catch(() => {
+			if (generation !== this._captureGeneration) {
+				return
+			}
 			if (this.getOutputTrack('audio')) {
 				this.getOutputTrack('audio').stop()
 			}
@@ -432,9 +462,12 @@ export default class MediaDevicesSource extends TrackSource {
 		const constraints = { video: true }
 		this._adjustVideoConstraintsForChromium(constraints)
 
+		const generation = this._captureGeneration
 		mediaDevicesManager.getUserMedia(constraints).then((stream) => {
-			// ket4tec NAS_CLOUD#279: источник остановлен, пока шёл getUserMedia — дорожку не берём, гасим
-			if (!this._active) {
+			if (this._discardStaleCapture(generation, stream)) {
+				return
+			}
+			if (!this._videoAllowed) {
 				stream.getTracks().forEach((t) => t.stop())
 				resetPendingVideoInputIdChangedCount()
 
@@ -455,6 +488,9 @@ export default class MediaDevicesSource extends TrackSource {
 
 			resetPendingVideoInputIdChangedCount()
 		}).catch(() => {
+			if (generation !== this._captureGeneration) {
+				return
+			}
 			if (this.getOutputTrack('video')) {
 				this.getOutputTrack('video').stop()
 			}

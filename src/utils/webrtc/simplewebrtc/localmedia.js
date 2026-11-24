@@ -193,7 +193,11 @@ LocalMedia.prototype.start = function(mediaConstraints, cb, context) {
 		self.emit('localStreamRequestFailedRetryNoVideo', error)
 	}
 
-	this._mediaDevicesSource.start(retryNoVideoCallback).then(() => {
+	this._mediaDevicesSource.start(retryNoVideoCallback).then((started) => {
+		if (!started) {
+			return
+		}
+
 		self.localStreams.push(self._trackToStream.getStream())
 		self.sentStreams.push(self._trackToSentStream.getStream())
 

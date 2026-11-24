@@ -53,7 +53,7 @@ export type Events = {
 	'signaling-users-in-room': [InternalSignalingSession[]]
 	'signaling-users-joined': [StandaloneSignalingJoinSession[]]
 	'signaling-users-left': [string[]]
-	'signaling-all-users-changed-in-call-to-disconnected': void
+	'signaling-all-users-changed-in-call-to-disconnected': [token: string]
 	'signaling-supported-features': string[]
 	'smart-picker-open': void
 	'switch-to-conversation': { token: string }

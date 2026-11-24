@@ -772,6 +772,17 @@ describe('participantsStore', () => {
 			expect(store.getters.conversation(TOKEN)).toMatchObject({ ...endedCall, lastMessage: { id: 1 } })
 		})
 
+		test('releases the receiving participant and refreshes the room after a server end', async () => {
+			store.commit('setInCall', { token: TOKEN, sessionId: participantIdentifier.sessionId, flags: activeCall.callFlag })
+			fetchConversation.mockResolvedValueOnce(generateOCSResponse({ payload: endedCall }))
+
+			await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier, serverEnded: true })
+
+			expect(leaveCall).toHaveBeenCalledExactlyOnceWith(TOKEN, false, true)
+			expect(store.getters.isInCall(TOKEN)).toBe(false)
+			expect(store.getters.conversation(TOKEN)).toMatchObject(endedCall)
+		})
+
 		test('keeps the call available to join when one participant leaves', async () => {
 			await store.dispatch('addParticipant', {
 				token: TOKEN,
