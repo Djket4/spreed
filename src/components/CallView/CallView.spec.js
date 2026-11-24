@@ -105,8 +105,8 @@ describe('CallView.vue', () => {
 		})
 		let seq = 0
 		const m = () => ({ attributes: { peerId: 'p' + (++seq) }, setSimulcastVideoQuality: vi.fn() })
-		const tileSize = async (width) => {
-			wrapper.findComponent({ name: 'VideosGrid' }).vm.$emit('tileSize', width)
+		const tileSize = async (height) => {
+			wrapper.findComponent({ name: 'VideosGrid' }).vm.$emit('tileSize', height)
 			await vi.advanceTimersByTimeAsync(300)
 		}
 		const spatials = (models) => models.map((model) => model.setSimulcastVideoQuality.mock.lastCall?.[0])
@@ -139,7 +139,7 @@ describe('CallView.vue', () => {
 			expect(spatials(models)).toEqual([2, 2, 2, 2])
 		})
 
-		test('узкая плитка: MEDIUM даже при двух участниках; расширение даёт HIGH, гистерезис не дёргает', async () => {
+		test('низкая плитка остаётся MEDIUM, рост высоты даёт HIGH с гистерезисом', async () => {
 			const models = reactive([m()])
 			callParticipantCollection.callParticipantModels = models
 			wrapper = mountCallView()
@@ -186,13 +186,16 @@ describe('CallView.vue', () => {
 			window.matchMedia = origMM
 		})
 
-		test('физическая ширина: CSS-ширина x devicePixelRatio', async () => {
-			window.devicePixelRatio = 2
-			const models = reactive([m()])
+		test('физическая высота определяет слой при одной CSS-высоте', async () => {
+			const models = reactive([m(), m()])
 			callParticipantCollection.callParticipantModels = models
 			wrapper = mountCallView()
-			await tileSize(320) // 640 физ. px
-			expect(spatials(models)).toEqual([2])
+			await tileSize(240)
+			expect(spatials(models)).toEqual([1, 1])
+
+			window.devicePixelRatio = 3
+			await tileSize(240) // 720 физ. px
+			expect(spatials(models)).toEqual([2, 2])
 		})
 	})
 

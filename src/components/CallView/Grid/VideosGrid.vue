@@ -535,11 +535,11 @@ export default {
 	},
 
 	watch: {
-		// ket4tec (NAS_CLOUD#375): ширина плитки (CSS px) наружу, CallView выбирает по ней слой simulcast
-		side: {
+		// ket4tec (NAS_CLOUD#375): высота плитки (CSS px) для выбора слоя simulcast в CallView
+		tileHeight: {
 			immediate: true,
-			handler(side) {
-				this.$emit('tileSize', side)
+			handler(height) {
+				this.$emit('tileSize', height)
 			},
 		},
 	},
