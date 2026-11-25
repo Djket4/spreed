@@ -54,7 +54,17 @@ document.documentElement.classList.add('k7f')
 		if (!on) {
 			root.style.removeProperty('--k7-toast-top')
 			root.style.removeProperty('--k7-call-top')
+			root.style.removeProperty('--k7-call-top0')
 			root.style.removeProperty('--k7-stack-bottom')
+			if (box && landscapePhone.matches) {
+				// Не перекрываем свою плитку плашками между ней и строкой ожидания.
+				const videos = box.querySelector('#videos')
+				if (box.classList.contains('k7-alone') && videos && stack?.offsetHeight) {
+					box.style.setProperty('--k7-landscape-alone-top', Math.ceil(stack.getBoundingClientRect().bottom - videos.getBoundingClientRect().top + 8) + 'px')
+				} else {
+					box.style.removeProperty('--k7-landscape-alone-top')
+				}
+			}
 			return
 		}
 		const bottom = bar.getBoundingClientRect().bottom

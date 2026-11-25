@@ -676,19 +676,20 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 		#call-container .stripe-controls-position:not(.stripe-controls-position--collapsed) .stripe-controls { padding: 0; }
 	}
 	#{$k4s} { --stripe-height: 110px; }
-	// ket4tec (NAS_CLOUD#270 п.2): полосы под уведомления тут нет (main.js её выключает) — стопка вверху по центру показа
-	// (между левым краем и кнопками справа 60 px), поверх плиток, а не на 128 px по умолчанию
-	// NAS_CLOUD#332: плашки вне стопки («Ссылка скопирована») — внизу по центру показа, не поверх «Отправить ссылку» и не на колонке кнопок справа
-	html.k7f.k7f body:has(#content-vue.in-call) .toastify.dialogs {
-		inset-block: auto max(12px, env(safe-area-inset-bottom, 0px)) !important;
-		translate: -28px 0;
+	// NAS_CLOUD#162: единое место под шапкой и строкой ожидания (36px + 40px + зазор 8px).
+	html.k7f.k7f body:has(#content-vue.in-call) {
+		--k7-landscape-toast-top: max(84px, env(safe-area-inset-top, 0px));
+	}
+	html.k7f.k7f body:has(#content-vue.in-call) .toastify.dialogs:not(.k7-toast-native) {
+		inset: var(--k7-landscape-toast-top) auto auto calc((100vw + #{$L} - #{$R} - 60px) / 2) !important;
+		transform: translateX(-50%) !important;
 		max-width: calc(100vw - 160px);
 	}
-	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts { // NAS_CLOUD#332: вверху стопка закрывала «Отправить ссылку»
-		top: auto !important;
-		bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
-		translate: -28px 0;
-		max-width: calc(100vw - 160px);
+	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts {
+		inset: var(--k7-landscape-toast-top) calc(#{$R} + 60px) auto #{$L} !important;
+	}
+	#content-vue.in-call #call-container.k7-alone .grid-main-wrapper.overlap {
+		padding-block-start: max(var(--k7-alone-top), var(--k7-landscape-alone-top, 0px)) !important;
 	}
 }
 

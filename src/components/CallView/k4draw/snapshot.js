@@ -189,7 +189,7 @@ function fileName() {
 
 /**
  * Кнопка снимка в капсуле: доска или кадр показа с пометками → сервер (Talk/Recording/<token>/Снимки/, к выжимке звонка).
- * На телефоне — ещё системное «Поделиться», гостю на компьютере — скачать (своих Файлов у гостя нет).
+ * Гостю скачиваем PNG после завершения запроса, даже если сервер не сохранил снимок.
  *
  * @param {string} token комнаты
  * @param {HTMLElement|null} btn кнопка (цель анимации)
@@ -202,12 +202,12 @@ export async function shoot(token, btn = null, quiet = false) {
 		return false
 	}
 	snap.busy = true
+	let guestDownload
 	try {
 		const blob = await render(true)
 		fly(blob, btn)
-		// ket4tec (NAS_CLOUD#103 п.40): снимок тихо уходит в Файлы, без системного окна «Поделиться»; гостю (у него нет Файлов) — скачать
 		if (!quiet && amGuest()) {
-			save(blob)
+			guestDownload = blob
 		}
 		const fd = new FormData()
 		fd.append('image', blob, 'snapshot.png')
@@ -222,6 +222,14 @@ export async function shoot(token, btn = null, quiet = false) {
 		quiet || showError('Снимок не сохранился')
 		return false
 	} finally {
+		// В Safari открытие скачивания может прервать запрос снимка и скрыть его ответ.
+		try {
+			if (guestDownload) {
+				save(guestDownload)
+			}
+		} catch (e) {
+			console.error('k4draw download snapshot', e)
+		}
 		snap.busy = false
 	}
 }
