@@ -53,6 +53,17 @@ function loadImg(src) {
 }
 
 /**
+ * Сдвиг по одной оси внутрь кадра. Слишком большая капсула начинается у края.
+ *
+ * @param {number} position начало капсулы
+ * @param {number} size размер капсулы
+ * @param {number} limit размер кадра
+ */
+function clampOffset(position, size, limit) {
+	return Math.max(0, Math.min(position, limit - size)) - position
+}
+
+/**
  * @param {boolean} all все видимые пометки, а не только постоянные
  * @return {Promise<Blob>} PNG
  */
@@ -94,6 +105,7 @@ async function render(all = false) {
 	svg.setAttribute('width', vw)
 	svg.setAttribute('height', vh)
 	svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
+	const texts = []
 	ink.querySelectorAll(':scope > g').forEach((g) => {
 		if (!keep(g.getAttribute('class')?.split(' ')[0], g.dataset.ttl, g, all)) {
 			return
@@ -105,6 +117,17 @@ async function render(all = false) {
 			el.setAttribute('style', STYLE.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(';'))
 		})
 		c.setAttribute('style', 'opacity:1')
+		// NAS_CLOUD#54 (spreed#31): сдвигаем капсулу только в снимке, сохраняя её размер.
+		const rect = g.classList.contains('text') && g.querySelector('rect')
+		if (rect) {
+			const [x, y, w, h] = ['x', 'y', 'width', 'height'].map((attr) => Number(rect.getAttribute(attr)))
+			const dx = clampOffset(x, w, W)
+			const dy = clampOffset(y, h, H)
+			if (dx || dy) {
+				c.setAttribute('transform', `translate(${dx},${dy})`)
+			}
+			texts.push([(x + dx) * k, (y + dy) * k, w * k, h * k])
+		}
 		svg.append(c)
 	})
 	const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg))
@@ -114,10 +137,6 @@ async function render(all = false) {
 	// размер 1,6% высоты кадра, целиком в кадре, не поверх текстов.
 	// Разрешение PNG = разрешение принятого видео: у гостя при показе 4K приходит 1920x1080/2560x1440, у показывающего полное.
 	const fh = vh * 0.016 * 1.6 // высота капсулы; кегль 1,6% высоты кадра
-	const texts = [...ink.querySelectorAll(':scope > g.text')].filter((g) => keep('text', g.dataset.ttl, g, all)).map((g) => {
-		const r = g.querySelector('rect')
-		return r && [+r.getAttribute('x') * k, +r.getAttribute('y') * k, +r.getAttribute('width') * k, +r.getAttribute('height') * k]
-	}).filter(Boolean)
 	const done = new Set()
 	const placed = []
 	const hit = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]

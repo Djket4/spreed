@@ -23,6 +23,7 @@ vi.mock('./useDrawing.js', () => ({
 describe('shoot', () => {
 	let board
 	let download
+	let loadedImage
 	const response = { data: { ocs: { data: { id: 42 } } } }
 
 	beforeEach(() => {
@@ -34,7 +35,8 @@ describe('shoot', () => {
 		board.innerHTML = '<div><div class="k4-ink"></div></div>'
 		document.body.append(board)
 		vi.stubGlobal('Image', class {
-			set src(_url) {
+			set src(url) {
+				loadedImage = url
 				queueMicrotask(() => this.onload())
 			}
 		})
@@ -94,5 +96,73 @@ describe('shoot', () => {
 		await expect(shoot('room', null, quiet)).resolves.toBe(true)
 		expect(showSuccess).toHaveBeenCalledWith(toast, expect.any(Object))
 		expect(download).not.toHaveBeenCalled()
+	})
+
+	test.each([
+		{ guest: false, screen: false, width: 400, height: 200 },
+		{ guest: true, screen: true, width: 800, height: 400 },
+	])('keeps full text within the PNG frame for guest=$guest and screen=$screen', async ({ guest, screen, width, height }) => {
+		amGuest.mockReturnValue(guest)
+		axios.post.mockResolvedValueOnce(response)
+		board.className = screen ? 'screenContainer k4-layer' : 'k4-board'
+		if (screen) {
+			const video = document.createElement('video')
+			Object.defineProperties(video, {
+				videoWidth: { value: width },
+				videoHeight: { value: height },
+			})
+			board.append(video)
+		}
+		const surface = board.firstElementChild
+		Object.defineProperties(surface, {
+			clientWidth: { value: 200 },
+			clientHeight: { value: 100 },
+		})
+		surface.innerHTML = `<svg class="k4-ink" xmlns="http://www.w3.org/2000/svg">
+			<g class="text"><rect x="-4" y="-6" width="40" height="20"/><text>Top left</text></g>
+			<g class="text"><rect x="184" y="89" width="40" height="20"/><text>Bottom right</text></g>
+			<g class="text"><rect x="20" y="40" width="40" height="20"/><text>Inside</text></g>
+			<g class="marker"><path d="M 1 2 L 3 4"/></g>
+		</svg>
+		<span class="k4-chip" data-tool="marker" data-by="1" style="transform: translate(8px, 15px)">Tester</span>`
+		const source = surface.innerHTML
+		const roundRect = vi.fn()
+		vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue({
+			fillRect: vi.fn(),
+			drawImage: vi.fn(),
+			measureText: () => ({ width: 20 }),
+			beginPath: vi.fn(),
+			roundRect,
+			fill: vi.fn(),
+			fillText: vi.fn(),
+		})
+
+		await expect(shoot('room')).resolves.toBe(true)
+
+		const output = document.createElement('template')
+		output.innerHTML = decodeURIComponent(loadedImage.split(',')[1])
+		const svg = output.content.firstElementChild
+		const groups = [...svg.children]
+		expect(groups.map((group) => group.getAttribute('transform'))).toEqual([
+			'translate(4,6)',
+			'translate(-24,-9)',
+			null,
+			null,
+		])
+		expect(groups.map((group) => group.textContent)).toEqual(['Top left', 'Bottom right', 'Inside', ''])
+		for (const rect of svg.querySelectorAll('rect')) {
+			expect(rect.getAttribute('width')).toBe('40')
+			expect(rect.getAttribute('height')).toBe('20')
+		}
+		expect(surface.innerHTML).toBe(source)
+		expect(svg.getAttribute('viewBox')).toBe('0 0 200 100')
+		expect(svg.getAttribute('width')).toBe(String(width))
+		expect(svg.getAttribute('height')).toBe(String(height))
+		expect(roundRect.mock.calls[0][1]).toBe(20 * (width / 200) + 2)
+		const [canvas] = vi.mocked(HTMLCanvasElement.prototype.toBlob).mock.contexts
+		expect(canvas).toMatchObject({ width, height })
+		const [[, form]] = axios.post.mock.calls
+		expect(form.get('image')).toMatchObject({ type: 'image/png', name: 'snapshot.png' })
+		expect(download).toHaveBeenCalledTimes(guest ? 1 : 0)
 	})
 })
