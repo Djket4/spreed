@@ -373,7 +373,7 @@ LocalMediaModel.prototype = {
 		this._webRtc.resumeVideo()
 	},
 
-	disableVideo() {
+	disableVideo({ animate = true } = {}) {
 		if (!this._webRtc) {
 			throw new Error('WebRtc not initialized yet')
 		}
@@ -392,6 +392,10 @@ LocalMediaModel.prototype = {
 			this.set('k4videoLeaving', false)
 		}
 		this._k4leave = go
+		if (!animate) {
+			go()
+			return
+		}
 		this.set('k4videoLeaving', true)
 		// собеседникам «камера выкл» тоже сразу: иначе чёрные кадры выключенного трека иногда обгоняют сигнал и чужая плитка
 		// ~0,1 с показывает чёрный прямоугольник (3 из 6 выкл на test2 до правки, 0 из 8 с ней). Повтор при pauseVideo безвреден,

@@ -4,18 +4,37 @@
  */
 
 import { afterEach, expect, test, vi } from 'vitest'
+import TrackEnabler from '../../media/pipeline/TrackEnabler.js'
 import { LocalMediaModel } from './LocalMediaModel.js'
 
 afterEach(() => {
 	vi.useRealTimers()
 })
 
-const setup = () => {
+function setup() {
 	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] })
 	const m = new LocalMediaModel()
 	m._webRtc = { pauseVideo: vi.fn(), resumeVideo: vi.fn(), emit: vi.fn() }
 	return m
 }
+
+test('NAS_CLOUD#109: a fast camera starts disabled when joining a call', () => {
+	const model = setup()
+	const camera = new TrackEnabler()
+	model._webRtc.pauseVideo.mockImplementation(() => camera.setEnabled(false))
+	model._webRtc.resumeVideo.mockImplementation(() => camera.setEnabled(true))
+	const cameraTrack = { enabled: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+
+	model.disableVideo({ animate: false })
+	camera._setInputTrack('default', cameraTrack)
+
+	expect(cameraTrack.enabled).toBe(false)
+	expect(model.get('k4videoLeaving')).toBe(false)
+
+	model.enableVideo()
+	vi.advanceTimersByTime(150)
+	expect(cameraTrack.enabled).toBe(true)
+})
 
 test('NAS_CLOUD#271: выкл камеры — сначала k4videoLeaving (плитка гаснет), трек выключается после отрисовки', () => {
 	const m = setup()
