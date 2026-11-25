@@ -38,8 +38,9 @@ const videoElement = ref(null)
 export const useDevices = createSharedComposable(function() {
 	// Internal variables
 	let initialized = false
-	let pendingGetUserMediaAudioCount = 0
-	let pendingGetUserMediaVideoCount = 0
+	// Keep one request per device kind in flight, even when its preview closes.
+	let pendingAudioCapture = null
+	let pendingVideoCapture = null
 
 	const soundsStore = useSoundsStore()
 
@@ -243,10 +244,10 @@ export const useDevices = createSharedComposable(function() {
 	 * Start streams that are permitted and not yet running
 	 */
 	function startPermittedStreams() {
-		if (hasAudioPermission() && !audioStream.value && !pendingGetUserMediaAudioCount) {
+		if (hasAudioPermission() && !audioStream.value && !pendingAudioCapture) {
 			updateAudioStream()
 		}
-		if (hasVideoPermission() && !videoStream.value && !pendingGetUserMediaVideoCount) {
+		if (hasVideoPermission() && !videoStream.value && !pendingVideoCapture) {
 			updateVideoStream()
 		}
 	}
@@ -418,6 +419,9 @@ export const useDevices = createSharedComposable(function() {
 	 * Stop and remove audio stream
 	 */
 	function stopAudioStream() {
+		if (pendingAudioCapture) {
+			pendingAudioCapture.cancelled = true
+		}
 		if (!audioStream.value) {
 			return
 		}
@@ -434,18 +438,7 @@ export const useDevices = createSharedComposable(function() {
 	}
 
 	/**
-	 * Reset an update counter and update audio stream if needed
-	 */
-	function resetPendingGetUserMediaAudioCount() {
-		const shouldUpdateAgain = pendingGetUserMediaAudioCount > 1
-		pendingGetUserMediaAudioCount = 0
-		if (shouldUpdateAgain) {
-			updateAudioStream()
-		}
-	}
-
-	/**
-	 * Reset an update counter and update audio stream if needed
+	 * Register the video element used by the preview
 	 *
 	 * @param {import('vue').Ref} video element ref to attach track to
 	 */
@@ -474,8 +467,8 @@ export const useDevices = createSharedComposable(function() {
 		if (!force && audioStreamInputId.value && audioStreamInputId.value === audioInputId.value) {
 			return
 		}
-		if (pendingGetUserMediaAudioCount) {
-			pendingGetUserMediaAudioCount++
+		if (pendingAudioCapture) {
+			pendingAudioCapture.refresh = true
 			return
 		}
 		// When the audio input device changes the previous stream must be
@@ -488,27 +481,31 @@ export const useDevices = createSharedComposable(function() {
 		if (audioInputId.value === null || audioInputId.value === undefined) {
 			return
 		}
-		pendingGetUserMediaAudioCount = 1
+		const capture = { cancelled: false, refresh: false }
+		pendingAudioCapture = capture
 
 		mediaDevicesManager.getUserMedia({ audio: true }, 'preview')
 			.then((stream) => {
-				audioStreamError.value = null
-				if (!initialized || !streamsWanted()) {
-					// The promise was fulfilled once the stream is no
-					// longer needed, so just discard it.
-					// ket4tec: и когда шторку устройств закрыли, а в звонке остались только пассивные подписчики
+				if (capture.cancelled) {
 					stream.getTracks().forEach((track) => track.stop())
-				} else {
-					setAudioStream(stream)
+					return
 				}
+				audioStreamError.value = null
+				setAudioStream(stream)
 			})
 			.catch((error) => {
+				if (capture.cancelled) {
+					return
+				}
 				console.error('Error getting audio stream: ' + error.name + ': ' + error.message)
 				audioStreamError.value = error
 				setAudioStream(null)
 			})
 			.finally(() => {
-				resetPendingGetUserMediaAudioCount()
+				pendingAudioCapture = null
+				if (initialized && (capture.cancelled || capture.refresh)) {
+					updateAudioStream()
+				}
 			})
 	}
 
@@ -537,6 +534,9 @@ export const useDevices = createSharedComposable(function() {
 	 * Stop and remove video stream
 	 */
 	function stopVideoStream() {
+		if (pendingVideoCapture) {
+			pendingVideoCapture.cancelled = true
+		}
 		faceFrame.value._setInputTrack('default', null)
 		if (!videoStream.value) {
 			return
@@ -549,17 +549,6 @@ export const useDevices = createSharedComposable(function() {
 		// check if <video> element is mounted
 		if (videoElement.value) {
 			videoElement.value.srcObject = null
-		}
-	}
-
-	/**
-	 * Reset an update counter and update video stream if needed
-	 */
-	function resetPendingGetUserMediaVideoCount() {
-		const shouldUpdateAgain = pendingGetUserMediaVideoCount > 1
-		pendingGetUserMediaVideoCount = 0
-		if (shouldUpdateAgain) {
-			updateVideoStream()
 		}
 	}
 
@@ -578,8 +567,8 @@ export const useDevices = createSharedComposable(function() {
 		if (videoStreamInputId.value && videoStreamInputId.value === videoInputId.value) {
 			return
 		}
-		if (pendingGetUserMediaVideoCount) {
-			pendingGetUserMediaVideoCount++
+		if (pendingVideoCapture) {
+			pendingVideoCapture.refresh = true
 			return
 		}
 
@@ -591,33 +580,37 @@ export const useDevices = createSharedComposable(function() {
 			return
 		}
 
-		pendingGetUserMediaVideoCount = 1
+		const capture = { cancelled: false, refresh: false }
+		pendingVideoCapture = capture
 
 		// ket4tec (NAS_CLOUD#239): тот же размер, что у камеры звонка, — на iPhone при входе в звонок кадр не перестраивается
 		mediaDevicesManager.getUserMedia({ video: isChromium ? true : { ...START_VIDEO_CONSTRAINTS } })
 			.then((stream) => {
+				if (capture.cancelled) {
+					stream.getTracks().forEach((track) => track.stop())
+					return
+				}
 				videoStreamError.value = null
 				if (cameraNotice.value) {
 					cameraNoticeTimer = setTimeout(() => {
 						cameraNotice.value = null
 					}, 4000)
 				}
-				if (!initialized || !streamsWanted()) {
-					// The promise was fulfilled once the stream is no
-					// longer needed, so just discard it.
-					// ket4tec: и когда шторку устройств закрыли, а в звонке остались только пассивные подписчики
-					stream.getTracks().forEach((track) => track.stop())
-				} else {
-					setVideoStream(stream)
-				}
+				setVideoStream(stream)
 			})
 			.catch((error) => {
+				if (capture.cancelled) {
+					return
+				}
 				console.error('Error getting video stream: ' + error.name + ': ' + error.message)
 				videoStreamError.value = error
 				setVideoStream(null)
 			})
 			.finally(() => {
-				resetPendingGetUserMediaVideoCount()
+				pendingVideoCapture = null
+				if (initialized && (capture.cancelled || capture.refresh)) {
+					updateVideoStream()
+				}
 			})
 	}
 
