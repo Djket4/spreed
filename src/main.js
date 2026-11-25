@@ -30,6 +30,8 @@ document.documentElement.classList.add('k7f')
 {
 	const root = document.documentElement
 	const landscapePhone = window.matchMedia('(max-height: 500px) and (orientation: landscape)') // там своя раскладка (k7call.scss)
+	const twoToastHeight = 112 // Two 52px notifications and the 8px stack gap.
+	const toastRowMinWidth = 624 // 385px request, 231px notice and an 8px gap.
 	const watched = new Set()
 	const ro = new ResizeObserver(() => update())
 	/** Пересчитать полосу под уведомления */
@@ -50,6 +52,21 @@ document.documentElement.classList.add('k7f')
 			}
 		}
 		const on = !!(bar && box) && !landscapePhone.matches
+		const landscapeMulti = box?.classList.contains('k7-multi') && landscapePhone.matches
+		let horizontalToasts = false
+		let toastRowHeight = 0
+		if (landscapeMulti && stack?.offsetHeight) {
+			const style = getComputedStyle(stack)
+			const width = stack.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+			toastRowHeight = parseFloat(style.getPropertyValue('--k7-landscape-toast-row-height'))
+			const visible = [...stack.children].filter((toast) => toast.offsetHeight)
+			const hasExtraAction = visible.some((toast) => {
+				return !toast.classList.contains('k4-ask-unmute') && toast.querySelector('a, button:not(.toast-close, .k7-toast-x)')
+			})
+			horizontalToasts = width >= toastRowMinWidth && parseFloat(style.maxHeight) >= toastRowHeight
+				&& visible.length > 0 && visible.length <= 2 && !hasExtraAction
+		}
+		stack?.classList.toggle('k7-toasts--horizontal', horizontalToasts)
 		root.classList.toggle('k7-lane', on)
 		if (!on) {
 			root.style.removeProperty('--k7-toast-top')
@@ -64,13 +81,22 @@ document.documentElement.classList.add('k7f')
 				} else {
 					box.style.removeProperty('--k7-landscape-alone-top')
 				}
+				if (landscapeMulti && stack?.offsetHeight) {
+					// Measure from the call since the video area moves. Reserve both slots on the first toast.
+					const { top, height } = stack.getBoundingClientRect()
+					const reserved = horizontalToasts ? toastRowHeight : twoToastHeight
+					const offset = Math.ceil(top - box.getBoundingClientRect().top + Math.max(height, reserved) + 8)
+					box.style.setProperty('--k7-landscape-multi-top', offset + 'px')
+				} else {
+					box.style.removeProperty('--k7-landscape-multi-top')
+				}
 			}
 			return
 		}
 		const bottom = bar.getBoundingClientRect().bottom
 		// пока видна хоть одна плашка — полоса сразу под две (52 + 8 + 52), чтобы плитки не меняли размер на второй; выше — по факту
 		const shown = stack ? [...stack.children].some((e) => e.offsetHeight) : false
-		const stackH = Math.max(shown ? 112 : 52, stack ? stack.getBoundingClientRect().height : 0)
+		const stackH = Math.max(shown ? twoToastHeight : 52, stack ? stack.getBoundingClientRect().height : 0)
 		root.style.setProperty('--k7-toast-top', Math.round(bottom + 8) + 'px')
 		root.style.setProperty('--k7-call-top', Math.round(bottom - box.getBoundingClientRect().top + 8 + stackH + 8) + 'px')
 		root.style.setProperty('--k7-call-top0', Math.round(bottom - box.getBoundingClientRect().top + 8) + 'px') // без полосы плашек: «один в звонке» — плашка поверх, сцена не ездит (#172)

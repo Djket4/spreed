@@ -6,7 +6,11 @@
 <template>
 	<div
 		id="call-container"
-		:class="{ 'k7-alone': showEmptyCallView && !isSidebar && !k4.board, 'k4-selflost': k4SelfLost }"
+		:class="{
+			'k7-alone': showEmptyCallView && !isSidebar && !k4.board,
+			'k7-multi': callParticipantModels.length > 0 && !isSidebar && !screenSharingActive && !k4.board,
+			'k4-selflost': k4SelfLost,
+		}"
 		@mousemove="debounceHandleMovement"
 		@keydown="debounceHandleMovement"
 		@mouseleave="hideOverlay">
