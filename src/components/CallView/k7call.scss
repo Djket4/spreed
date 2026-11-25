@@ -666,6 +666,10 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 		}
 		#call-container { --k7-btn: 38px; }
 		#call-container > #videos { inset: 12px calc(#{$R} + 60px) 12px #{$L} !important; width: auto !important; height: auto !important; }
+		#call-container.k7-multi > #videos {
+			// Leave room for a row of 60px tiles and the 12px bottom inset.
+			top: clamp(12px, var(--k7-landscape-multi-top, 12px), calc(100% - 72px)) !important;
+		}
 		#call-container > .bottom-bar {
 			inset: 0 #{$R} 0 auto !important; width: auto; height: auto; padding: 0 !important;
 			flex-direction: column; justify-content: center; gap: 8px;
@@ -687,6 +691,37 @@ $k4s: '#call-container:not(.k7-alone) .grid-main-wrapper:not(.is-grid)';
 	}
 	html.k7f.k7f body:has(#content-vue.in-call) #k7-toasts.k7-toasts {
 		inset: var(--k7-landscape-toast-top) calc(#{$R} + 60px) auto #{$L} !important;
+	}
+	html.k7f.k7f body:has(#content-vue.in-call #call-container.k7-multi) #k7-toasts.k7-toasts {
+		// A two-line notice must fit the actual row, not just the space reserved below it.
+		--k7-landscape-toast-row-height: 68px;
+		--k7-landscape-toast-max-height: max(0px, calc(100dvh - var(--k7-landscape-toast-top) - 80px));
+		// Keep the mic request at the top if there is not enough room for the whole stack.
+		max-height: var(--k7-landscape-toast-max-height);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		> * { flex-shrink: 0; }
+		> .k4-ask-unmute { order: -1; }
+		&.k7-toasts--horizontal {
+			display: grid;
+			min-height: min(var(--k7-landscape-toast-row-height), var(--k7-landscape-toast-max-height));
+			grid-template-columns: minmax(0, 5fr) minmax(0, 3fr);
+			align-items: start;
+			> * { width: 100% !important; }
+		}
+	}
+	body:has(#k7-toasts.k7-toasts--horizontal) #content-vue.in-call #call-container.k7-multi .grid-main-wrapper.is-grid {
+		.wrapper:not(.wrapper--big) { padding: 0 6px 6px; }
+		@container (max-width: 150px) {
+			.wrapper:not(.wrapper--big) .participant-name {
+				display: -webkit-box;
+				-webkit-box-orient: vertical;
+				-webkit-line-clamp: 2;
+				white-space: normal;
+				overflow-wrap: anywhere;
+				padding: .25em .45em .25em .65em;
+			}
+		}
 	}
 	#content-vue.in-call #call-container.k7-alone .grid-main-wrapper.overlap {
 		padding-block-start: max(var(--k7-alone-top), var(--k7-landscape-alone-top, 0px)) !important;
