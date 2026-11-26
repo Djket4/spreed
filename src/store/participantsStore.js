@@ -960,10 +960,12 @@ const actions = {
 	 * Makes the current user active in the given conversation.
 	 *
 	 * @param {object} context - unused.
-	 * @param {object} data - the wrapping object.
-	 * @param {string} data.token - conversation token.
+	 * @param {object} request The room join request
+	 * @param {string} request.token Conversation token
+	 * @param {string} [request.rejoinFromSessionId] Previous session when reconnecting automatically
 	 */
-	async joinConversation(context, { token }) {
+	async joinConversation(context, request) {
+		const { token, rejoinFromSessionId } = request
 		const forceJoin = SessionStorage.getItem('joined_conversation') === token
 		const actorStore = useActorStore()
 		const currentSessionId = actorStore.sessionId
@@ -972,7 +974,14 @@ const actions = {
 			: null
 
 		try {
-			const response = await joinConversation({ token, forceJoin })
+			const joinOptions = { token, forceJoin }
+			if (rejoinFromSessionId) {
+				joinOptions.rejoinFromSessionId = rejoinFromSessionId
+			}
+			const response = await joinConversation(joinOptions)
+			if (response === null) {
+				return
+			}
 			const participant = response.data.ocs.data
 			const { sessionId } = participant
 			const previousSessionId = pendingRejoin?.sessionId
@@ -1021,7 +1030,7 @@ const actions = {
 				}
 				if (maxLastPingAge > responseData.lastPing) {
 					console.debug('Force joining automatically because the old session didn\'t ping for 40 seconds')
-					await context.dispatch('forceJoinConversation', { token })
+					await context.dispatch('forceJoinConversation', request)
 				} else {
 					EventBus.emit('session-conflict-confirmation', token)
 				}
@@ -1038,9 +1047,9 @@ const actions = {
 		}
 	},
 
-	async forceJoinConversation(context, { token }) {
-		SessionStorage.setItem('joined_conversation', token)
-		await context.dispatch('joinConversation', { token })
+	async forceJoinConversation(context, request) {
+		SessionStorage.setItem('joined_conversation', request.token)
+		await context.dispatch('joinConversation', request)
 	},
 
 	/**

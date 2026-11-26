@@ -27,9 +27,10 @@ const PERMISSIONS = PARTICIPANT.PERMISSIONS
  * @param {object} data the wrapping object;
  * @param {string} data.token The conversation token;
  * @param {boolean} data.forceJoin whether to force join;
+ * @param {string} [data.rejoinFromSessionId] Previous session when reconnecting automatically
  * @param {options} options request options;
  */
-async function joinConversation({ token, forceJoin = false }, options) {
+async function joinConversation({ token, forceJoin = false, rejoinFromSessionId }, options) {
 	const response = await axios.post(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants/active', { token }), {
 		force: forceJoin,
 	}, options)
@@ -45,9 +46,9 @@ async function joinConversation({ token, forceJoin = false }, options) {
 	}
 
 	// FIXME Signaling should not be synchronous
-	await signalingJoinConversation(token, response.data.ocs.data.sessionId)
+	const joined = await signalingJoinConversation(token, response.data.ocs.data.sessionId, rejoinFromSessionId)
 
-	return response
+	return joined === false ? null : response
 }
 
 /**
