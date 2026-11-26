@@ -60,6 +60,7 @@ function lsSet(k, v) {
 /** Реактивное состояние для UI (кнопка, док). Данные пометок реактивными не делаем: рендерит слой руками. */
 export const state = reactive({
 	mode: false, // режим рисования включён
+	screenRekeyPending: false,
 	tool: 'laser', // laser | fade | marker | arrow | frame | text | eraser
 	tsz: 'm', // размер текста s | m | l
 	tl: 0, // сколько секунд живёт текст (0 = остаётся)
@@ -157,6 +158,7 @@ let pump = 0
 let leaveTimer = 0
 let leaving = null
 let qTimer = 0
+let screenReadySession = ''
 let lastQ = 0
 let lastGc = 0
 const buckets = new Map() // автор -> { t, n } token bucket приёма
@@ -164,7 +166,15 @@ const pings = new Map() // автор -> время активных отмет�
 const closedK = new Set() // ключи закрытых досок: `h`, пришедший после `H`, доску не открывает
 
 const hpb = () => !!sig && typeof sig.doSend === 'function'
+const drawingTransportReady = () => sig.connected !== false && sig.socket !== null
 const me = () => (sig || k4drawSignaling())?.getSessionId() || ''
+
+/**
+ * @param {string} sessionId Подтверждённая сессия показывающего
+ */
+function onScreenSessionReady(sessionId) {
+	screenReadySession = sessionId
+}
 
 /**
  *
@@ -181,6 +191,7 @@ function acquire() {
 	if (!refs++) {
 		sig = k4drawSignaling()
 		sig?.on('message', onMsg)
+		sig?.on('k4drawScreenReady', onScreenSessionReady)
 		pump = setInterval(flush, 33)
 	}
 	return hpb()
@@ -195,6 +206,9 @@ function release() {
 	}
 	refs = 0
 	sig?.off('message', onMsg)
+	sig?.off('k4drawScreenReady', onScreenSessionReady)
+	screenReadySession = ''
+	state.screenRekeyPending = false
 	sig = null
 	clearInterval(pump)
 	queue = []
@@ -324,6 +338,9 @@ function applyCols(show, cols) {
  * @param data
  */
 function wire(data) {
+	if (myK && data.k === myK && !isBoard(myK) && !drawingTransportReady()) {
+		return
+	}
 	(data.op === 'h' || data.op === 'H' || data.op === 'q') && k4log('board.out', { op: data.op, k: data.k })
 	sig.doSend({ type: 'message', message: { recipient: { type: 'call' }, data: { type: 'k4draw', v: 1, ...data } } })
 }
@@ -372,10 +389,19 @@ function rekey() {
 	const sid = me()
 	// доска, переданная мне (moveBoard): ключ чужой по задумке, переименовывать нельзя
 	if (!myK || !sid || myK.startsWith(sid + ':') || shows.get(myK)?.presenter === sid) {
-		return
+		state.screenRekeyPending = false
+		return true
 	}
 	const old = myK
-	myK = sid + (isBoard(old) ? ':b' : ':') + Date.now() // доска остаётся доской
+	const board = isBoard(old)
+	// Новый HPB sessionId приходит раньше подтверждения участия в звонке.
+	// До подтверждения HPB может отклонить объявление и сообщения пометок.
+	if (!board && screenReadySession !== sid) {
+		state.screenRekeyPending = true
+		return false
+	}
+	state.screenRekeyPending = false
+	myK = sid + (board ? ':b' : ':') + Date.now()
 	const s = shows.get(old)
 	if (s) {
 		shows.delete(old)
@@ -384,28 +410,48 @@ function rekey() {
 	}
 	Object.keys(state.keys).forEach((p) => state.keys[p] === old && (state.keys[p] = myK))
 	state.keys[sid] = myK
-	queue = queue.map((q) => (q.k === old ? { ...q, k: myK } : q))
+	if (board) {
+		queue = queue.map((q) => (q.k === old ? { ...q, k: myK } : q))
+	} else {
+		// Снимок передаст локальное состояние с исходными авторами.
+		clearTimeout(colsTimer)
+		colsTimer = 0
+		queue = queue.filter((q) => q.k !== old)
+	}
 	snap = null
-	wire(hOf(myK))
+	if (!board && s) {
+		startSnap(wire)
+	} else {
+		wire(hOf(myK))
+	}
+	return true
 }
 
 /**
  *
  */
 function flush() {
-	rekey()
+	const holdOwnScreen = (myK && !isBoard(myK) && !drawingTransportReady()) || !rekey()
 	const now = performance.now()
 	tokens = Math.min(RATE, tokens + (now - lastRefill) * RATE / 1000)
 	lastRefill = now
 	while (queue.length && tokens >= 1) {
-		const d = queue[0]
+		const next = holdOwnScreen ? queue.findIndex((message) => message.k !== myK) : 0
+		if (next === -1) {
+			break
+		}
+		const [d] = queue.splice(next, 1)
 		if (d.op === 'p' && d.pts.length > MAX_PTS_MSG * 2) {
 			// лишнее остаётся в очереди для следующей пачки
-			queue.unshift({ ...d, pts: d.pts.slice(0, MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(0, MAX_PTS_MSG) } : {}) })
-			queue[1] = { ...d, pts: d.pts.slice(MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(MAX_PTS_MSG) } : {}) }
+			queue.splice(next, 0, { ...d, pts: d.pts.slice(MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(MAX_PTS_MSG) } : {}) })
+			wire({ ...d, pts: d.pts.slice(0, MAX_PTS_MSG * 2), ...(d.pr ? { pr: d.pr.slice(0, MAX_PTS_MSG) } : {}) })
+		} else {
+			wire(d)
 		}
-		wire(queue.shift())
 		tokens--
+	}
+	if (holdOwnScreen) {
+		return
 	}
 	// полоса снимка: только когда живых нет, и не больше половины бюджета
 	laneTok = Math.min(2, laneTok + (now - laneAt) * RATE / 2000)
@@ -962,13 +1008,13 @@ function apply(d, from) {
 
 // Ответ на `q`: все постоянные пометки показа, включая авторов, которые ушли. Порциями < 32 KiB.
 /**
- *
+ * @param {Function} announce Как отправить объявление перед снимком
  */
-function startSnap() {
+function startSnap(announce = enqueue) {
 	if (!myK) {
 		return
 	}
-	enqueue(hOf(myK, colsOut(shows.get(myK))))
+	announce(hOf(myK, colsOut(shows.get(myK))))
 	snap = { k: myK, parts: buildState(shows.get(myK)), i: 0, again: false }
 }
 
@@ -1049,7 +1095,12 @@ export function startShow() {
 	}
 	myK = me() + ':' + Date.now()
 	setShow(me(), myK)
-	wire({ op: 'h', k: myK })
+	const announcement = { op: 'h', k: myK }
+	if (!drawingTransportReady()) {
+		enqueue(announcement)
+	} else {
+		wire(announcement)
+	}
 }
 
 /**
@@ -1061,12 +1112,18 @@ export async function endShow() {
 	}
 	// ket4tec (NAS_CLOUD#114): пометки изменились после последнего снимка — снимок, пока они не пропали
 	const k = myK
+	screenReadySession = ''
+	state.screenRekeyPending = false
 	await snapIfDirty(myShow())
 	if (myK !== k) {
 		return // пока ждали, показ сменился
 	}
-	hpb() && wire({ op: 'H', k: myK }) // остальным: экран больше не показываю, доску мне передавать можно
-	dropShow(me())
+	hpb() && k.startsWith(me() + ':') && wire({ op: 'H', k })
+	for (const presenter of Object.keys(state.keys)) {
+		if (state.keys[presenter] === k) {
+			dropShow(presenter)
+		}
+	}
 	queue = queue.filter((q) => q.k !== myK)
 	snap = null
 	clearTimeout(qTimer)
@@ -1345,7 +1402,8 @@ export function clearAll(show = showOf(state.big)) {
  * @param show
  */
 export function canClearAll(show = showOf(state.big)) {
-	return !!show && (amMod() || (show.k === myK && !isBoard(show.k)))
+	return !!show && (amMod() || (show.k === myK && !isBoard(show.k)
+		&& !state.screenRekeyPending && show.k.startsWith(me() + ':')))
 }
 
 /**
