@@ -49,6 +49,40 @@ import { k4log, startK4Log, stopK4Log } from '../utils/k4log.js'
 import { messagePleaseTryToReload } from '../utils/talkDesktopUtils.ts'
 
 const tokenStore = useTokenStore(pinia)
+const pendingCallSessions = new WeakMap()
+
+/**
+ * Track the call session owned by an active asynchronous operation.
+ *
+ * @param {object} state - participant store state
+ * @param {string} token - conversation token
+ * @param {string|undefined} sessionId - initial call session
+ * @param {number|undefined} attendeeId - initial attendee for leave operations
+ */
+function trackCallSession(state, token, sessionId, attendeeId) {
+	const pending = pendingCallSessions.get(state) ?? new Set()
+	pendingCallSessions.set(state, pending)
+	const operation = { token, sessionId, attendeeId }
+	pending.add(operation)
+	return operation
+}
+
+/**
+ * Follow a proven session replacement, or invalidate operations for a call that has ended.
+ *
+ * @param {object} state - participant store state
+ * @param {string} token - conversation token
+ * @param {string} sessionId - previous call session
+ * @param {object|null} replacement - replacement participant, or null if this call has ended
+ */
+function replaceTrackedCallSession(state, token, sessionId, replacement) {
+	for (const operation of pendingCallSessions.get(state) ?? []) {
+		if (operation.token === token && operation.sessionId === sessionId) {
+			operation.sessionId = replacement?.sessionId ?? null
+			operation.attendeeId = replacement?.attendeeId
+		}
+	}
+}
 
 /**
  * Emit global event for user status update with the status from a participant
@@ -264,6 +298,7 @@ const mutations = {
 
 	setInCall(state, { token, sessionId, flags }) {
 		if (flags === PARTICIPANT.CALL_FLAG.DISCONNECTED) {
+			replaceTrackedCallSession(state, token, sessionId, null)
 			if (state.inCall[token] && state.inCall[token][sessionId]) {
 				delete state.inCall[token][sessionId]
 			}
@@ -695,6 +730,8 @@ const actions = {
 		let hasJoinedCallOptimistically = false
 
 		const handleJoinCall = ([token, flags]) => {
+			// An explicit join starts a new call in this session.
+			replaceTrackedCallSession(state, token, sessionId, null)
 			commit('setInCall', { token, sessionId, flags })
 			commit('finishedJoiningCall', { token, sessionId })
 			if (isParticipantsListReceived) {
@@ -809,7 +846,7 @@ const actions = {
 		}
 	},
 
-	async leaveCall({ commit, dispatch, getters }, { token, participantIdentifier, all = false, serverEnded = false }) {
+	async leaveCall({ state, commit, dispatch, getters }, { token, participantIdentifier, all = false, serverEnded = false }) {
 		if (!participantIdentifier?.sessionId) {
 			console.error('Trying to leave call without sessionId')
 		}
@@ -834,7 +871,13 @@ const actions = {
 		const endingConversation = (all || serverEnded) ? getters.conversation(token) : undefined
 		const endingCallStartTime = endingConversation?.callStartTime ?? 0
 		const endingCallMessageId = endingConversation?.lastMessage?.id ?? 0
-		const leftCall = serverEnded ? await leaveCall(token, false, true) : await leaveCall(token, all)
+		const pendingLeave = trackCallSession(state, token, participantIdentifier?.sessionId ?? undefined, attendee?.attendeeId)
+		let leftCall
+		try {
+			leftCall = serverEnded ? await leaveCall(token, false, true) : await leaveCall(token, all)
+		} finally {
+			pendingCallSessions.get(state).delete(pendingLeave)
+		}
 		if (serverEnded && !leftCall) {
 			return
 		}
@@ -843,18 +886,17 @@ const actions = {
 		const updatedData = {
 			inCall: PARTICIPANT.CALL_FLAG.DISCONNECTED,
 		}
-		if (attendee) {
-			commit('updateParticipant', { token, attendeeId: attendee.attendeeId, updatedData })
+		const { sessionId, attendeeId } = pendingLeave
+		if (attendeeId && getters.findParticipant(token, { attendeeId })) {
+			commit('updateParticipant', { token, attendeeId, updatedData })
 		}
 
 		// clear raised hands as they were specific to the call
 		useParticipantActivityStore().purgeRaisedHandsState()
 
-		commit('setInCall', {
-			token,
-			sessionId: participantIdentifier?.sessionId,
-			flags: PARTICIPANT.CALL_FLAG.DISCONNECTED,
-		})
+		if (sessionId) {
+			commit('setInCall', { token, sessionId, flags: PARTICIPANT.CALL_FLAG.DISCONNECTED })
+		}
 
 		if ((all || serverEnded) && leftCall) {
 			try {
@@ -924,21 +966,44 @@ const actions = {
 	async joinConversation(context, { token }) {
 		const forceJoin = SessionStorage.getItem('joined_conversation') === token
 		const actorStore = useActorStore()
+		const currentSessionId = actorStore.sessionId
+		const pendingRejoin = forceJoin && currentSessionId && context.state.inCall[token]?.[currentSessionId]
+			? trackCallSession(context.state, token, currentSessionId)
+			: null
 
 		try {
 			const response = await joinConversation({ token, forceJoin })
+			const participant = response.data.ocs.data
+			const { sessionId } = participant
+			const previousSessionId = pendingRejoin?.sessionId
 
 			// Update the participant and actor session after a force join
-			actorStore.setCurrentParticipant(response.data.ocs.data)
-			context.dispatch('addConversation', response.data.ocs.data)
+			if (previousSessionId && sessionId && previousSessionId !== sessionId && actorStore.sessionId === previousSessionId
+				&& SessionStorage.getItem('joined_conversation') === token) {
+				const activeSessions = context.state.inCall[token]
+				const flags = activeSessions?.[previousSessionId]
+				if (flags) {
+					if (!activeSessions[sessionId]) {
+						context.commit('setInCall', { token, sessionId, flags })
+						replaceTrackedCallSession(context.state, token, previousSessionId, participant)
+					}
+					context.commit('setInCall', {
+						token,
+						sessionId: previousSessionId,
+						flags: PARTICIPANT.CALL_FLAG.DISCONNECTED,
+					})
+				}
+			}
+			actorStore.setCurrentParticipant(participant)
+			context.dispatch('addConversation', participant)
 			context.dispatch('updateSessionId', {
 				token,
 				participantIdentifier: actorStore.participantIdentifier,
-				sessionId: response.data.ocs.data.sessionId,
+				sessionId,
 			})
-			calllogSession(token, response.data.ocs.data.sessionId)
+			calllogSession(token, sessionId)
 
-			if (response.data.ocs.data.remoteServer) {
+			if (participant.remoteServer) {
 				// fetch and store remote capabilities for federated conversation
 				await setRemoteCapabilities(response)
 			}
@@ -965,6 +1030,10 @@ const actions = {
 			} else {
 				console.error(error)
 				showError(t('spreed', 'Failed to join the conversation.') + '\n' + messagePleaseTryToReload)
+			}
+		} finally {
+			if (pendingRejoin) {
+				pendingCallSessions.get(context.state).delete(pendingRejoin)
 			}
 		}
 	},

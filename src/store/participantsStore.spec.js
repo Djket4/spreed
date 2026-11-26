@@ -1043,6 +1043,173 @@ describe('participantsStore', () => {
 			expect(joinedConversationEventMock).toHaveBeenCalledWith({ token: TOKEN })
 		})
 
+		describe('replacing a session during a call', () => {
+			const replacementSessionId = 'replacement-session'
+			const otherToken = 'other-room'
+			const flags = PARTICIPANT.CALL_FLAG.IN_CALL | PARTICIPANT.CALL_FLAG.WITH_AUDIO
+			let oldSessionId
+			let replacement
+
+			beforeEach(async () => {
+				testStoreConfig.getters.conversation = () => () => ({ hasCall: true, callStartTime: 100 })
+				store = createStore(testStoreConfig)
+				SessionStorage.setItem('joined_conversation', TOKEN)
+				oldSessionId = participantData.sessionId
+				replacement = generateOCSResponse({
+					payload: { ...participantData, sessionId: replacementSessionId },
+				})
+				await store.dispatch('addParticipantOnce', { token: TOKEN, participant: participantData })
+				store.commit('setInCall', { token: otherToken, sessionId: oldSessionId, flags })
+			})
+
+			test('moves active flags to the replacement and leaves the call using the new session', async () => {
+				store.commit('setInCall', { token: TOKEN, sessionId: oldSessionId, flags })
+				store.commit('setInCall', { token: TOKEN, sessionId: 'other-session', flags: PARTICIPANT.CALL_FLAG.IN_CALL })
+				joinConversation.mockResolvedValueOnce(replacement)
+				leaveCall.mockResolvedValueOnce(true)
+
+				await store.dispatch('joinConversation', { token: TOKEN })
+
+				expect(actorStore.sessionId).toBe(replacementSessionId)
+				expect(store.state.inCall[TOKEN]).toEqual({
+					[replacementSessionId]: flags,
+					'other-session': PARTICIPANT.CALL_FLAG.IN_CALL,
+				})
+				expect(store.getters.isInCall(TOKEN)).toBe(true)
+				store.commit('setInCall', { token: TOKEN, sessionId: 'other-session', flags: PARTICIPANT.CALL_FLAG.DISCONNECTED })
+
+				await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier: actorStore.participantIdentifier })
+
+				expect(leaveCall).toHaveBeenCalledWith(TOKEN, false)
+				expect(store.state.inCall[otherToken]).toEqual({ [oldSessionId]: flags })
+				expect(store.getters.isInCall(TOKEN)).toBe(false)
+			})
+
+			test('preserves a renewed call on the same session', async () => {
+				store.commit('setInCall', { token: TOKEN, sessionId: oldSessionId, flags })
+				joinConversation.mockResolvedValueOnce(generateOCSResponse({ payload: participantData }))
+
+				await store.dispatch('joinConversation', { token: TOKEN })
+
+				expect(store.state.inCall[TOKEN]).toEqual({ [oldSessionId]: flags })
+			})
+
+			test('does not create local call state for a conversation joined outside a call', async () => {
+				joinConversation.mockResolvedValueOnce(replacement)
+
+				await store.dispatch('joinConversation', { token: TOKEN })
+
+				expect(actorStore.sessionId).toBe(replacementSessionId)
+				expect(store.getters.isInCall(TOKEN)).toBe(false)
+				expect(store.state.inCall[otherToken]).toEqual({ [oldSessionId]: flags })
+			})
+
+			const leaveCases = [
+				{ label: 'ordinary leave', newGuest: false, all: false, confirmed: true },
+				{ label: 'guest with a new attendee', newGuest: true, all: false, confirmed: true },
+				{ label: 'end for everyone', newGuest: false, all: true, confirmed: true },
+				{ label: 'local teardown after a failed DELETE', newGuest: false, all: false, confirmed: false },
+			].flatMap((testCase) => [
+				{ ...testCase, first: 'leave' },
+				{ ...testCase, first: 'reconnect' },
+			])
+
+			test.each(leaveCases)('clears state for $label when $first finishes first', async ({ newGuest, all, confirmed, first }) => {
+				if (newGuest) {
+					actorStore.setCurrentParticipant({ ...participantData, participantType: PARTICIPANT.TYPE.GUEST })
+					const guest = {
+						...participantData,
+						actorId: 'replacement-guest',
+						attendeeId: 2,
+						sessionId: replacementSessionId,
+						participantType: PARTICIPANT.TYPE.GUEST,
+					}
+					await store.dispatch('addParticipantOnce', { token: TOKEN, participant: guest })
+					replacement = generateOCSResponse({ payload: guest })
+				}
+				if (all) {
+					fetchConversation.mockResolvedValueOnce(generateOCSResponse({
+						payload: { hasCall: false, callFlag: PARTICIPANT.CALL_FLAG.DISCONNECTED, callStartTime: 0 },
+					}))
+				}
+
+				store.commit('setInCall', { token: TOKEN, sessionId: oldSessionId, flags })
+				store.commit('setInCall', { token: TOKEN, sessionId: 'unrelated-session', flags })
+				const pendingJoin = Promise.withResolvers()
+				const pendingLeave = Promise.withResolvers()
+				joinConversation.mockReturnValueOnce(pendingJoin.promise)
+				leaveCall.mockReturnValueOnce(pendingLeave.promise)
+
+				const joining = store.dispatch('joinConversation', { token: TOKEN })
+				const leaving = store.dispatch('leaveCall', { token: TOKEN, participantIdentifier: actorStore.participantIdentifier, all })
+				if (first === 'leave') {
+					pendingLeave.resolve(confirmed)
+					await leaving
+					pendingJoin.resolve(replacement)
+					await joining
+				} else {
+					pendingJoin.resolve(replacement)
+					await joining
+					expect(store.state.inCall[TOKEN][replacementSessionId]).toBe(flags)
+					pendingLeave.resolve(confirmed)
+					await leaving
+				}
+
+				expect(actorStore.sessionId).toBe(replacementSessionId)
+				if (newGuest) {
+					expect(actorStore.participantIdentifier.attendeeId).toBe(2)
+				}
+				expect(store.state.inCall[TOKEN]).toEqual({ 'unrelated-session': flags })
+				expect(store.state.inCall[otherToken]).toEqual({ [oldSessionId]: flags })
+			})
+
+			async function startIndependentCall(sessionId) {
+				joinCall.mockImplementationOnce(async () => {
+					EventBus.emit('signaling-join-call', [TOKEN, flags])
+					EventBus.emit('signaling-users-in-room', [[{ sessionId, inCall: flags }]])
+					return flags
+				})
+				await store.dispatch('joinCall', {
+					token: TOKEN,
+					participantIdentifier: actorStore.participantIdentifier,
+					flags,
+				})
+			}
+
+			test('preserves an independent join on the replacement session during pending leave', async () => {
+				store.commit('setInCall', { token: TOKEN, sessionId: oldSessionId, flags })
+				const pendingLeave = Promise.withResolvers()
+				leaveCall.mockReturnValueOnce(pendingLeave.promise)
+				joinConversation.mockResolvedValueOnce(replacement)
+
+				const leaving = store.dispatch('leaveCall', { token: TOKEN, participantIdentifier: actorStore.participantIdentifier })
+				await store.dispatch('joinConversation', { token: TOKEN })
+				expect(store.state.inCall[TOKEN]).toEqual({ [replacementSessionId]: flags })
+				await startIndependentCall(replacementSessionId)
+				pendingLeave.resolve(true)
+				await leaving
+
+				expect(store.state.inCall[TOKEN]).toEqual({ [replacementSessionId]: flags })
+				expect(store.getters.participantsList(TOKEN)[0].inCall).toBe(flags)
+				expect(store.state.inCall[otherToken]).toEqual({ [oldSessionId]: flags })
+			})
+
+			test('does not migrate an independent new call when an old reconnect resolves after leave', async () => {
+				store.commit('setInCall', { token: TOKEN, sessionId: oldSessionId, flags })
+				const pendingJoin = Promise.withResolvers()
+				joinConversation.mockReturnValueOnce(pendingJoin.promise)
+				leaveCall.mockResolvedValueOnce(true)
+
+				const joining = store.dispatch('joinConversation', { token: TOKEN })
+				await store.dispatch('leaveCall', { token: TOKEN, participantIdentifier: actorStore.participantIdentifier })
+				await startIndependentCall(oldSessionId)
+				pendingJoin.resolve(replacement)
+				await joining
+
+				expect(store.state.inCall[TOKEN]).toEqual({ [oldSessionId]: flags })
+			})
+		})
+
 		describe('force join on error', () => {
 			afterEach(() => {
 				vi.useRealTimers()
