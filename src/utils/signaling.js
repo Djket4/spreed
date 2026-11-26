@@ -32,6 +32,28 @@ import { messagePleaseTryToReload } from './talkDesktopUtils.ts'
 
 const actorStore = useActorStore(pinia)
 
+// Bound the explicit leave path to four seconds after the media leave hook.
+export const K4_CALL_LEAVE_JOIN_WAIT_MS = 2000
+export const K4_CALL_LEAVE_DELETE_TIMEOUT_MS = 2000
+
+/**
+ * @param {Promise} request The request or requests being awaited
+ * @param {number} milliseconds Maximum wait
+ * @param {Function} onTimeout Cancels the outstanding transport
+ * @return {Promise} The response or a timeout error
+ */
+function withCallRequestTimeout(request, milliseconds, onTimeout) {
+	let timer
+	const deadline = new Promise((resolve, reject) => {
+		timer = window.setTimeout(() => {
+			const error = new DOMException('Call request timed out', 'TimeoutError')
+			reject(error)
+			onTimeout(error)
+		}, milliseconds)
+	})
+	return Promise.race([request, deadline]).finally(() => window.clearTimeout(timer))
+}
+
 const Signaling = {
 	Base: {},
 	Internal: {},
@@ -68,7 +90,8 @@ function Base(settings) {
 	this.currentCallSilent = null
 	this.currentCallSilentFor = []
 	this.currentCallRecordingConsent = null
-	this.pendingCallJoin = null
+	this.pendingCallJoins = new Set()
+	this.pendingCallLeaves = new Map()
 	this.nextcloudSessionId = null
 	this.handlers = {}
 	this.features = {}
@@ -215,32 +238,35 @@ Signaling.Base.prototype.updateCurrentCallFlags = function(flags) {
 }
 
 Signaling.Base.prototype.leaveCurrentCall = function() {
-	return new Promise((resolve, reject) => {
-		if (this.currentCallToken) {
-			this.leaveCall(this.currentCallToken)
-				.then(() => {
-					resolve()
-				})
-				.catch((reason) => {
-					reject(reason)
-				})
-			this._resetCurrentCallParameters()
-		} else {
-			resolve()
-		}
-	})
+	return this.currentCallToken ? this.leaveCall(this.currentCallToken) : Promise.resolve()
 }
 
-Signaling.Base.prototype.joinRoom = function(token, sessionId) {
+Signaling.Base.prototype._rejoinCall = function() {
+	// The join path reports failures. Cancellation on explicit leave is expected.
+	void this.joinCall(this.currentCallToken, this.currentCallFlags, this.currentCallSilent, this.currentCallRecordingConsent, this.currentCallSilentFor).catch(() => {})
+}
+
+Signaling.Base.prototype._setRoomSession = function(token, sessionId, rejoinFromSessionId) {
+	const pendingLeave = this.pendingCallLeaves.get(token)
+	if (rejoinFromSessionId && this.currentRoomToken === token && this.nextcloudSessionId === rejoinFromSessionId
+		&& pendingLeave?.sessionId === rejoinFromSessionId) {
+		// Call requests resolve the Talk session on the server when they are handled.
+		// The same leave must cover the session created by this automatic rejoin.
+		pendingLeave.sessionId = sessionId
+	}
+	this.currentRoomToken = token
+	this.nextcloudSessionId = sessionId
+}
+
+Signaling.Base.prototype.joinRoom = function(token, sessionId, rejoinFromSessionId) {
 	return new Promise((resolve, reject) => {
 		console.debug('Joined')
-		this.currentRoomToken = token
-		this.nextcloudSessionId = sessionId
+		this._setRoomSession(token, sessionId, rejoinFromSessionId)
 		this._trigger('joinRoom', [token])
 		resolve()
 		if (this.currentCallToken === token) {
 			// We were in this call before, join again.
-			this.joinCall(token, this.currentCallFlags, this.currentCallSilent, this.currentCallRecordingConsent, this.currentCallSilentFor)
+			this._rejoinCall()
 		} else {
 			this._resetCurrentCallParameters()
 		}
@@ -282,48 +308,50 @@ Signaling.Base.prototype._joinCallSuccess = function(/* token */) {
 	// Override in subclasses if necessary.
 }
 
-Signaling.Base.prototype.joinCall = function(token, flags, silent, recordingConsent, silentFor) {
-	return new Promise((resolve, reject) => {
-		const controller = new AbortController()
-		const pendingJoin = { token, controller }
-		this.pendingCallJoin = pendingJoin
+Signaling.Base.prototype.joinCall = async function(token, flags, silent, recordingConsent, silentFor) {
+	const controller = new AbortController()
+	const pendingJoin = { token, controller, request: null, cancellation: null }
+	this.pendingCallJoins.add(pendingJoin)
+	try {
+		const pendingLeave = this.pendingCallLeaves.get(token)
+		if (pendingLeave) {
+			// A new intentional join must follow the earlier explicit leave.
+			await Promise.allSettled([pendingLeave.promise])
+		}
+		if (pendingJoin.cancellation) {
+			throw pendingJoin.cancellation
+		}
 		this._trigger('beforeJoinCall', [token])
-
-		axios.post(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }), {
+		if (pendingJoin.cancellation) {
+			throw pendingJoin.cancellation
+		}
+		pendingJoin.request = axios.post(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }), {
 			flags,
 			silent,
 			recordingConsent,
 			silentFor,
 		}, { signal: controller.signal })
-			.then(function() {
-				if (controller.signal.aborted) {
-					reject(controller.signal.reason)
-					return
-				}
-				this.currentCallToken = token
-				this.currentCallFlags = flags
-				this.currentCallSilent = silent
-				this.currentCallRecordingConsent = recordingConsent
-				this.currentCallSilentFor = silentFor
-				this._trigger('joinCall', [token, flags])
-				resolve()
-				this._joinCallSuccess(token)
-			}.bind(this))
-			.catch(function(e) {
-				if (controller.signal.aborted) {
-					reject(controller.signal.reason)
-					return
-				}
-				reject(new Error())
-				console.error('Connection failed, reason: ', e)
-				this._trigger('joinCallFailed', [token, e.response?.data?.ocs])
-			}.bind(this))
-			.finally(() => {
-				if (this.pendingCallJoin === pendingJoin) {
-					this.pendingCallJoin = null
-				}
-			})
-	})
+		await pendingJoin.request
+		if (pendingJoin.cancellation) {
+			throw pendingJoin.cancellation
+		}
+		this.currentCallToken = token
+		this.currentCallFlags = flags
+		this.currentCallSilent = silent
+		this.currentCallRecordingConsent = recordingConsent
+		this.currentCallSilentFor = silentFor
+		this._trigger('joinCall', [token, flags])
+		this._joinCallSuccess(token)
+	} catch (error) {
+		if (pendingJoin.cancellation) {
+			throw pendingJoin.cancellation
+		}
+		console.error('Connection failed, reason: ', error)
+		this._trigger('joinCallFailed', [token, error.response?.data?.ocs])
+		throw new Error(undefined, { cause: error })
+	} finally {
+		this.pendingCallJoins.delete(pendingJoin)
+	}
 }
 
 Signaling.Base.prototype._leaveCallSuccess = function(/* token */) {
@@ -352,43 +380,93 @@ Signaling.Base.prototype.updateCallFlags = function(token, flags) {
 }
 
 Signaling.Base.prototype.leaveCall = function(token, keepToken, all = false) {
-	return new Promise((resolve, reject) => {
-		if (!token) {
-			reject(new Error())
-			return
+	if (!token) {
+		return Promise.reject(new Error())
+	}
+
+	const requestLeave = (options) => axios.delete(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }), {
+		data: { all },
+		...options,
+	})
+	const finishLeave = async (request, ownsLocalLeave) => {
+		try {
+			await request()
+		} catch (error) {
+			throw new Error(undefined, { cause: error })
+		} finally {
+			if (ownsLocalLeave()) {
+				this._trigger('leaveCall', [token, keepToken])
+			}
 		}
-
+		if (ownsLocalLeave()) {
+			this._leaveCallSuccess(token)
+		}
+	}
+	if (keepToken) {
 		this._trigger('beforeLeaveCall', [token, keepToken])
+		return finishLeave(requestLeave, () => true)
+	}
 
-		axios.delete(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }), {
-			data: {
-				all,
-			},
-		})
-			.then(function() {
-				this._trigger('leaveCall', [token, keepToken])
-				this._leaveCallSuccess(token)
-				resolve()
-				// We left the current call.
-				if (!keepToken && token === this.currentCallToken) {
-					this._resetCurrentCallParameters()
+	const pendingLeave = { sessionId: this.nextcloudSessionId, promise: null }
+	const pendingJoins = this._cancelPendingCallJoins(token)
+	const pendingRequests = pendingJoins.map(({ request }) => request)
+	const previousLeave = this.pendingCallLeaves.get(token)
+	if (previousLeave) {
+		pendingRequests.push(previousLeave.promise)
+	}
+	if (token === this.currentCallToken) {
+		this._resetCurrentCallParameters()
+	}
+	const ownsLocalLeave = () => !this.currentCallToken && (!this.currentRoomToken || this.currentRoomToken === token)
+	pendingLeave.promise = Promise.resolve().then(() => finishLeave(async () => {
+		if (pendingRequests.length) {
+			// Acknowledged POSTs finish on the server before DELETE. If the wait
+			// expires, abort those transports and try one best-effort DELETE.
+			await withCallRequestTimeout(Promise.allSettled(pendingRequests), K4_CALL_LEAVE_JOIN_WAIT_MS, (error) => {
+				for (const { controller } of pendingJoins) {
+					controller.abort(error)
 				}
-			}.bind(this))
-			.catch(function() {
-				this._trigger('leaveCall', [token, keepToken])
-				reject(new Error())
-				// We left the current call.
-				if (!keepToken && token === this.currentCallToken) {
-					this._resetCurrentCallParameters()
-				}
-			}.bind(this))
+			}).catch(() => {})
+		}
+		if (!ownsLocalLeave() || (this.currentRoomToken && this.nextcloudSessionId !== pendingLeave.sessionId)) {
+			throw new Error('Call leave no longer owns this session')
+		}
+		const controller = new AbortController()
+		await withCallRequestTimeout(requestLeave({ signal: controller.signal }), K4_CALL_LEAVE_DELETE_TIMEOUT_MS, (error) => controller.abort(error))
+	}, ownsLocalLeave))
+	this.pendingCallLeaves.set(token, pendingLeave)
+	if (ownsLocalLeave()) {
+		this._trigger('beforeLeaveCall', [token, keepToken])
+	}
+	return pendingLeave.promise.finally(() => {
+		if (this.pendingCallLeaves.get(token) === pendingLeave) {
+			this.pendingCallLeaves.delete(token)
+		}
 	})
 }
 
-Signaling.Base.prototype.leaveCallLocally = function(token) {
-	if (this.pendingCallJoin?.token === token) {
-		this.pendingCallJoin.controller.abort()
+Signaling.Base.prototype._cancelPendingCallJoins = function(token, abortRequest = false) {
+	const joins = []
+	for (const pendingJoin of this.pendingCallJoins) {
+		if (pendingJoin.token !== token) {
+			continue
+		}
+		if (pendingJoin.request) {
+			joins.push(pendingJoin)
+		}
+		if (pendingJoin.cancellation) {
+			continue
+		}
+		pendingJoin.cancellation = new DOMException('Call join canceled', 'AbortError')
+		if (abortRequest) {
+			pendingJoin.controller.abort(pendingJoin.cancellation)
+		}
 	}
+	return joins
+}
+
+Signaling.Base.prototype.leaveCallLocally = function(token) {
+	this._cancelPendingCallJoins(token, true)
 	this._trigger('beforeLeaveCall', [token, false])
 	this._trigger('leaveCall', [token, false])
 	if (token === this.currentCallToken) {
@@ -454,8 +532,9 @@ Signaling.Internal.prototype.forceReconnect = function(newSession, flags) {
 
 	// FIXME Naive reconnection routine; as the same session is kept peers
 	// must be explicitly ended before the reconnection is forced.
-	this.leaveCall(this.currentCallToken, true).then(() => {
-		this._joinCallAgainOnceDisconnected = true
+	const token = this.currentCallToken
+	this.leaveCall(token, true).then(() => {
+		this._joinCallAgainOnceDisconnected = token === this.currentCallToken
 	})
 }
 
@@ -552,9 +631,9 @@ Signaling.Internal.prototype._startPullingMessages = function() {
 						this._trigger('participantListChanged')
 
 						localParticipant = message.data.find((participant) => participant.sessionId === this.sessionId)
-						if (this._joinCallAgainOnceDisconnected && !localParticipant.inCall) {
+						if (this._joinCallAgainOnceDisconnected && this.currentCallToken && localParticipant && !localParticipant.inCall) {
 							this._joinCallAgainOnceDisconnected = false
-							this.joinCall(this.currentCallToken, this.currentCallFlags, this.currentCallSilent, this.currentCallRecordingConsent, this.currentCallSilentFor)
+							this._rejoinCall()
 						}
 
 						break
@@ -1056,6 +1135,8 @@ Signaling.Standalone.prototype.forceReconnect = function(newSession, flags) {
 
 	this._forceReconnect = false
 	if (newSession) {
+		const token = this.currentRoomToken
+		const previousSessionId = this.nextcloudSessionId
 		if (this.currentCallToken) {
 			// Mark this session as "no longer in the call".
 			this.leaveCall(this.currentCallToken, true)
@@ -1063,8 +1144,11 @@ Signaling.Standalone.prototype.forceReconnect = function(newSession, flags) {
 
 		this._isRejoiningConversationWithNewSession = true
 
-		rejoinConversation(this.currentRoomToken)
+		rejoinConversation(token)
 			.then((response) => {
+				if (this.currentRoomToken !== token || this.nextcloudSessionId !== previousSessionId) {
+					return
+				}
 				// FIXME use _trigger() -> EventBus to emit payload instead of direct store usage
 				store.commit('setInCall', {
 					token: this.currentRoomToken,
@@ -1072,7 +1156,7 @@ Signaling.Standalone.prototype.forceReconnect = function(newSession, flags) {
 					flags: PARTICIPANT.CALL_FLAG.DISCONNECTED,
 				})
 
-				this.nextcloudSessionId = response.data.ocs.data.sessionId
+				this._setRoomSession(token, response.data.ocs.data.sessionId, previousSessionId)
 				calllogSession(this.currentRoomToken, this.nextcloudSessionId) // ket4tec: журнал получает новую сессию, иначе 403
 
 				// FIXME use _trigger() -> EventBus to emit payload instead of direct store usage
@@ -1320,11 +1404,15 @@ Signaling.Standalone.prototype.helloResponseReceived = function(data) {
 	}
 }
 
-Signaling.Standalone.prototype.joinRoom = function(token, sessionId) {
+Signaling.Standalone.prototype.joinRoom = function(token, sessionId, rejoinFromSessionId) {
+	if (rejoinFromSessionId && (this.currentRoomToken !== token || this.nextcloudSessionId !== rejoinFromSessionId)) {
+		return Promise.resolve(false)
+	}
 	this.ownSessionJoined = false
 
 	if (!this.sessionId) {
 		if (this._pendingJoinRoomPromise && this._pendingJoinRoomPromise.token === token) {
+			this._setRoomSession(token, sessionId, rejoinFromSessionId)
 			return this._pendingJoinRoomPromise
 		}
 
@@ -1349,8 +1437,7 @@ Signaling.Standalone.prototype.joinRoom = function(token, sessionId) {
 		// the room would be re-joined again in the "helloResponseReceived"
 		// callback, leading to two entries for anonymous participants.
 		console.info('Not connected to signaling server yet, defer joining room', token)
-		this.currentRoomToken = token
-		this.nextcloudSessionId = sessionId
+		this._setRoomSession(token, sessionId, rejoinFromSessionId)
 		return this._pendingJoinRoomPromise
 	}
 
@@ -1451,6 +1538,14 @@ Signaling.Standalone.prototype.joinCall = function(token, flags, silent, recordi
 	}
 
 	return Signaling.Base.prototype.joinCall.apply(this, arguments)
+}
+
+Signaling.Standalone.prototype._cancelPendingCallJoins = function(token, abortRequest) {
+	if (this.pendingJoinCall?.token === token) {
+		this.pendingJoinCall.reject(new DOMException('Call join canceled', 'AbortError'))
+		this.pendingJoinCall = null
+	}
+	return Signaling.Base.prototype._cancelPendingCallJoins.call(this, token, abortRequest)
 }
 
 Signaling.Standalone.prototype.joinResponseReceived = function(data, token) {
@@ -1751,7 +1846,7 @@ Signaling.Standalone.prototype.processErrorNoSuchRoom = function() {
 	this.resumeId = null
 	this.signalingRoomJoined = null
 	// FIXME use _trigger() -> EventBus to emit payload instead of direct store usage
-	store.dispatch('joinConversation', { token }).catch((error) => {
+	store.dispatch('joinConversation', { token, rejoinFromSessionId: this.nextcloudSessionId }).catch((error) => {
 		console.error('Failed to rejoin conversation with a new session', token, error)
 	})
 }

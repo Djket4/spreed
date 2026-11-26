@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import axios from '@nextcloud/axios'
 import { emit } from '@nextcloud/event-bus'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
@@ -38,6 +39,8 @@ import { useSessionStore } from '../stores/session.ts'
 import { useTokenStore } from '../stores/token.ts'
 import { generateOCSErrorResponse, generateOCSResponse } from '../test-helpers.js'
 import { convertToUnix } from '../utils/formattedTime.ts'
+import Signaling from '../utils/signaling.js'
+import { signalingKill } from '../utils/webrtc/index.js'
 import participantsStore from './participantsStore.js'
 import storeConfig from './storeConfig.js'
 
@@ -999,14 +1002,14 @@ describe('participantsStore', () => {
 			})
 		})
 
-		test('joins conversation', async () => {
+		test.each([{}, { rejoinFromSessionId: 'previous-session' }])('joins conversation with recovery context %j', async (recovery) => {
 			store = createStore(testStoreConfig)
 			const response = generateOCSResponse({ payload: participantData })
 			joinConversation.mockResolvedValue(response)
 
-			const returnedResponse = await store.dispatch('joinConversation', { token: TOKEN })
+			const returnedResponse = await store.dispatch('joinConversation', { token: TOKEN, ...recovery })
 
-			expect(joinConversation).toHaveBeenCalledWith({ token: TOKEN, forceJoin: false })
+			expect(joinConversation).toHaveBeenCalledWith({ token: TOKEN, forceJoin: false, ...recovery })
 			expect(SessionStorage.getItem('joined_conversation')).toBe(TOKEN)
 			expect(returnedResponse).toBe(response)
 
@@ -1018,6 +1021,57 @@ describe('participantsStore', () => {
 				.toStrictEqual(participantData)
 
 			expect(joinedConversationEventMock).toHaveBeenCalledWith({ token: TOKEN })
+		})
+
+		test('a late automatic room response cannot replace the manual takeover in signaling or the store', async () => {
+			store = createStore(testStoreConfig)
+			const { joinConversation: realJoinConversation } = await vi.importActual('../services/participantsService.js')
+			vi.mocked(joinConversation).mockImplementationOnce(realJoinConversation).mockImplementationOnce(realJoinConversation)
+
+			const settings = { server: 'wss://fixture.invalid', helloAuthParams: {} }
+			const signaling = Object.setPrototypeOf(new Signaling.Base(settings), Signaling.Standalone.prototype)
+			signaling.currentRoomToken = TOKEN
+			signaling.nextcloudSessionId = participantData.sessionId
+			signaling.sessionId = 'hpb-session'
+			signaling.doSend = vi.fn()
+			const connection = vi.spyOn(Signaling, 'createConnection').mockReturnValueOnce(signaling)
+			const fetchSettings = vi.spyOn(axios, 'get').mockResolvedValue(generateOCSResponse({ payload: settings }))
+			const lateResponse = Promise.withResolvers()
+			const manualParticipant = { ...participantData, sessionId: 'manual-session' }
+			const staleParticipant = { ...participantData, sessionId: 'stale-auto-session', attendeeId: 3 }
+			const manualResponse = generateOCSResponse({ payload: manualParticipant, headers: new Headers() })
+			const post = vi.spyOn(axios, 'post').mockReturnValueOnce(lateResponse.promise).mockResolvedValueOnce(manualResponse)
+			const writeSession = vi.spyOn(SessionStorage, 'setItem')
+			const joined = vi.fn()
+			EventBus.on('joined-conversation', joined)
+
+			try {
+				const automaticJoin = store.dispatch('joinConversation', { token: TOKEN, rejoinFromSessionId: participantData.sessionId })
+				expect(post).toHaveBeenCalledOnce()
+				await expect(store.dispatch('forceJoinConversation', { token: TOKEN })).resolves.toBeUndefined()
+				expect(actorStore.sessionId).toBe(manualParticipant.sessionId)
+				expect(signaling.nextcloudSessionId).toBe(manualParticipant.sessionId)
+				writeSession.mockClear()
+
+				lateResponse.resolve(generateOCSResponse({ payload: staleParticipant, headers: new Headers() }))
+				await expect(automaticJoin).resolves.toBeUndefined()
+				expect(actorStore.sessionId).toBe(manualParticipant.sessionId)
+				expect(actorStore.participantIdentifier.attendeeId).toBe(manualParticipant.attendeeId)
+				expect(signaling.nextcloudSessionId).toBe(manualParticipant.sessionId)
+				expect(signaling.doSend).toHaveBeenCalledOnce()
+				expect(testStoreConfig.actions.addConversation).toHaveBeenCalledExactlyOnceWith(expect.anything(), manualParticipant)
+				expect(joined).toHaveBeenCalledExactlyOnceWith({ token: TOKEN })
+				expect(SessionStorage.getItem('joined_conversation')).toBe(TOKEN)
+				expect(writeSession).not.toHaveBeenCalled()
+				expect(post).toHaveBeenCalledTimes(2)
+			} finally {
+				EventBus.off('joined-conversation', joined)
+				signalingKill()
+				writeSession.mockRestore()
+				post.mockRestore()
+				fetchSettings.mockRestore()
+				connection.mockRestore()
+			}
 		})
 
 		test('force join conversation', async () => {

@@ -222,12 +222,18 @@ function setupWebRtc() {
  *
  * @param {string} token Conversation to join
  * @param {string} sessionId Session id to join with
- * @return {Promise<void>}
+ * @param {string} [rejoinFromSessionId] Previous session when reconnecting automatically
+ * @return {Promise<void | false>} False when an automatic rejoin was superseded
  */
-async function signalingJoinConversation(token, sessionId) {
+async function signalingJoinConversation(token, sessionId, rejoinFromSessionId) {
 	await connectSignaling(token)
 	if (tokensInSignaling[token]) {
-		await signaling.joinRoom(token, sessionId)
+		const roomSignaling = signaling
+		const joined = await roomSignaling.joinRoom(token, sessionId, rejoinFromSessionId)
+		if (joined === false || (rejoinFromSessionId && (roomSignaling !== signaling
+			|| roomSignaling.currentRoomToken !== token || roomSignaling.nextcloudSessionId !== sessionId))) {
+			return false
+		}
 	}
 }
 
