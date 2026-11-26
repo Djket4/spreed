@@ -31,6 +31,9 @@ let previousUsersInRoom = []
 let usersInCallMapping = {}
 let ownPeer = null
 let ownScreenPeer = null
+let screenShareSessionId = ''
+const retiredScreenSessions = new Set()
+const MAX_RETIRED_SCREEN_SESSIONS = 8
 let selfInCall = PARTICIPANT.CALL_FLAG.DISCONNECTED
 // Special variable to know when the local user explicitly joined and left the
 // call; this is needed to know when the user was kicked out from the call by a
@@ -443,6 +446,21 @@ function usersInCallChanged(signaling, users) {
 	const currentSessionId = signaling.getSessionId()
 	const currentUsersInRoom = []
 	const userMapping = {}
+	const screenRejoined = webrtc.getLocalScreen() && screenShareSessionId && screenShareSessionId !== currentSessionId
+	if (screenRejoined) {
+		// Partial updates can arrive before HPB confirms the current session in the call.
+		if (!users[currentSessionId]?.inCall) {
+			return
+		}
+		retiredScreenSessions.add(screenShareSessionId)
+		if (retiredScreenSessions.size > MAX_RETIRED_SCREEN_SESSIONS) {
+			retiredScreenSessions.delete(retiredScreenSessions.values().next().value)
+		}
+	}
+	// A later HPB delta can still mention a departed session of this presenter.
+	for (const sessionId of retiredScreenSessions) {
+		delete users[sessionId]
+	}
 	selfInCall = PARTICIPANT.CALL_FLAG.DISCONNECTED
 	let sessionId
 	for (sessionId in users) {
@@ -500,6 +518,27 @@ function usersInCallChanged(signaling, users) {
 		// Own session is no longer in the call, disconnect from all others.
 		usersChanged(signaling, [], previousUsersInRoom)
 		return
+	}
+
+	if (screenRejoined) {
+		const oldScreenSessionId = screenShareSessionId
+		screenShareSessionId = currentSessionId
+		const useMcu = signaling.hasFeature('mcu')
+		// Existing viewers do not go through the new-participant branch below.
+		for (const sessionId of currentUsersInRoom) {
+			if (!previousUsersInRoom.includes(sessionId)) {
+				continue
+			}
+			if (!useMcu) {
+				for (const peer of webrtc.webrtc.getPeers(sessionId, 'screen')) {
+					if (peer.sharemyscreen && peer.broadcaster === oldScreenSessionId) {
+						peer.end()
+					}
+				}
+			}
+			createScreensharingPeer(signaling, sessionId)
+		}
+		signaling._trigger('k4drawScreenReady', [currentSessionId])
 	}
 
 	const newSessionIds = arrayDiff(currentUsersInRoom, previousUsersInRoom)
@@ -1779,6 +1818,7 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	// Local screen added.
 	webrtc.on('localScreenAdded', function() {
 		const currentSessionId = signaling.getSessionId()
+		screenShareSessionId = currentSessionId
 		for (const sessionId in usersInCallMapping) {
 			if (!Object.hasOwn(usersInCallMapping, sessionId)) {
 				continue
@@ -1795,6 +1835,8 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	})
 
 	webrtc.on('localScreenStopped', function() {
+		screenShareSessionId = ''
+		retiredScreenSessions.clear()
 		if (!signaling.hasFeature('mcu')) {
 			// Only need to notify clients here if running with MCU.
 			// Otherwise SimpleWebRTC will notify each client on its own.
@@ -1808,6 +1850,8 @@ export function initWebRtc(signaling, _callParticipantCollection, _localCallPart
 	})
 
 	webrtc.on('disconnected', function() {
+		screenShareSessionId = ''
+		retiredScreenSessions.clear()
 		if (ownPeer) {
 			if (delayedConnectionToPeer[ownPeer.id]) {
 				clearInterval(delayedConnectionToPeer[ownPeer.id])
