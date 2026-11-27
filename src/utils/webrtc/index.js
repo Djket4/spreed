@@ -280,9 +280,6 @@ async function signalingJoinCall(token, flags, silent, recordingConsent, silentF
 			// The previous state might be wiped after the media is started, so
 			// it should be saved now.
 			const noiseSuppressionWithModel = !!BrowserStorage.getItem('noiseSuppressionWithModel')
-			// ket4tec: everyone joins muted with video off; the pre-join check only previews devices
-			const enableAudio = false
-			const enableVideo = false
 			const enableVirtualBackground = !!BrowserStorage.getItem('virtualBackgroundEnabled')
 			const virtualBackgroundType = BrowserStorage.getItem('virtualBackgroundType')
 			const virtualBackgroundBlurStrength = BrowserStorage.getItem('virtualBackgroundBlurStrength')
@@ -290,16 +287,9 @@ async function signalingJoinCall(token, flags, silent, recordingConsent, silentF
 
 			localMediaModel.set('token', token)
 
-			if (enableAudio) {
-				localMediaModel.enableAudio()
-			} else {
-				localMediaModel.disableAudio()
-			}
-			if (enableVideo) {
-				localMediaModel.enableVideo()
-			} else {
-				localMediaModel.disableVideo()
-			}
+			// ket4tec: the device check is preview only. Disable both tracks before capture starts.
+			localMediaModel.disableAudio()
+			localMediaModel.disableVideo({ animate: false })
 			if (enableVirtualBackground) {
 				localMediaModel.enableVirtualBackground()
 			} else {
