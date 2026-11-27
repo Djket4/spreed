@@ -92,6 +92,7 @@ describe('прогон 15.11 №2, ice 8 с: попытка сокета зав�
 		vi.stubGlobal('WebSocket', class {
 			readyState = 0
 			close = vi.fn()
+			send = vi.fn()
 		})
 	})
 
@@ -125,6 +126,59 @@ describe('прогон 15.11 №2, ice 8 с: попытка сокета зав�
 		fake.socket.readyState = 1
 		vi.advanceTimersByTime(K4_OPEN_TIMEOUT_MS)
 		expect(fake.reconnect).not.toHaveBeenCalled()
+	})
+
+	test('a missing resume hello response retries with the same guest session', () => {
+		const signaling = Object.assign(Object.create(Signaling.Standalone.prototype), {
+			initialReconnectIntervalMs: 1000,
+			maxReconnectIntervalMs: 16000,
+			signalingConnectionError: null,
+			signalingConnectionWarning: null,
+			signalingConnectionTimeout: null,
+			settings: { token: 'tok', helloAuthParams: {} },
+			url: 'wss://x/spreed',
+			currentRoomToken: 'tok',
+			currentCallToken: 'tok',
+			nextcloudSessionId: 'guest-room-session',
+			sessionId: 'guest-session',
+			resumeId: 'guest-resume',
+			_trigger: vi.fn(),
+			joinRoom: vi.fn(),
+		})
+		const openAndReadHello = (socket) => {
+			socket.readyState = 1
+			socket.onopen({})
+			const hello = JSON.parse(socket.send.mock.calls[0][0])
+			expect(hello.hello).toEqual({ version: '1.0', resumeid: 'guest-resume' })
+			return hello.id
+		}
+
+		signaling.connect()
+		const stalled = signaling.socket
+		openAndReadHello(stalled)
+		vi.advanceTimersByTime(6000)
+
+		expect(stalled.close).toHaveBeenCalledOnce()
+		const recovered = signaling.socket
+		expect(recovered).not.toBe(stalled)
+		const id = openAndReadHello(recovered)
+		recovered.onmessage({
+			data: {
+				id,
+				type: 'hello',
+				hello: {
+					sessionid: 'guest-session',
+					resumeid: 'guest-resume',
+					server: { features: ['audio-video-permissions', 'incall-all', 'switchto', 'federation'] },
+				},
+			},
+		})
+		vi.advanceTimersByTime(6000)
+
+		expect(signaling.getSessionId()).toBe('guest-session')
+		expect(signaling._trigger).toHaveBeenCalledWith('connect')
+		expect(signaling.joinRoom).not.toHaveBeenCalled()
+		expect(recovered.close).not.toHaveBeenCalled()
 	})
 })
 
