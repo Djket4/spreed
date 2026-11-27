@@ -13,7 +13,7 @@ import VideosGrid from './VideosGrid.vue'
 
 
 // ket4tec (NAS_CLOUD#159): телефон вертикально, 7+ участников - 4 собеседника без страниц
-describe('VideosGrid.vue: телефон, 7+ участников', () => {
+describe('VideosGrid.vue: телефон', () => {
 	let wrapper
 	let seq = 0
 	const person = () => {
@@ -50,6 +50,27 @@ describe('VideosGrid.vue: телефон, 7+ участников', () => {
 		expect(wrapper.vm.displayedVideos.map((m) => m.attributes.peerId)).toEqual(models.slice(0, 4).map((m) => m.attributes.peerId))
 		expect(wrapper.find('.grid-navigation').exists()).toBe(false)
 		expect(wrapper.find('.k4-more-tile').text()).toBe('+4')
+	})
+
+	// NAS_CLOUD#375: в портретной сетке высота плитки меняется при той же ширине.
+	test('передаёт высоту портретной плитки для выбора слоя simulcast', async () => {
+		wrapper = mountGrid(reactive([person(), person()]))
+		const grid = wrapper.get('.grid').element
+		let height = 488
+		Object.defineProperties(grid, {
+			clientWidth: { value: 408 },
+			clientHeight: { get: () => height },
+		})
+		wrapper.vm.recompute()
+		await flushPromises()
+		expect(wrapper.vm.side).toBe(200)
+		expect(wrapper.emitted('tileSize').at(-1)).toEqual([240])
+
+		height = 408
+		wrapper.vm.recompute()
+		await flushPromises()
+		expect(wrapper.vm.side).toBe(200)
+		expect(wrapper.emitted('tileSize').at(-1)).toEqual([200])
 	})
 
 	test('колесо в этом режиме страницу не листает', async () => {

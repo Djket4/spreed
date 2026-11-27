@@ -246,9 +246,9 @@ const serverVersion = loadState('core', 'config', {}).version ?? '29.0.0.0'
 
 const isTouchDevice = () => window.matchMedia?.('(hover: none)').matches // ket4tec (NAS_CLOUD#153)
 
-// ket4tec (NAS_CLOUD#375): верхний слой simulcast в сетке, если плиток <= K4_GRID_HIGH_MAX (считая свою) и сторона плитки
-// в физ. px больше K4_HIGH_MIN_PX. Плитка квадратная, видео в ней object-fit: cover, масштаб идёт по ВЫСОТЕ кадра:
-// MEDIUM = 540 по высоте (при кадрировании по лицу 540x540), +запас; гистерезис 5 % в каждую сторону против дёрганья
+// ket4tec (NAS_CLOUD#375): верхний слой simulcast в сетке, если плиток <= K4_GRID_HIGH_MAX (считая свою) и высота плитки
+// в физ. px больше K4_HIGH_MIN_PX. Для квадратного и широкого видео object-fit: cover в портретной
+// плитке масштабирует по высоте. Порог учитывает MEDIUM (540 по высоте) с запасом и гистерезисом 5 %.
 const K4_GRID_HIGH_MAX = 4
 const K4_HIGH_MIN_PX = 600
 const K4_HYSTERESIS = 0.05
@@ -367,7 +367,7 @@ export default {
 			// Timer for the videos bottom bar
 			showVideoOverlayTimer: null,
 			debounceHandleMovement: () => {},
-			k4TileCssW: 0, // ket4tec (NAS_CLOUD#375): CSS-ширина плитки сетки из VideosGrid
+			k4TileCssHeight: 0, // ket4tec (NAS_CLOUD#375): CSS-высота плитки сетки из VideosGrid
 			k4TileBig: false,
 			k4TileDebounced: () => {},
 		}
@@ -1197,24 +1197,24 @@ export default {
 			}
 		},
 
-		// ket4tec (NAS_CLOUD#375): перенос окна на монитор с другим DPR не меняет CSS-сторону плитки (tileSize не придёт):
+		// ket4tec (NAS_CLOUD#375): перенос окна на монитор с другим DPR может сохранить CSS-высоту плитки (tileSize не придёт):
 		// слушаем смену resolution и пересчитываем тем же дебаунсом, затем подписываемся на новый DPR
 		k4WatchDpr() {
 			this.k4DprMq?.removeEventListener('change', this.k4DprFn)
 			this.k4DprMq = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
 			this.k4DprFn = () => {
-				this.k4OnTileSize(this.k4TileCssW)
+				this.k4OnTileSize(this.k4TileCssHeight)
 				this.k4WatchDpr()
 			}
 			this.k4DprMq?.addEventListener('change', this.k4DprFn)
 		},
 
-		// ket4tec (NAS_CLOUD#375): ширина плитки из VideosGrid; пересчёт слоя с дебаунсом и гистерезисом
-		k4OnTileSize(width) {
-			this.k4TileCssW = width
+		// ket4tec (NAS_CLOUD#375): высота плитки из VideosGrid; пересчёт слоя с дебаунсом и гистерезисом
+		k4OnTileSize(height) {
+			this.k4TileCssHeight = height
 			if (!this.k4TileDebounced.clear) {
 				this.k4TileDebounced = debounce(() => {
-					const phys = this.k4TileCssW * (window.devicePixelRatio || 1)
+					const phys = this.k4TileCssHeight * (window.devicePixelRatio || 1)
 					const limit = K4_HIGH_MIN_PX * (this.k4TileBig ? 1 - K4_HYSTERESIS : 1 + K4_HYSTERESIS)
 					const big = phys > limit
 					if (big !== this.k4TileBig) {
@@ -1237,7 +1237,7 @@ export default {
 			// bad specially with a low number of participants.
 			if (this.isGrid) {
 				// ket4tec (NAS_CLOUD#375): MEDIUM = 960x540 при камере 1080p. HIGH, если плиток <= K4_GRID_HIGH_MAX
-				// (считая свою; в записи её нет, как в VideosGrid) и плитка крупнее среднего слоя в физ. px
+				// (считая свою; в записи её нет, как в VideosGrid) и высота плитки больше среднего слоя в физ. px
 				const tiles = this.callParticipantModels.length + (this.isRecording ? 0 : 1)
 				const big = tiles <= K4_GRID_HIGH_MAX && this.k4TileBig
 				callParticipantModel.setSimulcastVideoQuality(big ? SIMULCAST.HIGH : SIMULCAST.MEDIUM, SIMULCAST.HIGH)
