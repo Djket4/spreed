@@ -795,7 +795,6 @@ Signaling.Standalone.prototype.connect = function() {
 		console.debug('Connected', event)
 		k4log('sig.open')
 		calllog('signaling', { st: 'open' })
-		k4net.sigDown = false
 		if (this.signalingConnectionTimeout !== null) {
 			clearTimeout(this.signalingConnectionTimeout)
 			this.signalingConnectionTimeout = null
@@ -1271,6 +1270,7 @@ Signaling.Standalone.prototype.helloResponseReceived = function(data) {
 		return
 	}
 
+	k4net.sigDown = false
 	this.helloResponseErrorCount = 0
 
 	if (this.signalingConnectionError !== null) {
